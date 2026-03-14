@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     // 获取提交信息（按 SHA 精确获取）
     const selectedCommits = await withRetry(() =>
-      buildReportCommits(project.repo, selectedHashes)
+      buildReportCommits(project.repo, selectedHashes, projectId)
     );
 
     if (selectedCommits.length === 0) {

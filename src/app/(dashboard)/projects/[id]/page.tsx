@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const project = await getProjectById(id);
-  const branches = await getRepoBranches(project.repo).catch(() => [project.default_branch]);
+  const branches = await getRepoBranches(project.repo, id).catch(() => [project.default_branch]);
 
   return <EnhancedProjectDetail project={project} branches={branches} />;
 }

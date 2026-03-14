@@ -99,7 +99,6 @@ export async function buildReportCommits(repo: string, hashes: string[], project
   if (!commits || commits.length === 0) {
     throw new Error('未找到指定的提交');
   }
-  }
   return commits;
 }
 

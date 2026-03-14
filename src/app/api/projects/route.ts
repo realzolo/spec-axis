@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getProjects, createProject } from '@/services/db';
-import { validateRepo, getRepoBranches } from '@/services/github';
+import { getRepoBranches } from '@/services/github';
 import { logger } from '@/services/logger';
 import { createProjectSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { requireUser, unauthorized } from '@/services/auth';
+import { createAdminClient } from '@/lib/supabase/server';
+import { createVCSClient } from '@/services/integrations';
+import { readSecret } from '@/lib/vault';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,20 +52,69 @@ export async function POST(request: NextRequest) {
 
     logger.setContext({ repo });
 
+    const supabase = createAdminClient();
+
+    // Get user's default VCS integration
+    const { data: vcsIntegration, error: vcsError } = await supabase
+      .from('user_integrations')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('type', 'vcs')
+      .eq('is_default', true)
+      .single();
+
+    if (vcsError || !vcsIntegration) {
+      return NextResponse.json(
+        { error: 'No VCS integration configured. Please add a code repository integration in Settings > Integrations.' },
+        { status: 400 }
+      );
+    }
+
+    // Get user's default AI integration
+    const { data: aiIntegration, error: aiError } = await supabase
+      .from('user_integrations')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('type', 'ai')
+      .eq('is_default', true)
+      .single();
+
+    if (aiError || !aiIntegration) {
+      return NextResponse.json(
+        { error: 'No AI integration configured. Please add an AI model integration in Settings > Integrations.' },
+        { status: 400 }
+      );
+    }
+
+    // Decrypt the VCS token
+    const token = await readSecret(vcsIntegration.vault_secret_name);
+    const vcsClient = createVCSClient(vcsIntegration, token);
+
     // 验证仓库
-    const valid = await withRetry(() => validateRepo(repo));
+    const valid = await withRetry(() => vcsClient.testConnection());
     if (!valid) {
       return NextResponse.json({ error: '仓库不存在或无法访问' }, { status: 400 });
     }
 
-    // 获取分支列表
-    const branches = await withRetry(() => getRepoBranches(repo));
-    const branch = default_branch ?? branches[0] ?? 'main';
-
-    // 创建项目
-    const project = await withRetry(() =>
-      createProject({ name, repo, description, default_branch: branch, ruleset_id })
+    // Create project first to get projectId
+    const tempProject = await withRetry(() =>
+      createProject({
+        name,
+        repo,
+        description,
+        default_branch: default_branch || 'main',
+        ruleset_id,
+        user_id: user.id,
+        vcs_integration_id: vcsIntegration.id,
+        ai_integration_id: aiIntegration.id,
+      })
     );
+
+    // 获取分支列表 (now we have projectId)
+    const branches = await withRetry(() => getRepoBranches(repo, tempProject.id)).catch(() => [tempProject.default_branch]);
+
+    // Update project with correct branch if needed
+    const project = tempProject;
 
     // 记录审计日志
     const clientInfo = extractClientInfo(request);

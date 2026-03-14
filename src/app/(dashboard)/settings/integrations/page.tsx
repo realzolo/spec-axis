@@ -108,7 +108,7 @@ export default function IntegrationsPage() {
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-sm font-medium">{integration.name}</h3>
               {integration.is_default && (
-                <Chip size="sm" color="primary" variant="soft">
+                <Chip size="sm" color="accent" variant="soft">
                   Default
                 </Chip>
               )}

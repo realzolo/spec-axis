@@ -69,7 +69,7 @@ export class GitHubClient implements VCSClient {
         owner: repo.owner.login,
         name: repo.name,
         fullName: repo.full_name,
-        defaultBranch: repo.default_branch,
+        defaultBranch: repo.default_branch || 'main',
         description: repo.description || undefined,
         url: repo.html_url,
       }));

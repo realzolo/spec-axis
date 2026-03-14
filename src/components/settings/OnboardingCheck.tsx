@@ -107,7 +107,7 @@ export default function OnboardingCheck() {
             </Modal.Body>
 
             <Modal.Footer>
-              <Button onClick={handleGoToSettings} color="primary" className="w-full">
+              <Button onClick={handleGoToSettings} variant="primary" className="w-full">
                 Configure Integrations
               </Button>
             </Modal.Footer>

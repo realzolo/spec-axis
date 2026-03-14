@@ -9,6 +9,7 @@ import type {
   VCSClient,
   AIClient,
   VCSConfigWithSecret,
+  AIConfig,
   AIConfigWithSecret,
   VCSProvider,
   AIProvider,
@@ -42,7 +43,7 @@ export function createVCSClient(integration: Integration, token: string): VCSCli
  */
 export function createAIClient(integration: Integration, apiKey: string): AIClient {
   const config: AIConfigWithSecret = {
-    ...integration.config,
+    ...(integration.config as AIConfig),
     apiKey,
   };
 
@@ -195,16 +196,26 @@ export async function getUserIntegrations(
 /**
  * Get a specific integration by ID
  */
-export async function getIntegration(integrationId: string): Promise<Integration> {
+export async function getIntegration(integrationId: string, userId?: string): Promise<Integration> {
   const supabase = createAdminClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('user_integrations')
     .select('*')
-    .eq('id', integrationId)
-    .single();
+    .eq('id', integrationId);
 
-  if (error || !data) {
+  if (userId) {
+    query = query.eq('user_id', userId);
+  }
+
+  const { data, error } = await query.single();
+
+  if (error) {
+    console.error('Failed to get integration:', error);
+    throw new Error(`Integration not found: ${error.message}`);
+  }
+
+  if (!data) {
     throw new Error('Integration not found');
   }
 

@@ -8,8 +8,9 @@ import { setDefaultIntegration } from '@/services/integrations';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await setDefaultIntegration(params.id, user.id);
+    await setDefaultIntegration(id, user.id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

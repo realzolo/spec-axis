@@ -21,6 +21,9 @@ export async function createProject(payload: {
   description?: string;
   default_branch?: string;
   ruleset_id?: string;
+  user_id: string;
+  vcs_integration_id: string;
+  ai_integration_id: string;
 }) {
   const { data, error } = await db().from('projects').insert(payload).select().single();
   if (error) throw error;

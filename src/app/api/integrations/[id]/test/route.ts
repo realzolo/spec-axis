@@ -9,8 +9,9 @@ import { readSecret } from '@/lib/vault';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -20,13 +21,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get integration
-    const integration = await getIntegration(params.id);
-
-    // Verify ownership
-    if (integration.user_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    // Get integration (with user_id filter for security)
+    const integration = await getIntegration(id, user.id);
 
     // Read secret from vault
     const secret = await readSecret(integration.vault_secret_name);

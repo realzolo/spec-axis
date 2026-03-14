@@ -13,8 +13,9 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -33,7 +34,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     if (secret !== undefined) input.secret = secret;
     if (isDefault !== undefined) input.isDefault = isDefault;
 
-    const integration = await updateIntegration(params.id, user.id, input);
+    const integration = await updateIntegration(id, user.id, input);
 
     // Remove sensitive data
     const sanitized = {
@@ -57,8 +58,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -68,7 +70,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await deleteIntegration(params.id, user.id);
+    await deleteIntegration(id, user.id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -29,12 +29,8 @@ export interface UpdateIntegrationInput {
 export async function createIntegration(input: CreateIntegrationInput): Promise<Integration> {
   const supabase = createAdminClient();
 
-  // Generate a temporary ID for vault secret name
-  const tempId = crypto.randomUUID();
-  const vaultSecretName = generateSecretName(input.userId, input.type, tempId);
-
-  // Store secret in vault
-  await storeSecret(vaultSecretName, input.secret);
+  // Encrypt the secret
+  const encryptedSecret = await storeSecret('', input.secret);
 
   try {
     // Insert integration
@@ -46,22 +42,18 @@ export async function createIntegration(input: CreateIntegrationInput): Promise<
         provider: input.provider,
         name: input.name,
         config: input.config,
-        vault_secret_name: vaultSecretName,
+        vault_secret_name: encryptedSecret,
         is_default: input.isDefault || false,
       })
       .select()
       .single();
 
     if (error) {
-      // Rollback: delete secret from vault
-      await deleteSecret(vaultSecretName);
       throw new Error(`Failed to create integration: ${error.message}`);
     }
 
     return data as Integration;
   } catch (error) {
-    // Rollback: delete secret from vault
-    await deleteSecret(vaultSecretName);
     throw error;
   }
 }
@@ -88,17 +80,18 @@ export async function updateIntegration(
     throw new Error('Integration not found');
   }
 
-  // Update secret if provided
-  if (input.secret) {
-    await updateSecret(existing.vault_secret_name, input.secret);
-  }
-
   // Update integration
   const updateData: any = {};
   if (input.name !== undefined) updateData.name = input.name;
   if (input.config !== undefined) updateData.config = input.config;
   if (input.isDefault !== undefined) updateData.is_default = input.isDefault;
   updateData.updated_at = new Date().toISOString();
+
+  // Update secret if provided
+  if (input.secret) {
+    const newEncryptedSecret = await updateSecret(existing.vault_secret_name, input.secret);
+    updateData.vault_secret_name = newEncryptedSecret;
+  }
 
   const { data, error } = await supabase
     .from('user_integrations')
