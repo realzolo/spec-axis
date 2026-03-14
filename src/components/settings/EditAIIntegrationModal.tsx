@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Modal, Button, Input, Switch } from '@heroui/react';
-import { useOverlayState } from '@heroui/react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
 interface Integration {
@@ -25,13 +27,6 @@ export default function EditAIIntegrationModal({ integration, onClose, onSuccess
   const [secret, setSecret] = useState('');
   const [isDefault, setIsDefault] = useState(integration.is_default);
   const [loading, setLoading] = useState(false);
-
-  const modalState = useOverlayState({
-    isOpen: true,
-    onOpenChange: (isOpen) => {
-      if (!isOpen) onClose();
-    },
-  });
 
   async function handleSubmit() {
     if (!name.trim()) {
@@ -73,101 +68,95 @@ export default function EditAIIntegrationModal({ integration, onClose, onSuccess
   }
 
   return (
-    <Modal state={modalState}>
-      <Modal.Backdrop isDismissable={!loading}>
-        <Modal.Container size="md">
-          <Modal.Dialog>
-            <Modal.Header>
-              <Modal.Heading>Edit AI Integration</Modal.Heading>
-            </Modal.Header>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Edit AI Integration</DialogTitle>
+        </DialogHeader>
 
-            <Modal.Body>
-              <div className="flex flex-col gap-4">
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">Provider</label>
-                  <Input value={integration.provider} disabled />
-                </div>
+        <div className="flex flex-col gap-4">
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Provider</label>
+            <Input value={integration.provider} disabled />
+          </div>
 
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">Name</label>
-                  <Input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="My Claude API"
-                  />
-                </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Name</label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="My Claude API"
+            />
+          </div>
 
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">Base URL</label>
-                  <Input
-                    value={config.baseUrl || ''}
-                    onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
-                    placeholder="https://api.anthropic.com"
-                  />
-                </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Base URL</label>
+            <Input
+              value={config.baseUrl || ''}
+              onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
+              placeholder="https://api.anthropic.com"
+            />
+          </div>
 
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">Model</label>
-                  <Input
-                    value={config.model || ''}
-                    onChange={(e) => setConfig({ ...config, model: e.target.value })}
-                    placeholder="claude-3-5-sonnet-20241022"
-                  />
-                </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Model</label>
+            <Input
+              value={config.model || ''}
+              onChange={(e) => setConfig({ ...config, model: e.target.value })}
+              placeholder="claude-3-5-sonnet-20241022"
+            />
+          </div>
 
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">Max Tokens (optional)</label>
-                  <Input
-                    type="number"
-                    value={config.maxTokens || ''}
-                    onChange={(e) => setConfig({ ...config, maxTokens: parseInt(e.target.value) || undefined })}
-                    placeholder="4096"
-                  />
-                </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Max Tokens (optional)</label>
+            <Input
+              type="number"
+              value={config.maxTokens || ''}
+              onChange={(e) => setConfig({ ...config, maxTokens: parseInt(e.target.value) || undefined })}
+              placeholder="4096"
+            />
+          </div>
 
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">Temperature (optional)</label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    value={config.temperature || ''}
-                    onChange={(e) => setConfig({ ...config, temperature: parseFloat(e.target.value) || undefined })}
-                    placeholder="0.7"
-                  />
-                </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Temperature (optional)</label>
+            <Input
+              type="number"
+              step="0.1"
+              value={config.temperature || ''}
+              onChange={(e) => setConfig({ ...config, temperature: parseFloat(e.target.value) || undefined })}
+              placeholder="0.7"
+            />
+          </div>
 
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">
-                    API Key {secret ? '' : '(leave empty to keep current)'}
-                  </label>
-                  <Input
-                    type="password"
-                    value={secret}
-                    onChange={(e) => setSecret(e.target.value)}
-                    placeholder="Enter new API key to update"
-                  />
-                </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">
+              API Key {secret ? '' : '(leave empty to keep current)'}
+            </label>
+            <Input
+              type="password"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder="Enter new API key to update"
+            />
+          </div>
 
-                <div className="flex items-center gap-2">
-                  <Switch isSelected={isDefault} onChange={setIsDefault} />
-                  <label className="text-sm">Set as default</label>
-                </div>
-              </div>
-            </Modal.Body>
+          <div className="flex items-center gap-2">
+            <Switch checked={isDefault} onCheckedChange={setIsDefault} />
+            <label className="text-sm">Set as default</label>
+          </div>
+        </div>
 
-            <Modal.Footer>
-              <div className="flex gap-2 w-full">
-                <Button variant="outline" onClick={onClose} isDisabled={loading} className="flex-1">
-                  Cancel
-                </Button>
-                <Button variant="primary" onClick={handleSubmit} isDisabled={loading} className="flex-1">
-                  {loading ? 'Updating...' : 'Update'}
-                </Button>
-              </div>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-    </Modal>
+        <DialogFooter>
+          <div className="flex gap-2 w-full">
+            <Button variant="outline" onClick={onClose} disabled={loading} className="flex-1">
+              Cancel
+            </Button>
+            <Button onClick={handleSubmit} disabled={loading} className="flex-1">
+              {loading ? 'Updating...' : 'Update'}
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

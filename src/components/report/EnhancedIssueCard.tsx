@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, AlertTriangle, AlertCircle, Info, Zap, Copy, Check, MessageCircle } from 'lucide-react';
-import { Button } from '@heroui/react';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
 type Issue = {
@@ -102,10 +102,10 @@ export default function EnhancedIssueCard({ issue, onChat }: { issue: Issue; onC
             <div>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-xs font-semibold text-muted-foreground">代码片段</div>
-                <Button variant="ghost" size="sm" className="h-7 text-xs rounded-lg" onPress={() => handleCopy(issue.codeSnippet!)}>
-                  {copied ? <Check className="size-3.5 mr-1" /> : <Copy className="size-3.5 mr-1" />}
-                  复制
-                </Button>
+              <Button variant="ghost" size="sm" className="h-7 text-xs rounded-lg" onClick={() => handleCopy(issue.codeSnippet!)}>
+                {copied ? <Check className="size-3.5 mr-1" /> : <Copy className="size-3.5 mr-1" />}
+                复制
+              </Button>
               </div>
               <pre className="text-xs font-mono bg-card border border-border rounded-lg p-3 overflow-x-auto">
                 {issue.codeSnippet}
@@ -126,10 +126,10 @@ export default function EnhancedIssueCard({ issue, onChat }: { issue: Issue; onC
             <div>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-xs font-semibold text-muted-foreground">🔧 修复代码</div>
-                <Button variant="ghost" size="sm" className="h-7 text-xs rounded-lg" onPress={() => handleCopy(issue.fixPatch!)}>
-                  {copied ? <Check className="size-3.5 mr-1" /> : <Copy className="size-3.5 mr-1" />}
-                  复制
-                </Button>
+              <Button variant="ghost" size="sm" className="h-7 text-xs rounded-lg" onClick={() => handleCopy(issue.fixPatch!)}>
+                {copied ? <Check className="size-3.5 mr-1" /> : <Copy className="size-3.5 mr-1" />}
+                复制
+              </Button>
               </div>
               <pre className="text-xs font-mono bg-card border border-border rounded-lg p-3 overflow-x-auto">
                 {issue.fixPatch}
@@ -139,7 +139,7 @@ export default function EnhancedIssueCard({ issue, onChat }: { issue: Issue; onC
 
           {onChat && (
             <div className="pt-2">
-              <Button variant="outline" size="sm" onPress={onChat} className="gap-2 rounded-lg">
+              <Button variant="outline" size="sm" onClick={onChat} className="gap-2 rounded-lg">
                 <MessageCircle className="size-4" />
                 与 AI 讨论此问题
               </Button>

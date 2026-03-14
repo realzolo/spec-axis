@@ -2,24 +2,20 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Modal, Button } from '@heroui/react';
-import { useOverlayState } from '@heroui/react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { AlertCircle } from 'lucide-react';
 
 export default function OnboardingCheck() {
   const router = useRouter();
   const [needsSetup, setNeedsSetup] = useState(false);
   const [checking, setChecking] = useState(true);
-
-  const modalState = useOverlayState({
-    isOpen: needsSetup,
-    onOpenChange: (isOpen) => {
-      if (!isOpen) {
-        // User cannot close the modal - they must configure integrations
-        setNeedsSetup(true);
-      }
-    },
-  });
 
   useEffect(() => {
     checkIntegrations();
@@ -63,57 +59,54 @@ export default function OnboardingCheck() {
   }
 
   return (
-    <Modal state={modalState}>
-      <Modal.Backdrop>
-        <Modal.Container size="md">
-          <Modal.Dialog>
-            <Modal.Header>
-              <Modal.Heading>Welcome to Spec-Axis!</Modal.Heading>
-            </Modal.Header>
+    <Dialog
+      open={needsSetup}
+      onOpenChange={(open) => {
+        if (!open) setNeedsSetup(true);
+      }}
+    >
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Welcome to Spec-Axis!</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-start gap-3 p-3 rounded-lg bg-warning/10 border border-warning/20">
+            <AlertCircle className="size-5 text-warning shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium text-warning mb-1">Setup Required</p>
+              <p className="text-muted-foreground">
+                Before you can start analyzing code, you need to configure:
+              </p>
+            </div>
+          </div>
 
-            <Modal.Body>
-              <div className="flex flex-col gap-4">
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-warning/10 border border-warning/20">
-                  <AlertCircle className="size-5 text-warning shrink-0 mt-0.5" />
-                  <div className="text-sm">
-                    <p className="font-medium text-warning mb-1">Setup Required</p>
-                    <p className="text-muted-foreground">
-                      Before you can start analyzing code, you need to configure:
-                    </p>
-                  </div>
-                </div>
+          <div className="space-y-3 pl-8">
+            <div>
+              <h4 className="text-sm font-medium mb-1">1. Code Repository Integration</h4>
+              <p className="text-sm text-muted-foreground">
+                Connect to GitHub, GitLab, or another Git service to access your repositories.
+              </p>
+            </div>
 
-                <div className="space-y-3 pl-8">
-                  <div>
-                    <h4 className="text-sm font-medium mb-1">1. Code Repository Integration</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Connect to GitHub, GitLab, or another Git service to access your repositories.
-                    </p>
-                  </div>
+            <div>
+              <h4 className="text-sm font-medium mb-1">2. AI Model Integration</h4>
+              <p className="text-sm text-muted-foreground">
+                Connect to Claude, GPT-4, or another AI service to enable code analysis.
+              </p>
+            </div>
+          </div>
 
-                  <div>
-                    <h4 className="text-sm font-medium mb-1">2. AI Model Integration</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Connect to Claude, GPT-4, or another AI service to enable code analysis.
-                    </p>
-                  </div>
-                </div>
-
-                <p className="text-sm text-muted-foreground">
-                  This is a one-time setup. You can add multiple integrations and switch between them
-                  later.
-                </p>
-              </div>
-            </Modal.Body>
-
-            <Modal.Footer>
-              <Button onClick={handleGoToSettings} variant="primary" className="w-full">
-                Configure Integrations
-              </Button>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-    </Modal>
+          <p className="text-sm text-muted-foreground">
+            This is a one-time setup. You can add multiple integrations and switch between them
+            later.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button onClick={handleGoToSettings} className="w-full">
+            Configure Integrations
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

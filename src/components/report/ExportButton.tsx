@@ -2,8 +2,14 @@
 
 import { useState } from 'react';
 import { Download, FileText, FileJson, FileSpreadsheet } from 'lucide-react';
-import { Select, ListBox } from '@heroui/react';
-import { Button } from '@heroui/react';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 
 const FORMAT_ITEMS = [
@@ -52,25 +58,22 @@ export default function ExportButton({ reportId }: { reportId: string }) {
 
   return (
     <div className="flex items-center gap-2">
-      <Select selectedKey={format} onSelectionChange={(key) => setFormat(key as string)} className="w-[140px]">
-        <Select.Trigger>
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover>
-          <ListBox items={FORMAT_ITEMS}>
-            {(item) => (
-              <ListBox.Item id={item.id}>
-                <div className="flex items-center gap-2">
-                  <item.icon className="size-4" />
-                  {item.label}
-                </div>
-              </ListBox.Item>
-            )}
-          </ListBox>
-        </Select.Popover>
+      <Select value={format} onValueChange={setFormat}>
+        <SelectTrigger className="w-[140px] h-8">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {FORMAT_ITEMS.map((item) => (
+            <SelectItem key={item.id} value={item.id}>
+              <div className="flex items-center gap-2">
+                <item.icon className="size-4" />
+                {item.label}
+              </div>
+            </SelectItem>
+          ))}
+        </SelectContent>
       </Select>
-      <Button variant="outline" size="sm" onPress={handleExport} isDisabled={exporting} className="gap-2">
+      <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting} className="gap-2 h-8">
         <Download className="size-4" />
         导出
       </Button>

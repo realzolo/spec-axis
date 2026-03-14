@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, MessageCircle } from 'lucide-react';
-import { Button, Input } from '@heroui/react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
 type Message = {
@@ -100,7 +101,7 @@ export default function AIChat({ reportId, issueId }: { reportId: string; issueI
             disabled={loading}
             className="flex-1"
           />
-          <Button onPress={handleSend} isDisabled={!input.trim() || loading} isIconOnly>
+          <Button onClick={handleSend} disabled={!input.trim() || loading} size="icon">
             {loading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
           </Button>
         </div>

@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Modal, Button, Input, Select, ListBox } from '@heroui/react';
-import { useOverlayState } from '@heroui/react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
 interface Props {
@@ -38,13 +40,6 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
   const [secret, setSecret] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  const modalState = useOverlayState({
-    isOpen: true,
-    onOpenChange: (isOpen) => {
-      if (!isOpen) onClose();
-    },
-  });
 
   useEffect(() => {
     loadProviders();
@@ -117,146 +112,124 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
   }
 
   return (
-    <Modal state={modalState}>
-      <Modal.Backdrop isDismissable>
-        <Modal.Container size="md">
-          <Modal.Dialog>
-            <Modal.Header>
-              <Modal.Heading>Add AI Model Integration</Modal.Heading>
-            </Modal.Header>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Add AI Model Integration</DialogTitle>
+        </DialogHeader>
 
-            <Modal.Body>
-              <div className="space-y-4">
-                {providerConfig?.presets && providerConfig.presets.length > 0 && (
-                  <div>
-                    <label className="text-sm font-medium mb-1.5 block">Quick Setup</label>
-                    <Select
-                      selectedKey={selectedPreset}
-                      onSelectionChange={(key) => handlePresetChange(key as string)}
-                    >
-                      <Select.Trigger>
-                        <Select.Value>
-                          {selectedPreset || 'Choose a preset...'}
-                        </Select.Value>
-                        <Select.Indicator />
-                      </Select.Trigger>
-                      <Select.Popover>
-                        <ListBox
-                          items={providerConfig.presets.map((p) => ({
-                            id: p.name,
-                            label: p.name,
-                          }))}
-                        >
-                          {(item) => <ListBox.Item id={item.id}>{item.label}</ListBox.Item>}
-                        </ListBox>
-                      </Select.Popover>
-                    </Select>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Or configure manually below
-                    </p>
-                  </div>
-                )}
-
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">Name</label>
-                  <Input
-                    placeholder="e.g., Claude Sonnet 4.6"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">API Key *</label>
-                  <Input
-                    type="password"
-                    placeholder="sk-..."
-                    value={secret}
-                    onChange={(e) => setSecret(e.target.value)}
-                  />
-                  {providerConfig?.docs && (
-                    <a
-                      href={providerConfig.docs}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-primary hover:underline mt-1 inline-block"
-                    >
-                      How to get an API key →
-                    </a>
-                  )}
-                </div>
-
-                {providerConfig?.fields
-                  .filter((f) => f.key !== 'apiKey')
-                  .map((field) => (
-                    <div key={field.key}>
-                      <label className="text-sm font-medium mb-1.5 block">
-                        {field.label}
-                        {field.required && ' *'}
-                      </label>
-                      {field.type === 'select' && field.options ? (
-                        <Select
-                          selectedKey={config[field.key] || ''}
-                          onSelectionChange={(key) =>
-                            setConfig((prev) => ({ ...prev, [field.key]: key as string }))
-                          }
-                        >
-                          <Select.Trigger>
-                            <Select.Value>
-                              {config[field.key] || field.placeholder}
-                            </Select.Value>
-                            <Select.Indicator />
-                          </Select.Trigger>
-                          <Select.Popover>
-                            <ListBox
-                              items={field.options.map((opt) => ({ id: opt, label: opt }))}
-                            >
-                              {(item) => <ListBox.Item id={item.id}>{item.label}</ListBox.Item>}
-                            </ListBox>
-                          </Select.Popover>
-                        </Select>
-                      ) : (
-                        <Input
-                          type={field.type}
-                          placeholder={field.placeholder}
-                          value={config[field.key] || ''}
-                          onChange={(e) =>
-                            setConfig((prev) => ({ ...prev, [field.key]: e.target.value }))
-                          }
-                        />
-                      )}
-                      {field.help && (
-                        <p className="text-xs text-muted-foreground mt-1">{field.help}</p>
-                      )}
-                    </div>
+        <div className="space-y-4">
+          {providerConfig?.presets && providerConfig.presets.length > 0 && (
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Quick Setup</label>
+              <Select value={selectedPreset || undefined} onValueChange={(value) => handlePresetChange(value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a preset..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {providerConfig.presets.map((p) => (
+                    <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Or configure manually below
+              </p>
+            </div>
+          )}
 
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="isDefault"
-                    checked={isDefault}
-                    onChange={(e) => setIsDefault(e.target.checked)}
-                    className="rounded"
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Name</label>
+            <Input
+              placeholder="e.g., Claude Sonnet 4.6"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">API Key *</label>
+            <Input
+              type="password"
+              placeholder="sk-..."
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+            />
+            {providerConfig?.docs && (
+              <a
+                href={providerConfig.docs}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary hover:underline mt-1 inline-block"
+              >
+                How to get an API key →
+              </a>
+            )}
+          </div>
+
+          {providerConfig?.fields
+            .filter((f) => f.key !== 'apiKey')
+            .map((field) => (
+              <div key={field.key}>
+                <label className="text-sm font-medium mb-1.5 block">
+                  {field.label}
+                  {field.required && ' *'}
+                </label>
+                {field.type === 'select' && field.options ? (
+                  <Select
+                    value={config[field.key] || undefined}
+                    onValueChange={(value) =>
+                      setConfig((prev) => ({ ...prev, [field.key]: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={field.placeholder} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {field.options.map((opt) => (
+                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    type={field.type}
+                    placeholder={field.placeholder}
+                    value={config[field.key] || ''}
+                    onChange={(e) =>
+                      setConfig((prev) => ({ ...prev, [field.key]: e.target.value }))
+                    }
                   />
-                  <label htmlFor="isDefault" className="text-sm">
-                    Set as default AI integration
-                  </label>
-                </div>
+                )}
+                {field.help && (
+                  <p className="text-xs text-muted-foreground mt-1">{field.help}</p>
+                )}
               </div>
-            </Modal.Body>
+            ))}
 
-            <Modal.Footer>
-              <Button variant="ghost" onClick={onClose} isDisabled={loading}>
-                Cancel
-              </Button>
-              <Button onClick={handleSubmit} isDisabled={loading}>
-                {loading ? 'Creating...' : 'Create Integration'}
-              </Button>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-    </Modal>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="isDefault"
+              checked={isDefault}
+              onChange={(e) => setIsDefault(e.target.checked)}
+              className="rounded"
+            />
+            <label htmlFor="isDefault" className="text-sm">
+              Set as default AI integration
+            </label>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={loading}>
+            {loading ? 'Creating...' : 'Create Integration'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

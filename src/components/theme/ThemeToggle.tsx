@@ -1,7 +1,7 @@
 'use client';
 
 import { Moon, Sun } from 'lucide-react';
-import { Button } from '@heroui/react';
+import { Button } from '@/components/ui/button';
 import { useTheme } from './ThemeProvider';
 
 export default function ThemeToggle() {
@@ -10,11 +10,10 @@ export default function ThemeToggle() {
 
   return (
     <Button
-      size="sm"
+      size="icon"
       variant="ghost"
-      isIconOnly
       aria-label={isDark ? '切换到浅色模式' : '切换到深色模式'}
-      onPress={toggle}
+      onClick={toggle}
       className="h-8 w-8"
     >
       {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}

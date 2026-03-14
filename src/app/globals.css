@@ -1,57 +1,57 @@
-@import "@heroui/styles";
+@import "tailwindcss";
 
 @layer base {
   :root {
     color-scheme: light;
-    --background: 210 20% 99%;
+    --background: 0 0% 98%;
     --foreground: 222 47% 11%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
+    --muted: 0 0% 96%;
     --muted-foreground: 215 16% 47%;
-    --border: 214 20% 90%;
-    --input: 214 20% 90%;
-    --primary: 158 64% 42%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 220 13% 94%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --primary: 0 0% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 94%;
     --secondary-foreground: 222 47% 11%;
-    --accent: 200 94% 42%;
-    --accent-foreground: 0 0% 100%;
-    --success: 158 64% 42%;
+    --accent: 210 90% 50%;
+    --accent-foreground: 0 0% 98%;
+    --success: 142 70% 40%;
     --warning: 38 92% 50%;
     --danger: 0 84% 60%;
-    --ring: 158 64% 42%;
-    --sidebar: 0 0% 100%;
+    --ring: 0 0% 30%;
+    --sidebar: 0 0% 98%;
     --sidebar-foreground: 222 47% 11%;
-    --sidebar-muted: 210 40% 96%;
-    --sidebar-border: 214 20% 90%;
+    --sidebar-muted: 0 0% 94%;
+    --sidebar-border: 0 0% 88%;
   }
 
   [data-theme="dark"],
   .dark {
     color-scheme: dark;
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 13%;
-    --card-foreground: 210 40% 98%;
-    --muted: 215 28% 17%;
-    --muted-foreground: 215 16% 60%;
-    --border: 215 20% 24%;
-    --input: 215 20% 24%;
-    --primary: 158 64% 42%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 215 28% 17%;
-    --secondary-foreground: 210 40% 98%;
-    --accent: 200 94% 45%;
-    --accent-foreground: 0 0% 100%;
-    --success: 158 64% 42%;
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 98%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 65%;
+    --border: 0 0% 14%;
+    --input: 0 0% 14%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 8%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --accent: 210 100% 60%;
+    --accent-foreground: 0 0% 98%;
+    --success: 142 70% 45%;
     --warning: 38 92% 50%;
-    --danger: 0 72% 55%;
-    --ring: 158 64% 42%;
-    --sidebar: 222 47% 12%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-muted: 215 28% 17%;
-    --sidebar-border: 215 20% 24%;
+    --danger: 0 84% 60%;
+    --ring: 0 0% 30%;
+    --sidebar: 0 0% 6%;
+    --sidebar-foreground: 0 0% 94%;
+    --sidebar-muted: 0 0% 10%;
+    --sidebar-border: 0 0% 14%;
   }
 
   * {
@@ -59,7 +59,7 @@
   }
 
   body {
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: var(--font-sans, "Geist Sans", "Satoshi", "General Sans", "SF Pro Text", ui-sans-serif, system-ui);
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
   }
@@ -103,17 +103,18 @@
   display: grid;
   place-items: center;
   background:
-    radial-gradient(circle at 15% 20%, hsl(var(--primary) / 0.18), transparent 45%),
-    radial-gradient(circle at 85% 80%, hsl(var(--accent) / 0.18), transparent 45%),
+    radial-gradient(circle at 20% 20%, hsl(var(--accent) / 0.12), transparent 45%),
+    radial-gradient(circle at 80% 80%, hsl(var(--primary) / 0.08), transparent 40%),
     hsl(var(--background));
 }
 
 .auth-card {
   width: 420px;
   max-width: calc(100vw - 2rem);
-  border-radius: 20px;
+  border-radius: 16px;
   padding: 2.5rem;
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
-  box-shadow: 0 24px 60px hsl(222 47% 11% / 0.12);
+  box-shadow: 0 24px 60px hsl(0 0% 0% / 0.25);
 }
+

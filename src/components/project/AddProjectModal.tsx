@@ -2,8 +2,22 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Search, Github, Lock, Loader2 } from 'lucide-react';
-import { Modal, Input, Select, ListBox, useOverlayState } from '@heroui/react';
-import { Button } from '@heroui/react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 import { t } from '@/lib/i18n-utils';
@@ -17,7 +31,6 @@ type RuleSet = { id: string; name: string };
 export default function AddProjectModal({ open, onClose, onCreated, dict }: {
   open: boolean; onClose: () => void; onCreated: () => void; dict: Dictionary;
 }) {
-  const state = useOverlayState({ isOpen: open, onOpenChange: (v) => { if (!v) onClose(); } });
   const [step, setStep] = useState<'pick' | 'confirm'>('pick');
   const [repos, setRepos] = useState<GHRepo[]>([]);
   const [reposLoading, setReposLoading] = useState(false);
@@ -86,106 +99,101 @@ export default function AddProjectModal({ open, onClose, onCreated, dict }: {
   const rulesetItems = [{ id: 'none', name: dict.common.none }, ...ruleSets.map(rs => ({ id: rs.id, name: rs.name }))];
 
   return (
-    <Modal state={state}>
-      <Modal.Backdrop isDismissable>
-        <Modal.Container size="lg">
-          <Modal.Dialog>
-            <Modal.Header>
-              <Modal.Heading>{step === 'pick' ? dict.projects.selectRepository : dict.projects.confirmDetails}</Modal.Heading>
-            </Modal.Header>
-            <Modal.Body>
-              {step === 'pick' && (
-                <div className="flex flex-col gap-4 flex-1">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-default-400" />
-                    <Input placeholder={dict.projects.searchProjects} value={search} onChange={e => setSearch(e.target.value)} className="pl-10" autoFocus />
-                  </div>
-                  <div className="flex-1 overflow-y-auto border rounded-md max-h-[300px]">
-                    {reposLoading ? (
-                      <div className="flex justify-center items-center h-[300px]">
-                        <Loader2 className="size-6 animate-spin text-default-400" />
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{step === 'pick' ? dict.projects.selectRepository : dict.projects.confirmDetails}</DialogTitle>
+        </DialogHeader>
+
+        {step === 'pick' && (
+          <div className="flex flex-col gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input placeholder={dict.projects.searchProjects} value={search} onChange={e => setSearch(e.target.value)} className="pl-10" autoFocus />
+            </div>
+            <div className="flex-1 overflow-y-auto border border-border rounded-md max-h-[320px] bg-background">
+              {reposLoading ? (
+                <div className="flex justify-center items-center h-[300px]">
+                  <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : reposError ? (
+                <div className="p-8 text-center text-danger text-sm">{reposError}</div>
+              ) : filtered.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground text-sm">{dict.projects.noRepositories}</div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {filtered.map((repo) => (
+                    <button
+                      key={repo.full_name}
+                      onClick={() => pickRepo(repo)}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors text-left cursor-pointer"
+                    >
+                      <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center shrink-0">
+                        {repo.private ? <Lock className="size-4" /> : <Github className="size-4" />}
                       </div>
-                    ) : reposError ? (
-                      <div className="p-8 text-center text-danger text-sm">{reposError}</div>
-                    ) : filtered.length === 0 ? (
-                      <div className="p-8 text-center text-default-400 text-sm">{dict.projects.noRepositories}</div>
-                    ) : (
-                      <div className="divide-y">
-                        {filtered.map((repo) => (
-                          <button
-                            key={repo.full_name}
-                            onClick={() => pickRepo(repo)}
-                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-default-100 transition-colors text-left cursor-pointer"
-                          >
-                            <div className="w-10 h-10 rounded-md bg-default-200 flex items-center justify-center shrink-0">
-                              {repo.private ? <Lock className="size-4" /> : <Github className="size-4" />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <span className="font-medium text-sm truncate">{repo.full_name}</span>
-                                {repo.private && <span className="text-xs px-2 py-0.5 rounded-full bg-default-200 shrink-0">{dict.projects.privateRepo}</span>}
-                              </div>
-                              {repo.description && <p className="text-xs text-default-400 truncate">{repo.description}</p>}
-                            </div>
-                            <div className="text-right shrink-0">
-                              {repo.language && <div className="text-xs text-default-400 mb-0.5">{repo.language}</div>}
-                              <div className="text-xs text-default-400">{formatDate(repo.updated_at)}</div>
-                            </div>
-                          </button>
-                        ))}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="font-medium text-sm truncate">{repo.full_name}</span>
+                          {repo.private && <span className="text-xs px-2 py-0.5 rounded-full bg-muted shrink-0">{dict.projects.privateRepo}</span>}
+                        </div>
+                        {repo.description && <p className="text-xs text-muted-foreground truncate">{repo.description}</p>}
                       </div>
-                    )}
-                  </div>
-                  {repos.length > 0 && <p className="text-xs text-default-400 text-center">{t(dict.projects.repositoriesLoaded, { count: repos.length.toString() })}</p>}
+                      <div className="text-right shrink-0">
+                        {repo.language && <div className="text-xs text-muted-foreground mb-0.5">{repo.language}</div>}
+                        <div className="text-xs text-muted-foreground">{formatDate(repo.updated_at)}</div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               )}
+            </div>
+            {repos.length > 0 && <p className="text-xs text-muted-foreground text-center">{t(dict.projects.repositoriesLoaded, { count: repos.length.toString() })}</p>}
+          </div>
+        )}
 
-              {step === 'confirm' && selected && (
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                  <div className="flex items-center gap-3 p-4 rounded-md bg-default-100 border border-default-200">
-                    <div className="w-10 h-10 rounded-md bg-default-200 flex items-center justify-center shrink-0">
-                      <Github className="size-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{selected.full_name}</p>
-                      <p className="text-xs text-default-400">{dict.projects.branch}: {selected.default_branch}</p>
-                    </div>
-                    <Button type="button" variant="ghost" size="sm" onPress={() => setStep('pick')}>{dict.common.edit}</Button>
-                  </div>
+        {step === 'confirm' && selected && (
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="flex items-center gap-3 p-4 rounded-md bg-muted/40 border border-border">
+              <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center shrink-0">
+                <Github className="size-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm truncate">{selected.full_name}</p>
+                <p className="text-xs text-muted-foreground">{dict.projects.branch}: {selected.default_branch}</p>
+              </div>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setStep('pick')}>{dict.common.edit}</Button>
+            </div>
 
-                  <div className="space-y-2">
-                    <label htmlFor="project-name" className="text-sm font-semibold">{dict.projects.projectName}</label>
-                    <Input id="project-name" value={projectName} onChange={e => setProjectName(e.target.value)} required />
-                  </div>
+            <div className="space-y-2">
+              <label htmlFor="project-name" className="text-sm font-semibold">{dict.projects.projectName}</label>
+              <Input id="project-name" value={projectName} onChange={e => setProjectName(e.target.value)} required />
+            </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold">{dict.projects.ruleSet} <span className="text-default-400 font-normal">({dict.common.none})</span></label>
-                    <Select selectedKey={rulesetId} onSelectionChange={(key) => setRulesetId(key as string)}>
-                      <Select.Trigger>
-                        <Select.Value />
-                        <Select.Indicator />
-                      </Select.Trigger>
-                      <Select.Popover>
-                        <ListBox items={rulesetItems}>
-                          {(item) => <ListBox.Item id={item.id}>{item.name}</ListBox.Item>}
-                        </ListBox>
-                      </Select.Popover>
-                    </Select>
-                  </div>
-                </form>
-              )}
-            </Modal.Body>
-            <Modal.Footer>
-              {step === 'confirm' && selected && (
-                <>
-                  <Button type="button" variant="outline" onPress={onClose}>{dict.common.cancel}</Button>
-                  <Button type="submit" variant="primary" isDisabled={submitting || !projectName.trim()} onPress={handleSubmit as unknown as () => void}>{submitting ? dict.common.loading : dict.projects.addProject}</Button>
-                </>
-              )}
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-    </Modal>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold">{dict.projects.ruleSet} <span className="text-muted-foreground font-normal">({dict.common.none})</span></label>
+              <Select value={rulesetId} onValueChange={(value) => setRulesetId(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {rulesetItems.map(item => (
+                    <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </form>
+        )}
+
+        {step === 'confirm' && selected && (
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>{dict.common.cancel}</Button>
+            <Button type="submit" disabled={submitting || !projectName.trim()} onClick={handleSubmit as unknown as () => void}>
+              {submitting ? dict.common.loading : dict.projects.addProject}
+            </Button>
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

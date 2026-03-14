@@ -4,7 +4,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, AlertCircle, RefreshCw, Github, ChevronDown, ChevronUp } from 'lucide-react';
-import { Button, Select, ListBox, Chip, Spinner } from '@heroui/react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Spinner } from '@/components/ui/spinner';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 
@@ -55,13 +64,13 @@ function IssueRow({ issue, dict }: { issue: Issue; dict: Dictionary }) {
         className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 transition-colors select-none"
         style={{ cursor: issue.suggestion ? 'pointer' : 'default' }}
       >
-        <Chip size="sm" color={SEV_COLOR[issue.severity]} variant="soft" className="mt-0.5 shrink-0">{sevLabel}</Chip>
+        <Badge size="sm" variant={SEV_COLOR[issue.severity]} className="mt-0.5 shrink-0">{sevLabel}</Badge>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <code className="text-xs font-mono bg-muted rounded px-1.5 py-0.5 text-muted-foreground">
               {issue.file}{issue.line ? `:${issue.line}` : ''}
             </code>
-            <Chip size="sm" variant="soft" color="accent">{catLabel}</Chip>
+            <Badge size="sm" variant="accent">{catLabel}</Badge>
             <span className="text-xs text-muted-foreground">{issue.rule}</span>
           </div>
           <div className="text-sm leading-relaxed">{issue.message}</div>
@@ -142,11 +151,11 @@ export default function ReportDetailClient({ initialReport, dict }: { initialRep
   ];
 
   const statusChip = {
-    done:      { color: 'success' as const, label: dict.reports.status.done },
-    failed:    { color: 'danger' as const,  label: dict.reports.status.failed },
-    pending:   { color: 'default' as const, label: dict.reports.status.pending },
-    analyzing: { color: 'accent' as const,  label: dict.reports.status.analyzing },
-  }[report.status] ?? { color: 'default' as const, label: report.status };
+    done:      { variant: 'success' as const, label: dict.reports.status.done },
+    failed:    { variant: 'danger' as const,  label: dict.reports.status.failed },
+    pending:   { variant: 'muted' as const, label: dict.reports.status.pending },
+    analyzing: { variant: 'accent' as const,  label: dict.reports.status.analyzing },
+  }[report.status] ?? { variant: 'muted' as const, label: report.status };
 
   const scoreLabel = (s: number) => {
     if (s >= 85) return dict.reportDetail.excellent;
@@ -159,7 +168,7 @@ export default function ReportDetailClient({ initialReport, dict }: { initialRep
       {/* Header */}
       <div className="flex items-center gap-3 px-6 h-14 border-b border-border bg-background shrink-0">
         <Link href="/reports">
-          <Button isIconOnly variant="ghost" size="sm"><ArrowLeft className="size-4" /></Button>
+          <Button size="icon" variant="ghost"><ArrowLeft className="size-4" /></Button>
         </Link>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -168,12 +177,12 @@ export default function ReportDetailClient({ initialReport, dict }: { initialRep
           </div>
         </div>
         {(report.status === 'done' || report.status === 'failed') && (
-          <Button variant="outline" size="sm" isDisabled={retrying} onPress={handleRetry} className="gap-1.5">
+          <Button variant="outline" size="sm" disabled={retrying} onClick={handleRetry} className="gap-1.5">
             <RefreshCw className={['size-3.5', retrying ? 'animate-spin' : ''].join(' ')} />
             {dict.reportDetail.reanalyze}
           </Button>
         )}
-        <Chip color={statusChip.color} variant="soft" size="sm">{statusChip.label}</Chip>
+        <Badge variant={statusChip.variant} size="sm">{statusChip.label}</Badge>
       </div>
 
       {/* Analyzing */}
@@ -193,7 +202,7 @@ export default function ReportDetailClient({ initialReport, dict }: { initialRep
             <div className="text-sm font-medium">{dict.reportDetail.analysisFailed}</div>
             <div className="text-sm text-muted-foreground mt-0.5">{report.error_message}</div>
           </div>
-          <Button isDisabled={retrying} onPress={handleRetry} size="sm" className="gap-1.5">
+          <Button disabled={retrying} onClick={handleRetry} size="sm" className="gap-1.5">
             <RefreshCw className="size-3.5" />
             {dict.reportDetail.reanalyze}
           </Button>
@@ -251,7 +260,7 @@ export default function ReportDetailClient({ initialReport, dict }: { initialRep
                 <span className="text-muted-foreground text-xs">{dict.reportDetail.commits}</span>
                 <span className="font-medium">{report.commits?.length ?? 0}</span>
               </div>
-              <Button variant="ghost" size="sm" onPress={() => setCommitsExpanded(e => !e)} className="ml-auto gap-1 h-7 text-xs">
+              <Button variant="ghost" size="sm" onClick={() => setCommitsExpanded(e => !e)} className="ml-auto gap-1 h-7 text-xs">
                 {commitsExpanded ? <><ChevronUp className="size-3.5" />{dict.reportDetail.collapseCommits}</> : <><ChevronDown className="size-3.5" />{dict.reportDetail.expandCommits}</>}
               </Button>
             </div>
@@ -279,31 +288,35 @@ export default function ReportDetailClient({ initialReport, dict }: { initialRep
           <div className="flex items-center gap-2.5 px-6 py-3 border-b border-border bg-background flex-wrap">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">{dict.reportDetail.issues}</span>
-              <Chip size="sm" color="danger" variant="soft">{errorCount} {dict.rules.severity.error}</Chip>
-              <Chip size="sm" color="warning" variant="soft">{warningCount} {dict.rules.severity.warning}</Chip>
-              <Chip size="sm" color="success" variant="soft">{infoCount} {dict.rules.severity.info}</Chip>
+              <Badge size="sm" variant="danger">{errorCount} {dict.rules.severity.error}</Badge>
+              <Badge size="sm" variant="warning">{warningCount} {dict.rules.severity.warning}</Badge>
+              <Badge size="sm" variant="success">{infoCount} {dict.rules.severity.info}</Badge>
             </div>
             <div className="ml-auto flex gap-2">
-              <Select selectedKey={sevFilter} onSelectionChange={(key) => setSevFilter(key as string)} className="w-[140px]">
-                <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
-                <Select.Popover>
-                  <ListBox items={SEV_ITEMS}>
-                    {(item) => <ListBox.Item id={item.id}>{item.label}</ListBox.Item>}
-                  </ListBox>
-                </Select.Popover>
+              <Select value={sevFilter} onValueChange={(value) => setSevFilter(value)} >
+                <SelectTrigger className="w-[140px] h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SEV_ITEMS.map(item => (
+                    <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
               {categories.length > 1 && (
-                <Select selectedKey={catFilter} onSelectionChange={(key) => setCatFilter(key as string)} className="w-[150px]">
-                  <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
-                  <Select.Popover>
-                    <ListBox items={catItems}>
-                      {(item) => <ListBox.Item id={item.id}>{item.label}</ListBox.Item>}
-                    </ListBox>
-                  </Select.Popover>
+                <Select value={catFilter} onValueChange={(value) => setCatFilter(value)}>
+                  <SelectTrigger className="w-[150px] h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {catItems.map(item => (
+                      <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
               )}
               {(sevFilter !== 'all' || catFilter !== 'all') && (
-                <Button variant="ghost" size="sm" onPress={() => { setSevFilter('all'); setCatFilter('all'); }}>{dict.reportDetail.clearFilters}</Button>
+                <Button variant="ghost" size="sm" onClick={() => { setSevFilter('all'); setCatFilter('all'); }}>{dict.reportDetail.clearFilters}</Button>
               )}
             </div>
           </div>

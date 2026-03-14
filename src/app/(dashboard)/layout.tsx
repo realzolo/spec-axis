@@ -8,9 +8,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const dict = await getDictionary(locale);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-muted/40">
+    <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar locale={locale} dict={dict} />
-      <main className="flex-1 overflow-hidden flex flex-col bg-muted/40">
+      <main className="flex-1 overflow-hidden flex flex-col bg-background">
         {children}
       </main>
       <OnboardingCheck />

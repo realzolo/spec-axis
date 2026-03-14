@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Modal, Button, Input, Switch } from '@heroui/react';
-import { useOverlayState } from '@heroui/react';
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
 interface Integration {
@@ -25,13 +27,6 @@ export default function EditVCSIntegrationModal({ integration, onClose, onSucces
   const [secret, setSecret] = useState('');
   const [isDefault, setIsDefault] = useState(integration.is_default);
   const [loading, setLoading] = useState(false);
-
-  const modalState = useOverlayState({
-    isOpen: true,
-    onOpenChange: (isOpen) => {
-      if (!isOpen) onClose();
-    },
-  });
 
   async function handleSubmit() {
     if (!name.trim()) {
@@ -68,87 +63,81 @@ export default function EditVCSIntegrationModal({ integration, onClose, onSucces
   }
 
   return (
-    <Modal state={modalState}>
-      <Modal.Backdrop isDismissable={!loading}>
-        <Modal.Container size="md">
-          <Modal.Dialog>
-            <Modal.Header>
-              <Modal.Heading>Edit VCS Integration</Modal.Heading>
-            </Modal.Header>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Edit VCS Integration</DialogTitle>
+        </DialogHeader>
 
-            <Modal.Body>
-              <div className="flex flex-col gap-4">
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">Provider</label>
-                  <Input value={integration.provider} disabled />
-                </div>
+        <div className="flex flex-col gap-4">
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Provider</label>
+            <Input value={integration.provider} disabled />
+          </div>
 
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">Name</label>
-                  <Input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="My GitHub"
-                  />
-                </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Name</label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="My GitHub"
+            />
+          </div>
 
-                {integration.provider === 'github' && (
-                  <div>
-                    <label className="text-sm font-medium mb-1.5 block">Base URL (optional)</label>
-                    <Input
-                      value={config.baseUrl || ''}
-                      onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
-                      placeholder="https://api.github.com"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Leave empty for GitHub.com, or use GitHub Enterprise URL
-                    </p>
-                  </div>
-                )}
+          {integration.provider === 'github' && (
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Base URL (optional)</label>
+              <Input
+                value={config.baseUrl || ''}
+                onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
+                placeholder="https://api.github.com"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Leave empty for GitHub.com, or use GitHub Enterprise URL
+              </p>
+            </div>
+          )}
 
-                {integration.provider === 'gitlab' && (
-                  <div>
-                    <label className="text-sm font-medium mb-1.5 block">Base URL</label>
-                    <Input
-                      value={config.baseUrl || ''}
-                      onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
-                      placeholder="https://gitlab.com"
-                    />
-                  </div>
-                )}
+          {integration.provider === 'gitlab' && (
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Base URL</label>
+              <Input
+                value={config.baseUrl || ''}
+                onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
+                placeholder="https://gitlab.com"
+              />
+            </div>
+          )}
 
-                <div>
-                  <label className="text-sm font-medium mb-1.5 block">
-                    Access Token {secret ? '' : '(leave empty to keep current)'}
-                  </label>
-                  <Input
-                    type="password"
-                    value={secret}
-                    onChange={(e) => setSecret(e.target.value)}
-                    placeholder="Enter new token to update"
-                  />
-                </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">
+              Access Token {secret ? '' : '(leave empty to keep current)'}
+            </label>
+            <Input
+              type="password"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder="Enter new token to update"
+            />
+          </div>
 
-                <div className="flex items-center gap-2">
-                  <Switch isSelected={isDefault} onChange={setIsDefault} />
-                  <label className="text-sm">Set as default</label>
-                </div>
-              </div>
-            </Modal.Body>
+          <div className="flex items-center gap-2">
+            <Switch checked={isDefault} onCheckedChange={setIsDefault} />
+            <label className="text-sm">Set as default</label>
+          </div>
+        </div>
 
-            <Modal.Footer>
-              <div className="flex gap-2 w-full">
-                <Button variant="outline" onClick={onClose} isDisabled={loading} className="flex-1">
-                  Cancel
-                </Button>
-                <Button variant="primary" onClick={handleSubmit} isDisabled={loading} className="flex-1">
-                  {loading ? 'Updating...' : 'Update'}
-                </Button>
-              </div>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-    </Modal>
+        <DialogFooter>
+          <div className="flex gap-2 w-full">
+            <Button variant="outline" onClick={onClose} disabled={loading} className="flex-1">
+              Cancel
+            </Button>
+            <Button onClick={handleSubmit} disabled={loading} className="flex-1">
+              {loading ? 'Updating...' : 'Update'}
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -7,7 +7,20 @@ import {
   ArrowLeft, AlertCircle, RefreshCw, Github, ChevronDown, ChevronUp,
   TrendingUp, Shield, Zap, Code2, FileCode, MessageCircle, BarChart3, Lightbulb
 } from 'lucide-react';
-import { Button, Select, ListBox, Modal, useOverlayState, Chip, Spinner, Card, Tabs, Separator } from '@heroui/react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Spinner } from '@/components/ui/spinner';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import EnhancedIssueCard from '@/components/report/EnhancedIssueCard';
 import AIChat from '@/components/report/AIChat';
@@ -91,9 +104,6 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
   const [chatOpen, setChatOpen] = useState(false);
   const [chatIssueId, setChatIssueId] = useState<string | undefined>();
   const [trendsOpen, setTrendsOpen] = useState(false);
-
-  const chatModalState = useOverlayState({ isOpen: chatOpen, onOpenChange: (v) => { if (!v) setChatOpen(false); } });
-  const trendsModalState = useOverlayState({ isOpen: trendsOpen, onOpenChange: (v) => { if (!v) setTrendsOpen(false); } });
 
   const pollReport = useCallback(async () => {
     const res = await fetch(`/api/reports/${report.id}`);
@@ -191,11 +201,11 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
   ];
 
   const statusChip = {
-    done:      { color: 'success' as const, label: dict.reports.status.done },
-    failed:    { color: 'danger' as const,  label: dict.reports.status.failed },
-    pending:   { color: 'default' as const, label: dict.reports.status.pending },
-    analyzing: { color: 'accent' as const,  label: dict.reports.status.analyzing },
-  }[report.status] ?? { color: 'default' as const, label: report.status };
+    done:      { variant: 'success' as const, label: dict.reports.status.done },
+    failed:    { variant: 'danger' as const,  label: dict.reports.status.failed },
+    pending:   { variant: 'muted' as const, label: dict.reports.status.pending },
+    analyzing: { variant: 'accent' as const,  label: dict.reports.status.analyzing },
+  }[report.status] ?? { variant: 'muted' as const, label: report.status };
 
   function openChat(issueFile?: string) {
     setChatIssueId(issueFile);
@@ -214,7 +224,7 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
       <div className="border-b border-border shrink-0 bg-card">
         <div className="flex items-center gap-3 px-6 h-16 max-w-[1200px] mx-auto w-full">
           <Link href="/reports">
-            <Button isIconOnly variant="ghost" size="sm">
+            <Button size="icon" variant="ghost">
               <ArrowLeft className="size-4" />
             </Button>
           </Link>
@@ -228,21 +238,21 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
           <div className="flex items-center gap-2 shrink-0">
             {report.status === 'done' && (
               <>
-                <Button variant="outline" size="sm" onPress={() => setTrendsOpen(true)} className="gap-2">
+                <Button variant="outline" size="sm" onClick={() => setTrendsOpen(true)} className="gap-2">
                   <BarChart3 className="size-4" />{dict.reportDetail.trendAnalysis}
                 </Button>
-                <Button variant="outline" size="sm" onPress={() => openChat()} className="gap-2">
+                <Button variant="outline" size="sm" onClick={() => openChat()} className="gap-2">
                   <MessageCircle className="size-4" />{dict.reportDetail.aiChat}
                 </Button>
               </>
             )}
             {(report.status === 'done' || report.status === 'failed') && (
-              <Button variant="outline" size="sm" isDisabled={retrying} onPress={handleRetry} className="gap-2">
+              <Button variant="outline" size="sm" disabled={retrying} onClick={handleRetry} className="gap-2">
                 <RefreshCw className={['size-3.5', retrying ? 'animate-spin' : ''].join(' ')} />
                 {dict.reportDetail.reanalyze}
               </Button>
             )}
-            <Chip color={statusChip.color} variant="soft">{statusChip.label}</Chip>
+            <Badge variant={statusChip.variant}>{statusChip.label}</Badge>
           </div>
         </div>
       </div>
@@ -262,7 +272,7 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
           <AlertCircle className="size-12 text-danger" />
           <div className="text-sm font-semibold">{dict.reportDetail.analysisFailed}</div>
           <div className="text-sm text-muted-foreground">{report.error_message}</div>
-          <Button isDisabled={retrying} onPress={handleRetry} className="mt-2 gap-2">
+          <Button disabled={retrying} onClick={handleRetry} className="mt-2 gap-2">
             <RefreshCw className="size-4" />{dict.reportDetail.reanalyze}
           </Button>
         </div>
@@ -276,16 +286,16 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
             {/* Score Overview */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card>
-                <Card.Content className="p-6 text-center">
+                <CardContent className="p-6 text-center">
                   <div className={['text-5xl font-bold', scoreColorClass(report.score ?? 0)].join(' ')}>{report.score}</div>
                   <div className="text-sm text-muted-foreground mt-1">/ 100</div>
                   <div className={['text-sm font-semibold mt-2', scoreColorClass(report.score ?? 0)].join(' ')}>
                     {scoreLabel(report.score ?? 0)}
                   </div>
-                </Card.Content>
+                </CardContent>
               </Card>
               <Card className="md:col-span-2">
-                <Card.Content className="p-6 space-y-3">
+                <CardContent className="p-6 space-y-3">
                   {Object.entries(report.category_scores ?? {}).map(([k, v]) => (
                     <div key={k} className="flex items-center gap-3">
                       <div className="w-20 text-sm text-muted-foreground shrink-0">{dict.reports.categories[k as keyof typeof dict.reports.categories] ?? k}</div>
@@ -295,20 +305,20 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
                       <div className={['w-10 text-right text-sm font-bold', scoreColorClass(v)].join(' ')}>{v}</div>
                     </div>
                   ))}
-                </Card.Content>
+                </CardContent>
               </Card>
             </div>
 
             {/* Context Analysis */}
             {report.context_analysis && (
               <Card>
-                <Card.Header>
-                  <Card.Title className="flex items-center gap-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
                     <TrendingUp className="size-4 text-primary" />
                     {dict.reportDetail.contextAnalysis}
-                  </Card.Title>
-                </Card.Header>
-                <Card.Content className="px-6 pb-6">
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-6 pb-6">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div><div className="text-xs text-muted-foreground mb-1">{dict.reportDetail.changeType}</div><div className="text-sm font-medium">{report.context_analysis.changeType}</div></div>
                     <div><div className="text-xs text-muted-foreground mb-1">{dict.reportDetail.riskLevel}</div><div className="text-sm font-medium">{report.context_analysis.riskLevel}</div></div>
@@ -319,19 +329,19 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
                     <div className="text-xs text-muted-foreground mb-1">{dict.reportDetail.businessImpact}</div>
                     <div className="text-sm">{report.context_analysis.businessImpact}</div>
                   </div>
-                </Card.Content>
+                </CardContent>
               </Card>
             )}
 
             {/* Commit Stats */}
             <Card>
-              <Card.Content className="p-0">
+              <CardContent className="p-0">
                 <div className="px-6 py-4 flex gap-6 flex-wrap items-center">
                   <div className="text-sm"><span className="text-muted-foreground">{dict.reportDetail.changedFiles}: </span><strong>{report.total_files ?? 0}</strong></div>
                   <div className="text-sm text-success font-semibold">+{report.total_additions ?? 0}</div>
                   <div className="text-sm text-danger font-semibold">-{report.total_deletions ?? 0}</div>
                   <div className="text-sm"><span className="text-muted-foreground">{dict.reportDetail.commits}: </span><strong>{report.commits?.length ?? 0}</strong></div>
-                  <Button variant="ghost" size="sm" onPress={() => setCommitsExpanded(e => !e)} className="ml-auto gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setCommitsExpanded(e => !e)} className="ml-auto gap-2">
                     {commitsExpanded ? <><ChevronUp className="size-4" />{dict.reportDetail.hideCommits}</> : <><ChevronDown className="size-4" />{dict.reportDetail.showCommits}</>}
                   </Button>
                 </div>
@@ -358,75 +368,78 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
                     </div>
                   </>
                 )}
-              </Card.Content>
+              </CardContent>
             </Card>
 
             {/* Tabs */}
             <Card>
-              <Card.Content className="p-0">
-                <Tabs defaultSelectedKey="issues">
-                  <Tabs.ListContainer className="border-b border-border px-2">
-                    <Tabs.List>
-                      <Tabs.Tab id="issues">
+              <CardContent className="p-0">
+                <Tabs defaultValue="issues">
+                  <div className="border-b border-border px-2">
+                    <TabsList className="bg-transparent h-11">
+                      <TabsTrigger value="issues">
                         <Code2 className="size-4 mr-1.5" />
                         {dict.reportDetail.issueList.replace('{{count}}', String(allIssues.length))}
-                      </Tabs.Tab>
-                      <Tabs.Tab id="metrics">
+                      </TabsTrigger>
+                      <TabsTrigger value="metrics">
                         <BarChart3 className="size-4 mr-1.5" />
                         {dict.reportDetail.qualityMetrics}
-                      </Tabs.Tab>
+                      </TabsTrigger>
                       {report.security_findings?.length ? (
-                        <Tabs.Tab id="security">
+                        <TabsTrigger value="security">
                           <Shield className="size-4 mr-1.5" />
                           {dict.reportDetail.securityFindings.replace('{{count}}', String(report.security_findings.length))}
-                        </Tabs.Tab>
+                        </TabsTrigger>
                       ) : null}
                       {report.performance_findings?.length ? (
-                        <Tabs.Tab id="performance">
+                        <TabsTrigger value="performance">
                           <Zap className="size-4 mr-1.5" />
                           {dict.reportDetail.performanceFindings.replace('{{count}}', String(report.performance_findings.length))}
-                        </Tabs.Tab>
+                        </TabsTrigger>
                       ) : null}
                       {report.ai_suggestions?.length ? (
-                        <Tabs.Tab id="suggestions">
+                        <TabsTrigger value="suggestions">
                           <Lightbulb className="size-4 mr-1.5" />
                           {dict.reportDetail.aiSuggestions.replace('{{count}}', String(report.ai_suggestions.length))}
-                        </Tabs.Tab>
+                        </TabsTrigger>
                       ) : null}
-                    </Tabs.List>
-                  </Tabs.ListContainer>
+                    </TabsList>
+                  </div>
 
-                  {/* Issues Panel */}
-                  <Tabs.Panel id="issues" className="p-6 space-y-4">
+                  <TabsContent value="issues" className="p-6 space-y-4">
                     <div className="flex items-center gap-3 flex-wrap">
                       <div className="flex items-center gap-2">
-                        <Chip size="sm" color="danger" variant="soft">{criticalCount} {dict.reportDetail.severity.critical}</Chip>
-                        <Chip size="sm" color="danger" variant="soft">{highCount} {dict.reportDetail.severity.high}</Chip>
-                        <Chip size="sm" color="warning" variant="soft">{mediumCount} {dict.reportDetail.severity.medium}</Chip>
-                        <Chip size="sm" color="default" variant="soft">{lowCount} {dict.reportDetail.severity.low}</Chip>
-                        <Chip size="sm" color="success" variant="soft">{infoCount} {dict.reportDetail.severity.info}</Chip>
+                        <Badge size="sm" variant="danger">{criticalCount} {dict.reportDetail.severity.critical}</Badge>
+                        <Badge size="sm" variant="danger">{highCount} {dict.reportDetail.severity.high}</Badge>
+                        <Badge size="sm" variant="warning">{mediumCount} {dict.reportDetail.severity.medium}</Badge>
+                        <Badge size="sm" variant="muted">{lowCount} {dict.reportDetail.severity.low}</Badge>
+                        <Badge size="sm" variant="success">{infoCount} {dict.reportDetail.severity.info}</Badge>
                       </div>
                       <div className="ml-auto flex gap-2">
-                        <Select selectedKey={sevFilter} onSelectionChange={(key) => setSevFilter(key as string)} className="w-[140px]">
-                          <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
-                          <Select.Popover>
-                            <ListBox items={SEV_ITEMS}>
-                              {(item) => <ListBox.Item id={item.id}>{item.label}</ListBox.Item>}
-                            </ListBox>
-                          </Select.Popover>
+                        <Select value={sevFilter} onValueChange={(value) => setSevFilter(value)}>
+                          <SelectTrigger className="w-[140px] h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SEV_ITEMS.map(item => (
+                              <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                            ))}
+                          </SelectContent>
                         </Select>
                         {categories.length > 1 && (
-                          <Select selectedKey={catFilter} onSelectionChange={(key) => setCatFilter(key as string)} className="w-[150px]">
-                            <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
-                            <Select.Popover>
-                              <ListBox items={catItems}>
-                                {(item) => <ListBox.Item id={item.id}>{item.label}</ListBox.Item>}
-                              </ListBox>
-                            </Select.Popover>
+                          <Select value={catFilter} onValueChange={(value) => setCatFilter(value)}>
+                            <SelectTrigger className="w-[150px] h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {catItems.map(item => (
+                                <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                              ))}
+                            </SelectContent>
                           </Select>
                         )}
                         {(sevFilter !== 'all' || catFilter !== 'all') && (
-                          <Button variant="ghost" size="sm" onPress={() => { setSevFilter('all'); setCatFilter('all'); }}>{dict.reportDetail.clearFilters}</Button>
+                          <Button variant="ghost" size="sm" onClick={() => { setSevFilter('all'); setCatFilter('all'); }}>{dict.reportDetail.clearFilters}</Button>
                         )}
                       </div>
                     </div>
@@ -439,10 +452,9 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
                         ))}
                       </div>
                     )}
-                  </Tabs.Panel>
+                  </TabsContent>
 
-                  {/* Metrics Panel */}
-                  <Tabs.Panel id="metrics" className="p-6 space-y-6">
+                  <TabsContent value="metrics" className="p-6 space-y-6">
                     {report.complexity_metrics && (
                       <div>
                         <h4 className="text-sm font-semibold mb-3 flex items-center gap-2"><FileCode className="size-4" />{dict.reportDetail.codeComplexity}</h4>
@@ -454,11 +466,11 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
                             { label: dict.reportDetail.maxFunctionLength, value: report.complexity_metrics.maxFunctionLength },
                             { label: dict.reportDetail.totalFunctions, value: report.complexity_metrics.totalFunctions },
                           ].map(m => (
-                            <Card key={m.label} variant="secondary">
-                              <Card.Content className="p-4">
+                            <Card key={m.label} className="bg-muted/30">
+                              <CardContent className="p-4">
                                 <div className="text-2xl font-bold">{m.value}</div>
                                 <div className="text-xs text-muted-foreground mt-1">{m.label}</div>
-                              </Card.Content>
+                              </CardContent>
                             </Card>
                           ))}
                         </div>
@@ -473,11 +485,11 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
                             { label: dict.reportDetail.duplicatedBlocks, value: report.duplication_metrics.duplicatedBlocks },
                             { label: dict.reportDetail.duplicationRate, value: report.duplication_metrics.duplicationRate + '%' },
                           ].map(m => (
-                            <Card key={m.label} variant="secondary">
-                              <Card.Content className="p-4">
+                            <Card key={m.label} className="bg-muted/30">
+                              <CardContent className="p-4">
                                 <div className="text-2xl font-bold">{m.value}</div>
                                 <div className="text-xs text-muted-foreground mt-1">{m.label}</div>
-                              </Card.Content>
+                              </CardContent>
                             </Card>
                           ))}
                         </div>
@@ -497,11 +509,11 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
                             { label: dict.reportDetail.totalDependencies, value: report.dependency_metrics.totalDependencies },
                             { label: dict.reportDetail.outdatedDependencies, value: report.dependency_metrics.outdatedDependencies },
                           ].map(m => (
-                            <Card key={m.label} variant="secondary">
-                              <Card.Content className="p-4">
+                            <Card key={m.label} className="bg-muted/30">
+                              <CardContent className="p-4">
                                 <div className="text-2xl font-bold">{m.value}</div>
                                 <div className="text-xs text-muted-foreground mt-1">{m.label}</div>
-                              </Card.Content>
+                              </CardContent>
                             </Card>
                           ))}
                         </div>
@@ -518,50 +530,48 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
                         <h4 className="text-sm font-semibold mb-3">{dict.reportDetail.complexCodeExplanations}</h4>
                         <div className="space-y-3">
                           {report.code_explanations.map((exp, i) => (
-                            <Card key={i} variant="secondary">
-                              <Card.Content className="p-4">
+                            <Card key={i} className="bg-muted/30">
+                              <CardContent className="p-4">
                                 <code className="text-xs font-mono bg-background px-2 py-1 rounded">{exp.file}{exp.line ? ':' + exp.line : ''}</code>
                                 <div className="mt-2 text-xs text-muted-foreground">{dict.reportDetail.complexity}: {exp.complexity}</div>
                                 <div className="mt-2 text-sm">{exp.explanation}</div>
                                 <div className="mt-2 text-sm text-primary">💡 {exp.recommendation}</div>
-                              </Card.Content>
+                              </CardContent>
                             </Card>
                           ))}
                         </div>
                       </div>
                     )}
-                  </Tabs.Panel>
+                  </TabsContent>
 
-                  {/* Security Panel */}
                   {report.security_findings?.length ? (
-                    <Tabs.Panel id="security" className="p-6 space-y-3">
+                    <TabsContent value="security" className="p-6 space-y-3">
                       {report.security_findings.map((finding, i) => (
                         <Card key={i}>
-                          <Card.Content className="p-4">
+                          <CardContent className="p-4">
                             <div className="flex items-start gap-3">
                               <Shield className="size-5 text-danger shrink-0 mt-0.5" />
                               <div className="flex-1 space-y-2">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-semibold">{finding.type}</span>
-                                  <Chip size="sm" color={finding.severity === 'critical' ? 'danger' : 'warning'} variant="soft">{finding.severity}</Chip>
+                                  <Badge size="sm" variant={finding.severity === 'critical' ? 'danger' : 'warning'}>{finding.severity}</Badge>
                                   {finding.cwe && <span className="text-xs text-muted-foreground">{finding.cwe}</span>}
                                 </div>
                                 <div className="text-sm">{finding.description}</div>
                                 <code className="block text-xs font-mono bg-muted px-2 py-1 rounded">{finding.file}{finding.line ? ':' + finding.line : ''}</code>
                               </div>
                             </div>
-                          </Card.Content>
+                          </CardContent>
                         </Card>
                       ))}
-                    </Tabs.Panel>
+                    </TabsContent>
                   ) : null}
 
-                  {/* Performance Panel */}
                   {report.performance_findings?.length ? (
-                    <Tabs.Panel id="performance" className="p-6 space-y-3">
+                    <TabsContent value="performance" className="p-6 space-y-3">
                       {report.performance_findings.map((finding, i) => (
                         <Card key={i}>
-                          <Card.Content className="p-4">
+                          <CardContent className="p-4">
                             <div className="flex items-start gap-3">
                               <Zap className="size-5 text-warning shrink-0 mt-0.5" />
                               <div className="flex-1 space-y-2">
@@ -571,48 +581,47 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
                                 <div className="text-xs text-muted-foreground">{dict.reportDetail.impact}: {finding.impact}</div>
                               </div>
                             </div>
-                          </Card.Content>
+                          </CardContent>
                         </Card>
                       ))}
-                    </Tabs.Panel>
+                    </TabsContent>
                   ) : null}
 
-                  {/* Suggestions Panel */}
                   {report.ai_suggestions?.length ? (
-                    <Tabs.Panel id="suggestions" className="p-6 space-y-3">
+                    <TabsContent value="suggestions" className="p-6 space-y-3">
                       {report.ai_suggestions.sort((a, b) => b.priority - a.priority).map((sug, i) => (
                         <Card key={i}>
-                          <Card.Content className="p-4">
+                          <CardContent className="p-4">
                             <div className="flex items-start gap-3">
                               <Lightbulb className="size-5 text-primary shrink-0 mt-0.5" />
                               <div className="flex-1 space-y-2">
                                 <div className="flex items-center gap-2">
                                   <span className="font-semibold">{sug.title}</span>
-                                  <Chip size="sm" color="accent" variant="soft">P{sug.priority}</Chip>
+                                  <Badge size="sm" variant="accent">P{sug.priority}</Badge>
                                   <span className="text-xs text-muted-foreground">{sug.type}</span>
                                 </div>
                                 <div className="text-sm">{sug.description}</div>
                                 <div className="text-xs text-muted-foreground">{dict.reportDetail.estimatedImpact}: {sug.estimatedImpact}</div>
                               </div>
                             </div>
-                          </Card.Content>
+                          </CardContent>
                         </Card>
                       ))}
-                    </Tabs.Panel>
+                    </TabsContent>
                   ) : null}
                 </Tabs>
-              </Card.Content>
+              </CardContent>
             </Card>
 
             {/* AI Summary */}
             {report.summary && (
               <Card>
-                <Card.Header>
-                  <Card.Title>{dict.reportDetail.aiSummary}</Card.Title>
-                </Card.Header>
-                <Card.Content className="px-6 pb-6">
+                <CardHeader>
+                  <CardTitle>{dict.reportDetail.aiSummary}</CardTitle>
+                </CardHeader>
+                <CardContent className="px-6 pb-6">
                   <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{report.summary}</div>
-                </Card.Content>
+                </CardContent>
               </Card>
             )}
           </div>
@@ -620,36 +629,26 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
       )}
 
       {/* Chat Modal */}
-      <Modal state={chatModalState}>
-        <Modal.Backdrop isDismissable>
-          <Modal.Container size="lg">
-            <Modal.Dialog className="h-[600px] flex flex-col">
-              <Modal.Header>
-                <Modal.Heading>{dict.reportDetail.aiReviewer}</Modal.Heading>
-              </Modal.Header>
-              <Modal.Body className="flex-1 min-h-0 p-0">
-                <AIChat reportId={report.id} issueId={chatIssueId} />
-              </Modal.Body>
-            </Modal.Dialog>
-          </Modal.Container>
-        </Modal.Backdrop>
-      </Modal>
+      <Dialog open={chatOpen} onOpenChange={setChatOpen}>
+        <DialogContent className="max-w-3xl p-0">
+          <DialogHeader className="px-6 pt-6">
+            <DialogTitle>{dict.reportDetail.aiReviewer}</DialogTitle>
+          </DialogHeader>
+          <div className="h-[600px]">
+            <AIChat reportId={report.id} issueId={chatIssueId} />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Trends Modal */}
-      <Modal state={trendsModalState}>
-        <Modal.Backdrop isDismissable>
-          <Modal.Container size="lg">
-            <Modal.Dialog>
-              <Modal.Header>
-                <Modal.Heading>{dict.reportDetail.qualityTrendAnalysis}</Modal.Heading>
-              </Modal.Header>
-              <Modal.Body>
-                <TrendChart projectId={report.project_id} />
-              </Modal.Body>
-            </Modal.Dialog>
-          </Modal.Container>
-        </Modal.Backdrop>
-      </Modal>
+      <Dialog open={trendsOpen} onOpenChange={setTrendsOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{dict.reportDetail.qualityTrendAnalysis}</DialogTitle>
+          </DialogHeader>
+          <TrendChart projectId={report.project_id} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

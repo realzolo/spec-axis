@@ -3,7 +3,16 @@
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { FileText, Trash2 } from 'lucide-react';
-import { Button, Select, ListBox, Chip, Spinner } from '@heroui/react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Spinner } from '@/components/ui/spinner';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 
@@ -15,11 +24,11 @@ type Report = {
 };
 
 export default function ReportsClient({ initialReports, dict }: { initialReports: Report[]; dict: Dictionary }) {
-  const STATUS_CHIP: Record<string, { color: 'default' | 'accent' | 'success' | 'danger' | 'warning'; label: string }> = {
-    pending:   { color: 'default', label: dict.reports.status.pending },
-    analyzing: { color: 'accent',  label: dict.reports.status.analyzing },
-    done:      { color: 'success', label: dict.reports.status.done },
-    failed:    { color: 'danger',  label: dict.reports.status.failed },
+  const STATUS_CHIP: Record<string, { variant: 'muted' | 'accent' | 'success' | 'danger' | 'warning'; label: string }> = {
+    pending:   { variant: 'muted', label: dict.reports.status.pending },
+    analyzing: { variant: 'accent',  label: dict.reports.status.analyzing },
+    done:      { variant: 'success', label: dict.reports.status.done },
+    failed:    { variant: 'danger',  label: dict.reports.status.failed },
   };
 
   const CAT_LABEL: Record<string, string> = {
@@ -88,7 +97,7 @@ export default function ReportsClient({ initialReports, dict }: { initialReports
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b border-border bg-card shrink-0">
+      <div className="border-b border-border bg-background shrink-0">
         <div className="px-6 py-4 max-w-[1200px] mx-auto w-full flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold">{dict.reports.title}</h1>
@@ -99,28 +108,32 @@ export default function ReportsClient({ initialReports, dict }: { initialReports
       </div>
 
       {/* Toolbar */}
-      <div className="border-b border-border bg-card shrink-0">
+      <div className="border-b border-border bg-background shrink-0">
         <div className="px-6 py-3 max-w-[1200px] mx-auto w-full flex items-center gap-3 flex-wrap">
-          <Select selectedKey={statusFilter} onSelectionChange={(key) => setStatusFilter(key as string)} className="w-[140px]">
-            <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
-            <Select.Popover>
-              <ListBox items={STATUS_ITEMS}>
-                {(item) => <ListBox.Item id={item.id}>{item.label}</ListBox.Item>}
-              </ListBox>
-            </Select.Popover>
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value)} >
+            <SelectTrigger className="w-[140px] h-8">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_ITEMS.map(item => (
+                <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+              ))}
+            </SelectContent>
           </Select>
           {projectNames.length > 1 && (
-            <Select selectedKey={projectFilter} onSelectionChange={(key) => setProjectFilter(key as string)} className="w-[180px]">
-              <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
-              <Select.Popover>
-                <ListBox items={projectItems}>
-                  {(item) => <ListBox.Item id={item.id}>{item.label}</ListBox.Item>}
-                </ListBox>
-              </Select.Popover>
+            <Select value={projectFilter} onValueChange={(value) => setProjectFilter(value)} >
+              <SelectTrigger className="w-[180px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {projectItems.map(item => (
+                  <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           )}
           {(statusFilter !== 'all' || projectFilter !== 'all') && (
-            <Button variant="ghost" size="sm" onPress={() => { setStatusFilter('all'); setProjectFilter('all'); }}>
+            <Button variant="ghost" size="sm" onClick={() => { setStatusFilter('all'); setProjectFilter('all'); }}>
               {dict.reports.clearFilters}
             </Button>
           )}
@@ -145,7 +158,7 @@ export default function ReportsClient({ initialReports, dict }: { initialReports
           </div>
         ) : (
           <div className="max-w-[1200px] mx-auto w-full px-6 pb-6">
-            <div className="border border-border rounded-lg overflow-hidden bg-card">
+            <div className="border border-border rounded-xl overflow-hidden bg-card">
               {/* Table header */}
               <div className="grid grid-cols-[64px_1fr_160px_auto] items-center px-4 py-2 border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground gap-4">
                 <div>{dict.reports.score}</div>
@@ -177,7 +190,7 @@ export default function ReportsClient({ initialReports, dict }: { initialReports
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium truncate">{projectName ?? dict.reports.unknownProject}</span>
-                        <Chip size="sm" color={st.color} variant="soft">{st.label}</Chip>
+                        <Badge size="sm" variant={st.variant}>{st.label}</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {(report.commits as unknown[])?.length ?? 0} {dict.reports.commit} · {new Date(report.created_at).toLocaleString()}
@@ -198,9 +211,10 @@ export default function ReportsClient({ initialReports, dict }: { initialReports
 
                     {/* Delete */}
                     <Button
-                      isIconOnly variant="ghost" size="sm"
-                      isDisabled={deletingId === report.id}
-                      onPress={(e) => handleDelete(report.id, e as unknown as React.MouseEvent)}
+                      size="icon"
+                      variant="ghost"
+                      disabled={deletingId === report.id}
+                      onClick={(e) => handleDelete(report.id, e as unknown as React.MouseEvent)}
                     >
                       {deletingId === report.id ? <Spinner size="sm" /> : <Trash2 className="h-3.5 w-3.5" />}
                     </Button>

@@ -3,7 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Shield, ChevronRight } from 'lucide-react';
-import { Button, Input, Modal, useOverlayState, Chip } from '@heroui/react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 
@@ -12,12 +15,11 @@ type RuleSet = { id: string; name: string; description?: string; is_global: bool
 export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets: RuleSet[]; dict: Dictionary }) {
   const router = useRouter();
   const [ruleSets, setRuleSets] = useState<RuleSet[]>(initialRuleSets);
-  const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
 
-  const modalState = useOverlayState({ isOpen: showCreate, onOpenChange: (v) => { if (!v) setShowCreate(false); } });
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -30,7 +32,7 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
     setCreating(false);
     if (!res.ok) { toast.error(data.error); return; }
     toast.success(dict.rules.ruleSetCreated);
-    setShowCreate(false);
+    setDialogOpen(false);
     setName(''); setDescription('');
     const updated = await fetch('/api/rules/sets').then(r => r.json());
     setRuleSets(updated);
@@ -39,13 +41,13 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b border-border bg-card shrink-0">
+      <div className="border-b border-border bg-background shrink-0">
         <div className="px-6 py-4 max-w-[1200px] mx-auto w-full flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold">{dict.rules.title}</h1>
             <p className="text-sm text-muted-foreground mt-0.5">{dict.rules.description}</p>
           </div>
-          <Button onPress={() => setShowCreate(true)} size="sm" className="gap-1.5">
+          <Button onClick={() => setDialogOpen(true)} size="sm" className="gap-1.5">
             <Plus className="size-4" />
             {dict.rules.newRuleSet}
           </Button>
@@ -63,7 +65,7 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
               <h3 className="text-sm font-medium">{dict.rules.noRules}</h3>
               <p className="text-sm text-muted-foreground mt-0.5">{dict.rules.noRulesDescription}</p>
             </div>
-            <Button onPress={() => setShowCreate(true)} size="sm" className="gap-1.5 mt-1">
+            <Button onClick={() => setDialogOpen(true)} size="sm" className="gap-1.5 mt-1">
               <Plus className="size-4" />{dict.rules.newRuleSet}
             </Button>
           </div>
@@ -92,7 +94,7 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">{rs.name}</span>
-                        {rs.is_global && <Chip size="sm" variant="soft" color="accent">{dict.rules.global}</Chip>}
+                        {rs.is_global && <Badge size="sm" variant="accent">{dict.rules.global}</Badge>}
                       </div>
                       {rs.description && (
                         <div className="text-xs text-muted-foreground mt-0.5 truncate">{rs.description}</div>
@@ -112,33 +114,27 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
         )}
       </div>
 
-      <Modal state={modalState}>
-        <Modal.Backdrop isDismissable>
-          <Modal.Container size="sm">
-            <Modal.Dialog>
-              <Modal.Header>
-                <Modal.Heading>{dict.rules.newRuleSet}</Modal.Heading>
-              </Modal.Header>
-              <form onSubmit={handleCreate}>
-                <Modal.Body className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium">{dict.common.name}</label>
-                    <Input value={name} onChange={e => setName(e.target.value)} placeholder={dict.rules.ruleSetNamePlaceholder} required />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium">{dict.rules.descriptionOptional}</label>
-                    <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={dict.rules.descriptionPlaceholder} />
-                  </div>
-                </Modal.Body>
-                <Modal.Footer>
-                  <Button type="button" variant="outline" onPress={() => setShowCreate(false)}>{dict.common.cancel}</Button>
-                  <Button type="submit" isDisabled={creating}>{creating ? dict.rules.creating : dict.rules.create}</Button>
-                </Modal.Footer>
-              </form>
-            </Modal.Dialog>
-          </Modal.Container>
-        </Modal.Backdrop>
-      </Modal>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{dict.rules.newRuleSet}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreate} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium">{dict.common.name}</label>
+              <Input value={name} onChange={e => setName(e.target.value)} placeholder={dict.rules.ruleSetNamePlaceholder} required />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium">{dict.rules.descriptionOptional}</label>
+              <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={dict.rules.descriptionPlaceholder} />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{dict.common.cancel}</Button>
+              <Button type="submit" disabled={creating}>{creating ? dict.rules.creating : dict.rules.create}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

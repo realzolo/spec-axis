@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Button, Card, Chip } from '@heroui/react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Plus, Settings, Trash2, Check, X, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import AddVCSIntegrationModal from '@/components/settings/AddVCSIntegrationModal';
@@ -106,75 +108,77 @@ export default function IntegrationsPage() {
 
   function renderIntegrationCard(integration: Integration, type: 'vcs' | 'ai') {
     return (
-      <Card key={integration.id} className="p-4">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-sm font-medium">{integration.name}</h3>
-              {integration.is_default && (
-                <Chip size="sm" color="accent" variant="soft">
-                  Default
-                </Chip>
+      <Card key={integration.id}>
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-sm font-medium">{integration.name}</h3>
+                {integration.is_default && (
+                  <Badge size="sm" variant="accent">
+                    Default
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mb-2">
+                Provider: {integration.provider}
+              </p>
+              {integration.config.baseUrl && (
+                <p className="text-xs text-muted-foreground">
+                  URL: {integration.config.baseUrl}
+                </p>
+              )}
+              {integration.config.model && (
+                <p className="text-xs text-muted-foreground">
+                  Model: {integration.config.model}
+                </p>
               )}
             </div>
-            <p className="text-xs text-muted-foreground mb-2">
-              Provider: {integration.provider}
-            </p>
-            {integration.config.baseUrl && (
-              <p className="text-xs text-muted-foreground">
-                URL: {integration.config.baseUrl}
-              </p>
-            )}
-            {integration.config.model && (
-              <p className="text-xs text-muted-foreground">
-                Model: {integration.config.model}
-              </p>
-            )}
-          </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => handleTest(integration.id)}
-              isDisabled={testingId === integration.id}
-            >
-              {testingId === integration.id ? 'Testing...' : 'Test'}
-            </Button>
-
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                if (type === 'vcs') {
-                  setEditingVCS(integration);
-                } else {
-                  setEditingAI(integration);
-                }
-              }}
-            >
-              <Edit className="size-4" />
-            </Button>
-
-            {!integration.is_default && (
+            <div className="flex items-center gap-2">
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => handleSetDefault(integration.id, type)}
+                onClick={() => handleTest(integration.id)}
+                disabled={testingId === integration.id}
               >
-                Set Default
+                {testingId === integration.id ? 'Testing...' : 'Test'}
               </Button>
-            )}
 
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => handleDelete(integration.id, type)}
-            >
-              <Trash2 className="size-4" />
-            </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  if (type === 'vcs') {
+                    setEditingVCS(integration);
+                  } else {
+                    setEditingAI(integration);
+                  }
+                }}
+              >
+                <Edit className="size-4" />
+              </Button>
+
+              {!integration.is_default && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleSetDefault(integration.id, type)}
+                >
+                  Set Default
+                </Button>
+              )}
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleDelete(integration.id, type)}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
           </div>
-        </div>
+        </CardContent>
       </Card>
     );
   }
@@ -216,10 +220,12 @@ export default function IntegrationsPage() {
             </div>
 
             {vcsIntegrations.length === 0 ? (
-              <Card className="p-6">
-                <p className="text-sm text-muted-foreground text-center">
-                  No repository integrations configured. Add one to get started.
-                </p>
+              <Card>
+                <CardContent className="p-6">
+                  <p className="text-sm text-muted-foreground text-center">
+                    No repository integrations configured. Add one to get started.
+                  </p>
+                </CardContent>
               </Card>
             ) : (
               <div className="space-y-2">
@@ -246,10 +252,12 @@ export default function IntegrationsPage() {
             </div>
 
             {aiIntegrations.length === 0 ? (
-              <Card className="p-6">
-                <p className="text-sm text-muted-foreground text-center">
-                  No AI integrations configured. Add one to enable code analysis.
-                </p>
+              <Card>
+                <CardContent className="p-6">
+                  <p className="text-sm text-muted-foreground text-center">
+                    No AI integrations configured. Add one to enable code analysis.
+                  </p>
+                </CardContent>
               </Card>
             ) : (
               <div className="space-y-2">

@@ -4,7 +4,10 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Send, User, Clock, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
-import { Button, Select, ListBox, Modal, useOverlayState, Spinner } from '@heroui/react';
+import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 
@@ -25,7 +28,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
   const [selected, setSelected] = useState<string[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [ruleSetName, setRuleSetName] = useState('');
-  const confirmState = useOverlayState();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (project.ruleset_id) {
@@ -67,7 +70,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
   }
 
   async function startReview() {
-    confirmState.close();
+    setConfirmOpen(false);
     if (!project.ruleset_id) { toast.warning(dict.commits.configureRuleSetFirst); return; }
     setAnalyzing(true);
     const res = await fetch('/api/analyze', {
@@ -98,7 +101,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
       {/* Header */}
       <div className="flex items-center gap-3 px-5 h-16 border-b border-border bg-card shrink-0">
         <Link href="/projects">
-          <Button isIconOnly variant="ghost" size="sm"><ArrowLeft className="size-4" /></Button>
+          <Button size="icon" variant="ghost"><ArrowLeft className="size-4" /></Button>
         </Link>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-bold">{project.name}</div>
@@ -106,10 +109,10 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
         </div>
         {selected.length > 0 && <span className="text-xs text-muted-foreground font-medium">{dict.commits.selected.replace('{{count}}', selected.length.toString())}</span>}
         <Button
-          isDisabled={!selected.length || analyzing}
-          onPress={() => {
+          disabled={!selected.length || analyzing}
+          onClick={() => {
             if (!project.ruleset_id) { toast.warning(dict.commits.configureRuleSetFirst); return; }
-            confirmState.open();
+            setConfirmOpen(true);
           }}
           className="gap-1.5"
           size="sm"
@@ -121,24 +124,28 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
 
       {/* Filters */}
       <div className="flex items-center gap-2.5 px-5 py-2.5 border-b border-border bg-card/50 shrink-0">
-        <Select selectedKey={branch} onSelectionChange={(key) => setBranch(key as string)} className="w-[150px]">
-          <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
-          <Select.Popover>
-            <ListBox items={branchItems}>
-              {(item) => <ListBox.Item id={item.id}>{item.label}</ListBox.Item>}
-            </ListBox>
-          </Select.Popover>
+        <Select value={branch} onValueChange={(value) => setBranch(value)}>
+          <SelectTrigger className="w-[150px] h-8">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {branchItems.map(item => (
+              <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+            ))}
+          </SelectContent>
         </Select>
-        <Select selectedKey={authorFilter} onSelectionChange={(key) => setAuthorFilter(key as string)} className="w-[160px]">
-          <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
-          <Select.Popover>
-            <ListBox items={authorItems}>
-              {(item) => <ListBox.Item id={item.id}>{item.label}</ListBox.Item>}
-            </ListBox>
-          </Select.Popover>
+        <Select value={authorFilter} onValueChange={(value) => setAuthorFilter(value)}>
+          <SelectTrigger className="w-[160px] h-8">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {authorItems.map(item => (
+              <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+            ))}
+          </SelectContent>
         </Select>
         {filtered.length > 0 && (
-          <Button variant="ghost" size="sm" onPress={toggleSelectAll} className="gap-1">
+          <Button variant="ghost" size="sm" onClick={toggleSelectAll} className="gap-1">
             {allFilteredSelected && <CheckCircle2 className="size-3.5" />}
             {allFilteredSelected ? dict.commits.deselectAll : dict.commits.selectAll.replace('{{count}}', filtered.length.toString())}
           </Button>
@@ -196,45 +203,43 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
             })}
             {hasMore && authorFilter === 'all' && (
               <div className="flex justify-center pt-2">
-                <Button variant="ghost" isDisabled={loadingMore} onPress={() => { const next = page + 1; setPage(next); fetchCommits(branch, next, true); }}>
-                  {loadingMore ? <Spinner size="sm" /> : null}
-                  {loadingMore ? '加载中…' : '加载更多提交'}
-                </Button>
-              </div>
-            )}
+              <Button variant="ghost" disabled={loadingMore} onClick={() => { const next = page + 1; setPage(next); fetchCommits(branch, next, true); }}>
+                {loadingMore ? <Spinner size="sm" /> : null}
+                {loadingMore ? '加载中…' : '加载更多提交'}
+              </Button>
+            </div>
+          )}
           </div>
         )}
       </div>
 
       {/* Confirm Modal */}
-      <Modal state={confirmState}>
-        <Modal.Backdrop isDismissable>
-          <Modal.Container className="max-w-[420px]">
-            <Modal.Dialog>
-              <Modal.Header><Modal.Heading>开始代码审查</Modal.Heading></Modal.Header>
-              <Modal.Body className="flex flex-col gap-4">
-                <div className="flex items-center gap-4 p-4 rounded-xl bg-muted/50 border border-border">
-                  <div className="flex-1">
-                    <div className="text-xs text-muted-foreground mb-1">待分析提交数</div>
-                    <div className="text-2xl font-bold">{selected.length}</div>
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-xs text-muted-foreground mb-1">规则集</div>
-                    <div className="text-sm font-semibold">{ruleSetName || '—'}</div>
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Claude 将根据您配置的规则分析所选提交，生成质量报告。这可能需要一两分钟。
-                </p>
-              </Modal.Body>
-              <Modal.Footer>
-                <Button variant="outline" onPress={confirmState.close}>取消</Button>
-                <Button variant="primary" onPress={startReview}>开始分析</Button>
-              </Modal.Footer>
-            </Modal.Dialog>
-          </Modal.Container>
-        </Modal.Backdrop>
-      </Modal>
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>开始代码审查</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-4 p-4 rounded-xl bg-muted/50 border border-border">
+              <div className="flex-1">
+                <div className="text-xs text-muted-foreground mb-1">待分析提交数</div>
+                <div className="text-2xl font-bold">{selected.length}</div>
+              </div>
+              <div className="flex-1">
+                <div className="text-xs text-muted-foreground mb-1">规则集</div>
+                <div className="text-sm font-semibold">{ruleSetName || '—'}</div>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Claude 将根据您配置的规则分析所选提交，生成质量报告。这可能需要一两分钟。
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>取消</Button>
+            <Button onClick={startReview}>开始分析</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

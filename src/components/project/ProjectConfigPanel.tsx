@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { Settings, Save, Loader2 } from 'lucide-react';
-import { Input, TextArea, Switch, Button } from '@heroui/react';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 
@@ -86,7 +89,7 @@ export default function ProjectConfigPanel({ projectId, dict }: { projectId: str
       {/* Ignore Patterns */}
       <div className="space-y-2">
         <label htmlFor="ignore-patterns" className="text-sm font-medium">{dict.projects.ignorePatterns}</label>
-        <TextArea
+        <Textarea
           id="ignore-patterns"
           value={ignoreText}
           onChange={e => setIgnoreText(e.target.value)}
@@ -130,8 +133,8 @@ export default function ProjectConfigPanel({ projectId, dict }: { projectId: str
           </p>
         </div>
         <Switch
-          isSelected={config.auto_analyze}
-          onChange={(v) => setConfig(prev => ({ ...prev, auto_analyze: v }))}
+          checked={config.auto_analyze}
+          onCheckedChange={(v) => setConfig(prev => ({ ...prev, auto_analyze: v }))}
         />
       </div>
 
@@ -154,7 +157,7 @@ export default function ProjectConfigPanel({ projectId, dict }: { projectId: str
 
       {/* Save Button */}
       <div className="flex justify-end pt-4">
-        <Button onPress={handleSave} isDisabled={saving} className="gap-2">
+        <Button onClick={handleSave} disabled={saving} className="gap-2">
           {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
           {saving ? dict.common.loading : dict.projects.saveConfig}
         </Button>

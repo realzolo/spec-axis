@@ -5,7 +5,7 @@ import { ThemeProvider } from '@/components/theme/ThemeProvider';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <ThemeProvider defaultTheme="light">
+    <ThemeProvider defaultTheme="dark">
       {children}
       <Toaster />
     </ThemeProvider>

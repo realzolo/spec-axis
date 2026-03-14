@@ -3,8 +3,10 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Code2, FolderOpen, FileText, Shield, Settings, LogOut } from 'lucide-react';
-import { Button, Chip } from '@heroui/react';
+import { Code2, FolderOpen, FileText, Shield, Settings, LogOut, Search } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { createClient } from '@/lib/supabase/client';
 import ThemeToggle from '@/components/theme/ThemeToggle';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
@@ -45,17 +47,28 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
   }
 
   return (
-    <div className="w-64 h-screen flex flex-col shrink-0 border-r border-sidebar bg-sidebar text-sidebar-foreground">
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-5 h-16 border-b border-sidebar shrink-0">
-        <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-sm ring-1 ring-primary/20">
-          <Code2 className="text-primary-foreground size-4" />
+    <div className="w-[240px] h-screen flex flex-col shrink-0 border-r border-sidebar bg-sidebar text-sidebar-foreground">
+      <div className="flex items-center gap-3 px-4 h-14 border-b border-sidebar shrink-0">
+        <div className="w-8 h-8 rounded-md bg-foreground/10 flex items-center justify-center shrink-0">
+          <Code2 className="text-foreground size-4" />
         </div>
-        <span className="font-semibold text-base tracking-tight">spec-axis</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold leading-none">AIDOL_Test</div>
+          <div className="text-[11px] text-muted-foreground mt-1">Pro</div>
+        </div>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <div className="px-3 py-3">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Find…"
+            className="h-8 pl-8 bg-muted/40 border-border text-xs"
+          />
+        </div>
+      </div>
+
+      <nav className="flex-1 px-2 pb-3 space-y-1 overflow-y-auto">
         {navItems.map(item => {
           const active = activeHref === item.href;
           const count = item.countKey ? counts[item.countKey] : null;
@@ -65,23 +78,22 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
               key={item.href}
               href={item.href}
               className={[
-                'flex items-center gap-3 h-9 px-3 rounded-medium text-sm w-full transition-colors',
+                'flex items-center gap-2.5 h-9 px-3 rounded-md text-sm w-full transition-colors',
                 active
-                  ? 'bg-secondary text-secondary-foreground font-medium'
-                  : 'text-foreground hover:bg-muted/60',
+                  ? 'bg-secondary/70 text-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/40',
               ].join(' ')}
             >
               <Icon className="size-4 shrink-0" />
               <span className="flex-1 text-left">{item.label}</span>
               {count != null && count > 0 && (
-                <Chip size="sm" variant={active ? 'primary' : 'secondary'}>{count}</Chip>
+                <Badge variant={active ? 'secondary' : 'muted'} size="sm">{count}</Badge>
               )}
             </Link>
           );
         })}
       </nav>
 
-      {/* Footer */}
       <div className="p-3 border-t border-sidebar shrink-0 space-y-2">
         <div className="flex items-center justify-between px-2">
           <span className="text-xs text-muted-foreground">{dict.settings.language}</span>
@@ -91,7 +103,7 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
           <span className="text-xs text-muted-foreground">Theme</span>
           <ThemeToggle />
         </div>
-        <Button variant="ghost" onPress={handleSignOut} className="w-full justify-start gap-3 h-10">
+        <Button variant="ghost" onClick={handleSignOut} className="w-full justify-start gap-2 h-9 text-sm">
           <LogOut className="size-4" />
           {dict.nav.logout}
         </Button>

@@ -1,8 +1,22 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Modal, Input, Select, ListBox, useOverlayState } from '@heroui/react';
-import { Button } from '@heroui/react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 
@@ -19,7 +33,6 @@ export default function EditProjectModal({ project, open, onClose, onUpdated, di
   onUpdated: (updated: Project) => void;
   dict: Dictionary;
 }) {
-  const state = useOverlayState({ isOpen: open, onOpenChange: (v) => { if (!v) onClose(); } });
   const [loading, setLoading] = useState(false);
   const [ruleSets, setRuleSets] = useState<RuleSet[]>([]);
   const [name, setName] = useState(project.name);
@@ -53,46 +66,39 @@ export default function EditProjectModal({ project, open, onClose, onUpdated, di
   const rulesetItems = [{ id: 'none', name: dict.common.none }, ...ruleSets.map(rs => ({ id: rs.id, name: rs.name }))];
 
   return (
-    <Modal state={state}>
-      <Modal.Backdrop isDismissable>
-        <Modal.Container size="md">
-          <Modal.Dialog>
-            <Modal.Header>
-              <Modal.Heading>{dict.projects.editProject}</Modal.Heading>
-            </Modal.Header>
-            <Modal.Body>
-              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                <div className="space-y-2">
-                  <label htmlFor="name" className="text-sm font-semibold">{dict.projects.projectName}</label>
-                  <Input id="name" value={name} onChange={e => setName(e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="description" className="text-sm font-semibold">{dict.common.description} <span className="text-default-400 font-normal">({dict.projects.optional})</span></label>
-                  <Input id="description" value={description} onChange={e => setDescription(e.target.value)} placeholder={dict.projects.descriptionPlaceholder} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold">{dict.projects.ruleSet} <span className="text-default-400 font-normal">({dict.projects.optional})</span></label>
-                  <Select selectedKey={rulesetId} onSelectionChange={(key) => setRulesetId(key as string)}>
-                    <Select.Trigger>
-                      <Select.Value />
-                      <Select.Indicator />
-                    </Select.Trigger>
-                    <Select.Popover>
-                      <ListBox items={rulesetItems}>
-                        {(item) => <ListBox.Item id={item.id}>{item.name}</ListBox.Item>}
-                      </ListBox>
-                    </Select.Popover>
-                  </Select>
-                </div>
-              </form>
-            </Modal.Body>
-            <Modal.Footer>
-              <Button type="button" variant="outline" onPress={onClose}>{dict.common.cancel}</Button>
-              <Button type="submit" variant="primary" isDisabled={loading} onPress={handleSubmit as unknown as () => void}>{loading ? dict.common.loading : dict.common.save}</Button>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-    </Modal>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{dict.projects.editProject}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="space-y-2">
+            <label htmlFor="name" className="text-sm font-semibold">{dict.projects.projectName}</label>
+            <Input id="name" value={name} onChange={e => setName(e.target.value)} required />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="description" className="text-sm font-semibold">{dict.common.description} <span className="text-muted-foreground font-normal">({dict.projects.optional})</span></label>
+            <Input id="description" value={description} onChange={e => setDescription(e.target.value)} placeholder={dict.projects.descriptionPlaceholder} />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-semibold">{dict.projects.ruleSet} <span className="text-muted-foreground font-normal">({dict.projects.optional})</span></label>
+            <Select value={rulesetId} onValueChange={(value) => setRulesetId(value)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {rulesetItems.map(item => (
+                  <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </form>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>{dict.common.cancel}</Button>
+          <Button type="submit" disabled={loading} onClick={handleSubmit as unknown as () => void}>{loading ? dict.common.loading : dict.common.save}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

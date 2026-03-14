@@ -2,8 +2,14 @@
 
 import { useState } from 'react';
 import { CheckSquare, Square, Trash2 } from 'lucide-react';
-import { Select, ListBox } from '@heroui/react';
-import { Button } from '@heroui/react';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 
 type Issue = {
@@ -77,7 +83,7 @@ export default function BatchOperations({
   }
 
   return (
-    <div className="flex items-center gap-3 p-3 bg-default-100 rounded-lg border border-default-200">
+    <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg border border-border">
       <button onClick={toggleSelectAll} className="flex items-center gap-2 text-sm hover:text-primary transition-colors">
         {allSelected ? <CheckSquare className="size-4" /> : someSelected ? <Square className="size-4 fill-primary/20" /> : <Square className="size-4" />}
         <span>{selectedIds.size > 0 ? `已选 ${selectedIds.size}` : '全选'}</span>
@@ -85,32 +91,36 @@ export default function BatchOperations({
 
       {selectedIds.size > 0 && (
         <>
-          <div className="h-4 w-px bg-default-200" />
+          <div className="h-4 w-px bg-border" />
 
-          <Select onSelectionChange={(key) => handleBatchOperation('update_status', key as string)} isDisabled={operating} className="w-[140px]">
-            <Select.Trigger><Select.Value>更新状态</Select.Value><Select.Indicator /></Select.Trigger>
-            <Select.Popover>
-              <ListBox items={STATUS_ITEMS}>
-                {(item) => <ListBox.Item id={item.id}>{item.label}</ListBox.Item>}
-              </ListBox>
-            </Select.Popover>
+          <Select disabled={operating} onValueChange={(value) => handleBatchOperation('update_status', value)}>
+            <SelectTrigger className="w-[140px] h-8">
+              <SelectValue placeholder="更新状态" />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_ITEMS.map(item => (
+                <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+              ))}
+            </SelectContent>
           </Select>
 
-          <Select onSelectionChange={(key) => handleBatchOperation('assign', key as string)} isDisabled={operating} className="w-[140px]">
-            <Select.Trigger><Select.Value>分配给</Select.Value><Select.Indicator /></Select.Trigger>
-            <Select.Popover>
-              <ListBox items={ASSIGN_ITEMS}>
-                {(item) => <ListBox.Item id={item.id}>{item.label}</ListBox.Item>}
-              </ListBox>
-            </Select.Popover>
+          <Select disabled={operating} onValueChange={(value) => handleBatchOperation('assign', value)}>
+            <SelectTrigger className="w-[140px] h-8">
+              <SelectValue placeholder="分配给" />
+            </SelectTrigger>
+            <SelectContent>
+              {ASSIGN_ITEMS.map(item => (
+                <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+              ))}
+            </SelectContent>
           </Select>
 
-          <Button variant="danger" size="sm" onPress={() => handleBatchOperation('delete')} isDisabled={operating} className="gap-2">
+          <Button variant="destructive" size="sm" onClick={() => handleBatchOperation('delete')} disabled={operating} className="gap-2 h-8">
             <Trash2 className="size-3.5" />
             删除
           </Button>
 
-          <Button variant="ghost" size="sm" onPress={() => onSelectionChange(new Set())} isDisabled={operating}>
+          <Button variant="ghost" size="sm" onClick={() => onSelectionChange(new Set())} disabled={operating} className="h-8">
             取消选择
           </Button>
         </>
@@ -122,7 +132,7 @@ export default function BatchOperations({
 export function IssueCheckbox({ id, checked, onChange }: { id: string; checked: boolean; onChange: (id: string) => void }) {
   return (
     <button onClick={e => { e.stopPropagation(); onChange(id); }} className="shrink-0">
-      {checked ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4 text-default-400 hover:text-primary transition-colors" />}
+      {checked ? <CheckSquare className="size-4 text-primary" /> : <Square className="size-4 text-muted-foreground hover:text-primary transition-colors" />}
     </button>
   );
 }
