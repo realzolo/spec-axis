@@ -1,4 +1,9 @@
-import Anthropic from '@anthropic-ai/sdk';
+/**
+ * AI analysis service - uses the new integration system
+ */
+
+import { resolveAIIntegration } from './integrations';
+import type { AIClient } from './integrations';
 import { detectLanguagesInDiff, getLanguageSpecificRules, LANGUAGE_CONFIGS } from './languages';
 
 export interface ReviewResult {
@@ -100,12 +105,11 @@ export interface RuleInput {
 
 export async function analyzeCode(
   diff: string,
-  rules: RuleInput[]
+  rules: RuleInput[],
+  projectId: string
 ): Promise<ReviewResult> {
-  const client = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-    ...(process.env.ANTHROPIC_BASE_URL && { baseURL: process.env.ANTHROPIC_BASE_URL }),
-  });
+  // Get AI client for the project
+  const { client } = await resolveAIIntegration(projectId);
 
   // Detect languages in the diff
   const detectedLanguages = detectLanguagesInDiff(diff);
@@ -129,7 +133,16 @@ export async function analyzeCode(
     .map((r, i) => `${i + 1}. [${r.category.toUpperCase()}] ${r.name}: ${r.prompt}`)
     .join('\n');
 
-  const prompt = `你是一位资深代码审查专家。请对以下代码变更进行全面、深入的分析，并提供结构化的反馈。
+  const prompt = buildAnalysisPrompt(languageInfo, rulesText, diff);
+
+  // Use the generic AI client interface
+  const result = await client.analyze(prompt, '');
+
+  return result as ReviewResult;
+}
+
+function buildAnalysisPrompt(languageInfo: string, rulesText: string, diff: string): string {
+  return `你是一位资深代码审查专家。请对以下代码变更进行全面、深入的分析，并提供结构化的反馈。
 ${languageInfo}
 ## 审查规则
 ${rulesText}
@@ -303,16 +316,5 @@ ${diff.slice(0, 150000)}
 }
 
 **重要**：所有文本内容必须使用中文，包括问题描述、建议、解释等。`;
-
-  const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 8192,
-    messages: [{ role: 'user', content: prompt }]
-  });
-
-  const text = message.content[0].type === 'text' ? message.content[0].text : '';
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('AI returned invalid JSON response');
-
-  return JSON.parse(jsonMatch[0]) as ReviewResult;
 }
+

@@ -37,7 +37,7 @@ export async function runAnalyzeTask(projectId: string, payload: AnalyzePayload)
     const ignorePatterns = Array.isArray(project.ignore_patterns) ? project.ignore_patterns : [];
 
     const diff = await measurePerformance(reportId, 'get_commits_diff', () =>
-      getCommitsDiff(repo, hashes)
+      getCommitsDiff(repo, hashes, projectId)
     );
 
     const filteredDiff = filterDiffByPatterns(diff, ignorePatterns);
@@ -49,9 +49,9 @@ export async function runAnalyzeTask(projectId: string, payload: AnalyzePayload)
 
     const analysis = await measurePerformance(reportId, 'analyze_code', async () => {
       if (previousReport) {
-        return analyzeIncremental(filteredDiff, previousReport, rules);
+        return analyzeIncremental(filteredDiff, previousReport, rules, projectId);
       }
-      return analyzeCode(filteredDiff, rules);
+      return analyzeCode(filteredDiff, rules, projectId);
     });
 
     const issues = analysis.issues ?? [];
@@ -94,10 +94,11 @@ export async function runAnalyzeTask(projectId: string, payload: AnalyzePayload)
   }
 }
 
-export async function buildReportCommits(repo: string, hashes: string[]) {
-  const commits = await getCommitsBySha(repo, hashes);
+export async function buildReportCommits(repo: string, hashes: string[], projectId: string) {
+  const commits = await getCommitsBySha(repo, hashes, projectId);
   if (!commits || commits.length === 0) {
     throw new Error('未找到指定的提交');
+  }
   }
   return commits;
 }

@@ -20,11 +20,16 @@ export async function GET(request: NextRequest) {
   const branch = searchParams.get('branch') ?? 'main';
   const perPage = Number(searchParams.get('per_page') ?? '30');
   const page = Number(searchParams.get('page') ?? '1');
+  const projectId = searchParams.get('project_id');
 
   if (!repo) {
     return NextResponse.json({ error: 'repo is required' }, { status: 400 });
   }
 
-  const commits = await getRepoCommits(repo, branch, perPage, page);
+  if (!projectId) {
+    return NextResponse.json({ error: 'project_id is required' }, { status: 400 });
+  }
+
+  const commits = await getRepoCommits(repo, branch, perPage, page, projectId);
   return NextResponse.json(commits);
 }

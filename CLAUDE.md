@@ -344,11 +344,32 @@ src/
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-GITHUB_PAT=              # Organization-level PAT
-ANTHROPIC_API_KEY=
-ANTHROPIC_BASE_URL=      # Optional, custom API endpoint (proxy)
 TASK_RUNNER_TOKEN=       # Optional, protects task execution endpoint
 ```
+
+**IMPORTANT**: VCS (GitHub/GitLab) and AI (Claude/GPT-4) integrations are **no longer configured via environment variables**. They must be configured through the web UI at **Settings > Integrations**.
+
+## User Integrations System
+
+### Configuration Location
+All VCS and AI integrations are managed at: **Settings > Integrations**
+
+### Supported Providers
+- **VCS**: GitHub, GitLab, Generic Git
+- **AI**: OpenAI-compatible APIs (Anthropic Claude, OpenAI GPT-4, DeepSeek, etc.)
+
+### First-Time Setup
+New users will see an onboarding modal requiring them to configure:
+1. At least one VCS integration (for repository access)
+2. At least one AI integration (for code analysis)
+
+### Integration Priority
+- Project-specific integration > User default integration
+- No fallback to environment variables
+
+### Data Storage
+- Non-sensitive config (baseUrl, model, etc.) stored in `user_integrations` table
+- Sensitive data (tokens, API keys) stored in Supabase Vault
 
 ## Common Commands
 

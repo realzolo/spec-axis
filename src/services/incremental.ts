@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { resolveAIIntegration } from './integrations';
 import { ReviewResult, ReviewIssue } from './claude';
 
 export interface IncrementalAnalysisResult {
@@ -25,12 +25,11 @@ export interface RuleConfig {
 export async function analyzeIncremental(
   currentDiff: string,
   previousReport: PreviousReport | null,
-  rules: RuleConfig[]
+  rules: RuleConfig[],
+  projectId: string
 ): Promise<ReviewResult> {
-  const client = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-    ...(process.env.ANTHROPIC_BASE_URL && { baseURL: process.env.ANTHROPIC_BASE_URL }),
-  });
+  // Get AI client for the project
+  const { client } = await resolveAIIntegration(projectId);
 
   // Extract changed files from diff
   const changedFiles = extractChangedFiles(currentDiff);
@@ -77,17 +76,8 @@ ${relevantPreviousIssues.length > 0 ? JSON.stringify(relevantPreviousIssues, nul
 
 所有文本内容必须使用中文。`;
 
-  const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 8192,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const text = message.content[0].type === 'text' ? message.content[0].text : '';
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('AI 返回无效的 JSON 响应');
-
-  const result = JSON.parse(jsonMatch[0]) as ReviewResult;
+  // Use the generic AI client interface
+  const result = await client.analyze(prompt, '') as ReviewResult;
 
   // Add metadata about incremental analysis
   const resultWithMetadata = result as ReviewResult & {
