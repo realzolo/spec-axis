@@ -1,6 +1,6 @@
 /**
- * 错误处理和重试服务
- * 支持指数退避重试策略
+ * Error handling and retry service
+ * Supports exponential backoff
  */
 
 import { logger } from './logger';
@@ -43,7 +43,7 @@ export async function withRetry<T>(
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
 
-      // 检查是否可重试
+      // Check retryability
       const isRetryable =
         err instanceof RetryableError
           ? err.isRetryable
@@ -68,7 +68,7 @@ export async function withRetry<T>(
 }
 
 /**
- * 分类错误并返回适当的 HTTP 状态码
+ * Map errors to HTTP status codes
  */
 export function getErrorStatusCode(error: unknown): number {
   if (error instanceof RetryableError) {

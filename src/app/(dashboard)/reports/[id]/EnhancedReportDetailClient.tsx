@@ -448,7 +448,7 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
                     ) : (
                       <div className="space-y-3">
                         {filteredIssues.map((issue, idx) => (
-                          <EnhancedIssueCard key={issue.file + '-' + issue.line + '-' + idx} issue={issue} onChat={() => openChat(issue.file)} />
+                          <EnhancedIssueCard key={issue.file + '-' + issue.line + '-' + idx} issue={issue} onChat={() => openChat(issue.file)} dict={dict} />
                         ))}
                       </div>
                     )}
@@ -635,7 +635,7 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
             <DialogTitle>{dict.reportDetail.aiReviewer}</DialogTitle>
           </DialogHeader>
           <div className="h-[600px]">
-            <AIChat reportId={report.id} issueId={chatIssueId} />
+            <AIChat reportId={report.id} issueId={chatIssueId} dict={dict} />
           </div>
         </DialogContent>
       </Dialog>
@@ -646,7 +646,7 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
           <DialogHeader>
             <DialogTitle>{dict.reportDetail.qualityTrendAnalysis}</DialogTitle>
           </DialogHeader>
-          <TrendChart projectId={report.project_id} />
+          <TrendChart projectId={report.project_id} dict={dict} />
         </DialogContent>
       </Dialog>
     </div>

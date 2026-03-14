@@ -197,3 +197,36 @@
   }
 }
 
+.marketing-shell {
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+  background: hsl(var(--background));
+}
+
+.marketing-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 15% 20%, hsl(var(--accent) / 0.14), transparent 45%),
+    radial-gradient(circle at 85% 15%, hsl(var(--primary) / 0.1), transparent 45%),
+    radial-gradient(circle at 25% 80%, hsl(var(--success) / 0.1), transparent 40%),
+    hsl(var(--background));
+}
+
+.marketing-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(hsl(var(--border) / 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--border) / 0.3) 1px, transparent 1px);
+  background-size: 64px 64px;
+  opacity: 0.12;
+  pointer-events: none;
+}
+
+.marketing-content {
+  position: relative;
+  z-index: 1;
+}
+

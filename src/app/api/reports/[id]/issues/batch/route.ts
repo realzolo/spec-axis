@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { logger } from '@/services/logger';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { z } from 'zod';
 import { requireUser, unauthorized } from '@/services/auth';
+import { requireReportAccess } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ const batchOperationSchema = z.object({
   assigned_to: z.string().optional(),
 });
 
-// 批量更新问题
+// Batch update issues
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -41,12 +42,13 @@ export async function POST(
     logger.setContext({ reportId, action, count: issueIds.length });
 
     const result = await withRetry(async () => {
-      const supabase = await createClient();
+      await requireReportAccess(reportId, user.id);
+      const supabase = createAdminClient();
 
       switch (action) {
         case 'update_status': {
           if (!status) {
-            throw new Error('状态不能为空');
+            throw new Error('Status is required');
           }
 
           const { error } = await supabase
@@ -64,7 +66,7 @@ export async function POST(
 
         case 'assign': {
           if (!assigned_to) {
-            throw new Error('分配对象不能为空');
+            throw new Error('Assignee is required');
           }
 
           const { error } = await supabase
@@ -96,7 +98,7 @@ export async function POST(
       }
     });
 
-    // 记录审计日志
+    // Audit log
     const clientInfo = extractClientInfo(request);
     await auditLogger.log({
       action: 'update',

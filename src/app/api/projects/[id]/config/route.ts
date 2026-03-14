@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
+import { requireProjectAccess } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,8 @@ export async function GET(
   if (!user) return unauthorized();
 
   const { id } = await params;
-  const supabase = await createClient();
+  await requireProjectAccess(id, user.id);
+  const supabase = createAdminClient();
 
   const { data, error } = await supabase
     .from('projects')
@@ -54,7 +56,8 @@ export async function PATCH(
   const body = await request.json();
   const { ignorePatterns, qualityThreshold, autoAnalyze, webhookUrl } = body;
 
-  const supabase = await createClient();
+  await requireProjectAccess(id, user.id);
+  const supabase = createAdminClient();
 
   const updateData: Record<string, unknown> = {};
   if (ignorePatterns !== undefined) updateData.ignore_patterns = ignorePatterns;

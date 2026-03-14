@@ -114,7 +114,7 @@ export async function analyzeCode(
   // Detect languages in the diff
   const detectedLanguages = detectLanguagesInDiff(diff);
   const languageInfo = detectedLanguages.length > 0
-    ? `\n## 检测到的编程语言\n${detectedLanguages.map(lang => `- ${LANGUAGE_CONFIGS[lang].name}`).join('\n')}\n`
+    ? `\n## Detected Languages\n${detectedLanguages.map(lang => `- ${LANGUAGE_CONFIGS[lang].name}`).join('\n')}\n`
     : '';
 
   // Add language-specific rules
@@ -142,88 +142,88 @@ export async function analyzeCode(
 }
 
 function buildAnalysisPrompt(languageInfo: string, rulesText: string, diff: string): string {
-  return `你是一位资深代码审查专家。请对以下代码变更进行全面、深入的分析，并提供结构化的反馈。
+  return `You are a senior code reviewer. Analyze the following code changes thoroughly and provide structured feedback.
 ${languageInfo}
-## 审查规则
+## Review Rules
 ${rulesText}
 
-## 代码变更 (Git Diff)
+## Code Changes (Git Diff)
 \`\`\`diff
 ${diff.slice(0, 150000)}
 \`\`\`
 
-## 分析要求
+## Analysis Requirements
 
-### 1. 基础代码审查
-- 根据所有适用规则审查每个变更的文件
-- 识别具体问题，包含文件路径和行号
-- 为每个类别评分（0-100分）
-- 总分是各类别分数的加权平均值
-- 提供具体、可操作的修复建议
+### 1. Core Review
+- Review each changed file using all applicable rules
+- Identify concrete issues with file paths and line numbers
+- Score each category (0-100)
+- Overall score should be a weighted average of category scores
+- Provide specific, actionable fixes
 
-### 2. 多维度质量分析
-**代码复杂度分析**：
-- 计算圈复杂度和认知复杂度
-- 识别过长函数和深层嵌套
-- 评估代码可读性
+### 2. Multi-dimensional Quality Analysis
+**Complexity**
+- Compute cyclomatic and cognitive complexity
+- Flag overly long functions and deep nesting
+- Assess readability
 
-**代码重复度检测**：
-- 识别重复的代码块
-- 计算重复率
-- 建议重构方案
+**Duplication**
+- Detect duplicated code blocks
+- Estimate duplication rate
+- Suggest refactoring options
 
-**依赖关系分析**：
-- 检测循环依赖
-- 识别未使用的依赖
-- 评估依赖健康度
+**Dependencies**
+- Detect circular dependencies
+- Identify unused dependencies
+- Assess dependency health
 
-### 3. 智能问题优先级
-为每个问题评估：
-- **优先级**（1-5，5最高）：基于严重程度和影响范围
-- **影响范围**：描述问题影响的模块/功能
-- **修复成本**：估算修复所需时间（低/中/高）
-- **代码片段**：提取问题相关的代码
-- **修复补丁**：如果可能，提供具体的修复代码
+### 3. Issue Prioritization
+For each issue, estimate:
+- **Priority** (1-5, 5 highest) based on severity and impact
+- **Impact scope** (affected modules/features)
+- **Estimated effort** (low/medium/high)
+- **Code snippet** for context
+- **Fix patch** if feasible
 
-### 4. 上下文感知分析
-分析代码变更的：
-- **变更类型**：新功能/Bug修复/重构/性能优化等
-- **业务影响**：对用户/系统的影响
-- **风险等级**：低/中/高/严重
-- **影响模块**：列出受影响的模块
-- **破坏性变更**：是否包含API变更、数据库迁移等
+### 4. Context Awareness
+Describe:
+- **Change type** (feature/bug fix/refactor/perf, etc.)
+- **Business impact**
+- **Risk level** (low/medium/high/critical)
+- **Affected modules**
+- **Breaking changes** (API/db migrations, etc.)
 
-### 5. 安全漏洞深度扫描
-检测：
-- SQL注入、XSS、CSRF等OWASP Top 10漏洞
-- 硬编码的敏感信息（API密钥、密码、token）
-- 不安全的加密算法
-- 权限控制缺陷
-- 为每个安全问题标注CWE编号
+### 5. Security Scan
+Detect:
+- OWASP Top 10 issues (SQL injection, XSS, CSRF, etc.)
+- Hardcoded secrets (API keys, passwords, tokens)
+- Weak cryptography
+- Authorization flaws
+- Provide CWE identifiers when applicable
 
-### 6. 性能分析
-识别：
-- 性能瓶颈代码
-- 算法复杂度问题（O(n²)及以上）
-- 不必要的循环和重复计算
-- 内存泄漏风险
-- 同步阻塞操作
+### 6. Performance Review
+Identify:
+- Performance bottlenecks
+- Algorithmic complexity issues (O(n^2)+)
+- Unnecessary loops or recomputation
+- Memory leak risks
+- Blocking synchronous operations
 
-### 7. 智能修复建议
-提供：
-- 代码重构建议（提取函数、简化逻辑）
-- 性能优化方案
-- 架构改进建议
-- 最佳实践推荐
+### 7. Fix Suggestions
+Provide:
+- Refactoring ideas (extract functions, simplify logic)
+- Performance optimizations
+- Architectural improvements
+- Best practice recommendations
 
-### 8. 代码解释
-对于复杂逻辑：
-- 解释代码意图
-- 说明为什么当前实现有问题
-- 提供更好的实现方式
+### 8. Code Explanations
+For complex logic:
+- Explain intent
+- Explain why the current implementation is problematic
+- Suggest a better approach
 
-## 输出格式
-仅返回有效的JSON，不要使用markdown包装：
+## Output Format
+Return ONLY valid JSON (no markdown):
 {
   "score": <0-100>,
   "categoryScores": {
@@ -235,86 +235,86 @@ ${diff.slice(0, 150000)}
   },
   "issues": [
     {
-      "file": "文件路径",
-      "line": 行号或null,
+      "file": "path/to/file.ts",
+      "line": 123,
       "severity": "critical|high|medium|low|info",
-      "category": "类别",
-      "rule": "规则名称",
-      "message": "问题描述（中文）",
-      "suggestion": "修复建议（中文）",
-      "codeSnippet": "问题代码片段",
-      "fixPatch": "修复后的代码",
-      "priority": 1-5,
-      "impactScope": "影响范围描述",
-      "estimatedEffort": "低|中|高"
+      "category": "category",
+      "rule": "rule name",
+      "message": "issue description",
+      "suggestion": "fix suggestion",
+      "codeSnippet": "relevant code",
+      "fixPatch": "proposed fix",
+      "priority": 1,
+      "impactScope": "affected area",
+      "estimatedEffort": "low|medium|high"
     }
   ],
-  "summary": "2-4句话的整体评估（中文）",
+  "summary": "2-4 sentence overall summary",
   "complexityMetrics": {
-    "cyclomaticComplexity": 平均圈复杂度,
-    "cognitiveComplexity": 平均认知复杂度,
-    "averageFunctionLength": 平均函数行数,
-    "maxFunctionLength": 最长函数行数,
-    "totalFunctions": 函数总数
+    "cyclomaticComplexity": 0,
+    "cognitiveComplexity": 0,
+    "averageFunctionLength": 0,
+    "maxFunctionLength": 0,
+    "totalFunctions": 0
   },
   "duplicationMetrics": {
-    "duplicatedLines": 重复行数,
-    "duplicatedBlocks": 重复块数,
-    "duplicationRate": 重复率百分比,
-    "duplicatedFiles": ["重复文件列表"]
+    "duplicatedLines": 0,
+    "duplicatedBlocks": 0,
+    "duplicationRate": 0,
+    "duplicatedFiles": ["fileA.ts"]
   },
   "dependencyMetrics": {
-    "totalDependencies": 依赖总数,
-    "outdatedDependencies": 过时依赖数,
-    "circularDependencies": ["循环依赖列表"],
-    "unusedDependencies": ["未使用依赖列表"]
+    "totalDependencies": 0,
+    "outdatedDependencies": 0,
+    "circularDependencies": ["moduleA -> moduleB -> moduleA"],
+    "unusedDependencies": ["unused-package"]
   },
   "securityFindings": [
     {
-      "type": "漏洞类型",
+      "type": "vulnerability type",
       "severity": "critical|high|medium|low",
-      "description": "详细描述（中文）",
-      "file": "文件路径",
-      "line": 行号,
+      "description": "detailed description",
+      "file": "path/to/file.ts",
+      "line": 42,
       "cwe": "CWE-XXX"
     }
   ],
   "performanceFindings": [
     {
-      "type": "性能问题类型",
-      "description": "详细描述（中文）",
-      "file": "文件路径",
-      "line": 行号,
-      "impact": "影响描述"
+      "type": "performance issue type",
+      "description": "detailed description",
+      "file": "path/to/file.ts",
+      "line": 42,
+      "impact": "impact description"
     }
   ],
   "aiSuggestions": [
     {
-      "type": "建议类型",
-      "title": "建议标题（中文）",
-      "description": "详细描述（中文）",
-      "priority": 1-5,
-      "estimatedImpact": "预期影响"
+      "type": "suggestion type",
+      "title": "short title",
+      "description": "detailed description",
+      "priority": 1,
+      "estimatedImpact": "expected impact"
     }
   ],
   "codeExplanations": [
     {
-      "file": "文件路径",
-      "line": 行号,
-      "complexity": "复杂度描述",
-      "explanation": "代码解释（中文）",
-      "recommendation": "改进建议（中文）"
+      "file": "path/to/file.ts",
+      "line": 42,
+      "complexity": "complexity description",
+      "explanation": "code explanation",
+      "recommendation": "improvement recommendation"
     }
   ],
   "contextAnalysis": {
-    "changeType": "变更类型",
-    "businessImpact": "业务影响描述（中文）",
-    "riskLevel": "低|中|高|严重",
-    "affectedModules": ["影响模块列表"],
-    "breakingChanges": true|false
+    "changeType": "change type",
+    "businessImpact": "business impact",
+    "riskLevel": "low|medium|high|critical",
+    "affectedModules": ["moduleA", "moduleB"],
+    "breakingChanges": false
   }
 }
 
-**重要**：所有文本内容必须使用中文，包括问题描述、建议、解释等。`;
+All text fields must be in English.`;
 }
 

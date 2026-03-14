@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { logger } from '@/services/logger';
 import { projectIdSchema, dateRangeSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
+import { requireProjectAccess } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,10 +28,10 @@ export async function GET(
     const { id } = await params;
     const { searchParams } = new URL(request.url);
 
-    // 验证项目 ID
+    // Validate project ID
     const projectId = projectIdSchema.parse(id);
 
-    // 验证查询参数
+    // Validate query params
     const validated = dateRangeSchema.parse({
       days: searchParams.get('days') ?? '30',
     });
@@ -38,14 +39,15 @@ export async function GET(
 
     logger.setContext({ projectId });
 
-    // 计算日期范围
+    // Calculate date range
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     const startDateStr = startDate.toISOString().split('T')[0];
 
-    // 查询趋势数据（带重试）
+    // Query trend data with retry
     const data = await withRetry(async () => {
-      const supabase = await createClient();
+      await requireProjectAccess(projectId, user.id);
+      const supabase = createAdminClient();
       const { data, error } = await supabase
         .from('quality_snapshots')
         .select('*')

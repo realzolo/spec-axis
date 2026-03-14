@@ -4,6 +4,7 @@ import { logger } from '@/services/logger';
 import { reportIdSchema } from '@/services/validation';
 import { formatErrorResponse } from '@/services/retry';
 import { requireUser, unauthorized } from '@/services/auth';
+import { requireReportAccess } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,16 +18,18 @@ export async function GET(
   try {
     const { id } = await params;
 
-    // 验证报告 ID
+    // Validate report ID
     const reportId = reportIdSchema.parse(id);
 
     logger.setContext({ reportId });
     logger.info('SSE connection established');
 
-    // 创建 SSE 响应
+    await requireReportAccess(reportId, user.id);
+
+    // Create SSE response
     const response = createSSEResponse(reportId);
 
-    // 异步监听报告状态变化
+    // Watch report status in background
     watchReportStatus(reportId).catch((err) => {
       logger.error('Failed to watch report status', err instanceof Error ? err : undefined);
     });

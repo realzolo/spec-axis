@@ -14,5 +14,5 @@ export async function requireUser() {
 }
 
 export function unauthorized() {
-  return NextResponse.json({ error: '未授权' }, { status: 401 });
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 }

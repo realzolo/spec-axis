@@ -12,8 +12,8 @@ interface VirtualScrollProps<T> {
 }
 
 /**
- * 虚拟滚动组件
- * 用于高效渲染大列表（10000+ 项）
+ * Virtual scroll component
+ * Efficiently renders large lists (10,000+ items)
  */
 export function VirtualScroll<T>({
   items,
@@ -25,7 +25,7 @@ export function VirtualScroll<T>({
 }: VirtualScrollProps<T>) {
   const [scrollTop, setScrollTop] = React.useState(0);
 
-  // 计算可见范围
+  // Compute visible range
   const visibleRange = useMemo(() => {
     const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan);
     const endIndex = Math.min(
@@ -36,10 +36,10 @@ export function VirtualScroll<T>({
     return { startIndex, endIndex };
   }, [scrollTop, itemHeight, containerHeight, items.length, overscan]);
 
-  // 计算偏移量
+  // Compute offset
   const offsetY = visibleRange.startIndex * itemHeight;
 
-  // 可见项
+  // Visible items
   const visibleItems = items.slice(visibleRange.startIndex, visibleRange.endIndex);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -52,10 +52,10 @@ export function VirtualScroll<T>({
       style={{ height: containerHeight }}
       onScroll={handleScroll}
     >
-      {/* 顶部占位符 */}
+      {/* Top spacer */}
       <div style={{ height: offsetY }} />
 
-      {/* 可见项 */}
+      {/* Visible items */}
       <div>
         {visibleItems.map((item, index) => (
           <div key={visibleRange.startIndex + index} style={{ height: itemHeight }}>
@@ -64,14 +64,14 @@ export function VirtualScroll<T>({
         ))}
       </div>
 
-      {/* 底部占位符 */}
+      {/* Bottom spacer */}
       <div style={{ height: Math.max(0, (items.length - visibleRange.endIndex) * itemHeight) }} />
     </div>
   );
 }
 
 /**
- * 使用虚拟滚动的列表组件
+ * List component using virtual scroll
  */
 export function VirtualList<T>({
   items,

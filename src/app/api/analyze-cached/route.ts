@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import type { NextRequest } from 'next/server';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { createHash } from 'crypto';
+import { requireProjectAccess } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,10 +32,11 @@ export async function POST(request: NextRequest) {
   const { projectId, commits, useCache = true } = body;
 
   if (!projectId || !commits?.length) {
-    return NextResponse.json({ error: 'projectId 和 commits 不能为空' }, { status: 400 });
+    return NextResponse.json({ error: 'projectId and commits are required' }, { status: 400 });
   }
 
-  const supabase = await createClient();
+  await requireProjectAccess(projectId, user.id);
+  const supabase = createAdminClient();
 
   // Get project
   const { data: project } = await supabase
@@ -44,7 +46,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (!project) {
-    return NextResponse.json({ error: '项目不存在' }, { status: 404 });
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
 
   // Check cache
@@ -81,7 +83,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({
             reportId: report.id,
             fromCache: true,
-            message: '使用最近的相同分析结果',
+            message: 'Used a recent identical analysis result',
           });
         }
       }

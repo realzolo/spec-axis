@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
+import type { Dictionary } from '@/i18n';
 
 type SavedFilter = {
   id: string; name: string;
@@ -18,10 +19,11 @@ type FilterConfig = {
   severity?: string; category?: string; status?: string; priority?: number;
 };
 
-export default function SavedFilters({ userId, currentFilter, onApplyFilter }: {
+export default function SavedFilters({ userId, currentFilter, onApplyFilter, dict }: {
   userId?: string;
   currentFilter: FilterConfig;
   onApplyFilter: (filter: FilterConfig) => void;
+  dict: Dictionary;
 }) {
   const [filters, setFilters] = useState<SavedFilter[]>([]);
   const [filterName, setFilterName] = useState('');
@@ -51,7 +53,7 @@ export default function SavedFilters({ userId, currentFilter, onApplyFilter }: {
   }
 
   async function handleSave() {
-    if (!filterName.trim()) { toast.error('请输入筛选器名称'); return; }
+    if (!filterName.trim()) { toast.error(dict.reports.filterNameRequired); return; }
 
     setSaving(true);
     const res = await fetch('/api/filters', {
@@ -64,11 +66,11 @@ export default function SavedFilters({ userId, currentFilter, onApplyFilter }: {
 
     if (!res.ok) {
       const data = await res.json();
-      toast.error(data.error ?? '保存失败');
+      toast.error(data.error ?? dict.reports.saveFilterFailed);
       return;
     }
 
-    toast.success('筛选器已保存');
+    toast.success(dict.reports.saveFilterSuccess);
     setDialogOpen(false);
     setFilterName('');
     if (resolvedUserId) loadFilters(resolvedUserId);
@@ -76,23 +78,23 @@ export default function SavedFilters({ userId, currentFilter, onApplyFilter }: {
 
   async function handleDelete(filterId: string) {
     const res = await fetch(`/api/filters?filterId=${filterId}`, { method: 'DELETE' });
-    if (!res.ok) { toast.error('删除失败'); return; }
-    toast.success('筛选器已删除');
+    if (!res.ok) { toast.error(dict.reports.deleteFilterFailed); return; }
+    toast.success(dict.reports.deleteFilterSuccess);
     if (resolvedUserId) loadFilters(resolvedUserId);
   }
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold">保存的筛选器</h4>
+        <h4 className="text-sm font-semibold">{dict.reports.savedFiltersTitle}</h4>
         <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)} className="gap-2">
           <Save className="size-3.5" />
-          保存当前筛选
+          {dict.reports.saveCurrentFilter}
         </Button>
       </div>
 
       {filters.length === 0 ? (
-        <div className="text-sm text-muted-foreground text-center py-4">暂无保存的筛选器</div>
+        <div className="text-sm text-muted-foreground text-center py-4">{dict.reports.noSavedFilters}</div>
       ) : (
         <div className="space-y-2">
           {filters.map(filter => (
@@ -112,26 +114,38 @@ export default function SavedFilters({ userId, currentFilter, onApplyFilter }: {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>保存筛选器</DialogTitle>
+            <DialogTitle>{dict.reports.saveFilterTitle}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">筛选器名称</label>
-              <Input value={filterName} onChange={e => setFilterName(e.target.value)} placeholder="例如: 严重安全问题" autoFocus />
+              <label className="text-sm font-medium">{dict.reports.filterNameLabel}</label>
+              <Input value={filterName} onChange={e => setFilterName(e.target.value)} placeholder={dict.reports.filterNamePlaceholder} autoFocus />
             </div>
             <div className="text-sm text-muted-foreground">
-              当前筛选条件:
+              {dict.reports.currentFilterLabel}
               <ul className="mt-2 space-y-1">
-                {currentFilter.severity && <li>• 严重程度: {currentFilter.severity}</li>}
-                {currentFilter.category && <li>• 分类: {currentFilter.category}</li>}
-                {currentFilter.status && <li>• 状态: {currentFilter.status}</li>}
-                {currentFilter.priority && <li>• 优先级: P{currentFilter.priority}</li>}
+                {currentFilter.severity && (
+                  <li>
+                    • {dict.reports.severityLabel}: {dict.reportDetail.severity[currentFilter.severity as keyof typeof dict.reportDetail.severity] ?? currentFilter.severity}
+                  </li>
+                )}
+                {currentFilter.category && (
+                  <li>
+                    • {dict.reports.categoryLabel}: {dict.reports.categories[currentFilter.category as keyof typeof dict.reports.categories] ?? currentFilter.category}
+                  </li>
+                )}
+                {currentFilter.status && (
+                  <li>
+                    • {dict.reports.statusLabel}: {dict.reportDetail.issueStatus[currentFilter.status as keyof typeof dict.reportDetail.issueStatus] ?? currentFilter.status}
+                  </li>
+                )}
+                {currentFilter.priority && <li>• {dict.reports.priorityLabel}: P{currentFilter.priority}</li>}
               </ul>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>取消</Button>
-            <Button disabled={saving} onClick={handleSave}>{saving ? '保存中…' : '保存'}</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>{dict.common.cancel}</Button>
+            <Button disabled={saving} onClick={handleSave}>{saving ? dict.reports.savingFilter : dict.common.save}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

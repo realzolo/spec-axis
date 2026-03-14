@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { logger } from '@/services/logger';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { z } from 'zod';
 import { requireUser, unauthorized } from '@/services/auth';
+import { requireReportAccess } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ const commentSchema = z.object({
   content: z.string().min(1),
 });
 
-// 获取问题详情
+// Get issue details
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; issueId: string }> }
@@ -42,7 +43,8 @@ export async function GET(
     logger.setContext({ issueId });
 
     const data = await withRetry(async () => {
-      const supabase = await createClient();
+      await requireReportAccess(reportId, user.id);
+      const supabase = createAdminClient();
       const { data, error } = await supabase
         .from('report_issues')
         .select('*, issue_comments(*)')
@@ -68,7 +70,7 @@ export async function GET(
   }
 }
 
-// 更新问题状态
+// Update issue status
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; issueId: string }> }
@@ -90,7 +92,8 @@ export async function PATCH(
     logger.setContext({ issueId });
 
     const data = await withRetry(async () => {
-      const supabase = await createClient();
+      await requireReportAccess(reportId, user.id);
+      const supabase = createAdminClient();
 
       const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (status) updateData.status = status;
@@ -112,7 +115,7 @@ export async function PATCH(
       return data;
     });
 
-    // 记录审计日志
+    // Audit log
     const clientInfo = extractClientInfo(request);
     await auditLogger.log({
       action: 'update',
@@ -133,7 +136,7 @@ export async function PATCH(
   }
 }
 
-// 添加评论
+// Add comment
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; issueId: string }> }
@@ -147,7 +150,7 @@ export async function POST(
   if (!user) return unauthorized();
 
   try {
-    const { issueId } = await params;
+    const { id: reportId, issueId } = await params;
     const body = await request.json();
     const validated = commentSchema.parse(body);
     const { author, content } = validated;
@@ -155,7 +158,8 @@ export async function POST(
     logger.setContext({ issueId });
 
     const data = await withRetry(async () => {
-      const supabase = await createClient();
+      await requireReportAccess(reportId, user.id);
+      const supabase = createAdminClient();
       const { data, error } = await supabase
         .from('issue_comments')
         .insert({ issue_id: issueId, author, content })
@@ -169,7 +173,7 @@ export async function POST(
       return data;
     });
 
-    // 记录审计日志
+    // Audit log
     const clientInfo = extractClientInfo(request);
     await auditLogger.log({
       action: 'create',

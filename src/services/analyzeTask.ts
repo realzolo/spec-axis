@@ -25,7 +25,7 @@ export async function runAnalyzeTask(projectId: string, payload: AnalyzePayload)
   const { reportId, repo, hashes, rules, previousReport } = payload;
 
   if (!reportId || !repo || !hashes || hashes.length === 0) {
-    throw new Error('缺少必要的分析参数');
+    throw new Error('Missing required analysis parameters');
   }
 
   logger.setContext({ projectId, reportId });
@@ -42,7 +42,7 @@ export async function runAnalyzeTask(projectId: string, payload: AnalyzePayload)
 
     const filteredDiff = filterDiffByPatterns(diff, ignorePatterns);
     if (!filteredDiff.trim()) {
-      throw new Error('过滤后无可分析的代码变更');
+      throw new Error('No analyzable changes after filtering');
     }
 
     const diffStats = extractDiffStats(filteredDiff);
@@ -97,7 +97,7 @@ export async function runAnalyzeTask(projectId: string, payload: AnalyzePayload)
 export async function buildReportCommits(repo: string, hashes: string[], projectId: string) {
   const commits = await getCommitsBySha(repo, hashes, projectId);
   if (!commits || commits.length === 0) {
-    throw new Error('未找到指定的提交');
+    throw new Error('Specified commits not found');
   }
   return commits;
 }

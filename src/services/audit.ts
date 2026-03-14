@@ -1,6 +1,6 @@
 /**
- * 审计日志服务
- * 记录所有重要操作以便追踪和合规
+ * Audit log service
+ * Tracks important actions for traceability and compliance
  */
 
 import { createAdminClient } from '@/lib/supabase/server';
@@ -16,7 +16,7 @@ export type AuditAction =
   | 'login'
   | 'logout';
 
-export type AuditEntityType = 'project' | 'report' | 'rule' | 'ruleset' | 'user';
+export type AuditEntityType = 'project' | 'report' | 'rule' | 'ruleset' | 'user' | 'org';
 
 export interface AuditLogEntry {
   action: AuditAction;
@@ -30,7 +30,7 @@ export interface AuditLogEntry {
 
 class AuditLogger {
   /**
-   * 记录审计日志
+   * Write an audit log entry
    */
   async log(entry: AuditLogEntry) {
     try {
@@ -59,7 +59,7 @@ class AuditLogger {
   }
 
   /**
-   * 获取审计日志
+   * Fetch audit logs
    */
   async getLogs(
     entityType?: AuditEntityType,
@@ -94,7 +94,7 @@ class AuditLogger {
   }
 
   /**
-   * 获取用户活动
+   * Fetch user activity
    */
   async getUserActivity(userId: string, limit: number = 50) {
     try {
@@ -120,7 +120,7 @@ class AuditLogger {
   }
 
   /**
-   * 清理旧的审计日志（保留 90 天）
+   * Cleanup old logs (keep 90 days)
    */
   async cleanup() {
     try {
@@ -147,7 +147,7 @@ class AuditLogger {
 export const auditLogger = new AuditLogger();
 
 /**
- * 从请求中提取客户端信息
+ * Extract client info from request
  */
 export function extractClientInfo(request: Request) {
   return {

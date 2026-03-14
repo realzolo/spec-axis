@@ -120,7 +120,7 @@ export default function ProjectCard({ project: initialProject, onDelete, onUpdat
                 <AlertTriangle className="size-3" />{dict.projects.noRuleSet}
               </Badge>
             ) : (
-              <span className="text-xs text-muted-foreground">Rule set attached</span>
+              <span className="text-xs text-muted-foreground">{dict.projects.ruleSetAttached}</span>
             )}
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <Tooltip>

@@ -1,6 +1,6 @@
 /**
- * 性能监控服务
- * 收集和记录关键性能指标
+ * Performance monitoring service
+ * Collects and records key performance metrics
  */
 
 import { createAdminClient } from '@/lib/supabase/server';
@@ -17,7 +17,7 @@ class PerformanceMonitor {
   private metrics: Map<string, PerformanceMetric[]> = new Map();
 
   /**
-   * 记录性能指标
+   * Record a metric
    */
   recordMetric(reportId: string, name: string, value: number, unit?: string) {
     const key = reportId;
@@ -36,7 +36,7 @@ class PerformanceMonitor {
   }
 
   /**
-   * 获取指标统计
+   * Get metric stats
    */
   getMetricStats(reportId: string, metricName: string) {
     const metrics = this.metrics.get(reportId) || [];
@@ -56,7 +56,7 @@ class PerformanceMonitor {
   }
 
   /**
-   * 保存指标到数据库
+   * Persist metrics to database
    */
   async saveMetrics(reportId: string) {
     const metrics = this.metrics.get(reportId);
@@ -87,7 +87,7 @@ class PerformanceMonitor {
   }
 
   /**
-   * 清理指标
+   * Clear metrics
    */
   clearMetrics(reportId: string) {
     this.metrics.delete(reportId);
@@ -97,7 +97,7 @@ class PerformanceMonitor {
 export const performanceMonitor = new PerformanceMonitor();
 
 /**
- * 测量异步操作的性能
+ * Measure async operation performance
  */
 export async function measurePerformance<T>(
   reportId: string,
@@ -119,7 +119,7 @@ export async function measurePerformance<T>(
 }
 
 /**
- * 获取关键性能指标
+ * Get key performance metrics
  */
 export async function getKeyMetrics(reportId: string) {
   const db = createAdminClient();
@@ -134,7 +134,7 @@ export async function getKeyMetrics(reportId: string) {
     return null;
   }
 
-  // 按指标名称分组
+  // Group by metric name
   const grouped: Record<string, number[]> = {};
   (data || []).forEach((m: Record<string, unknown>) => {
     const metricName = m.metric_name as string;
@@ -144,7 +144,7 @@ export async function getKeyMetrics(reportId: string) {
     grouped[metricName].push(m.metric_value as number);
   });
 
-  // 计算统计信息
+  // Calculate stats
   const stats: Record<string, Record<string, number>> = {};
   for (const [name, values] of Object.entries(grouped)) {
     stats[name] = {

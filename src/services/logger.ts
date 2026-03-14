@@ -1,6 +1,6 @@
 /**
- * 结构化日志服务
- * 支持不同日志级别和上下文信息
+ * Structured logging service
+ * Supports log levels and contextual metadata
  */
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -55,7 +55,7 @@ class Logger {
   }
 
   private log(entry: LogEntry) {
-    // 在生产环境中可以发送到日志服务（如 Sentry, DataDog 等）
+    // In production, this could be sent to a log aggregation service
     const output = JSON.stringify(entry);
 
     if (entry.level === 'error') {

@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
+import { requireReportAccess } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,15 +28,16 @@ export async function POST(request: NextRequest) {
   } = body;
 
   if (!ruleId || !reportId || !issueFile || !feedbackType) {
-    return NextResponse.json({ error: '缺少必要参数' }, { status: 400 });
+    return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
   }
 
   const validFeedbackTypes = ['helpful', 'not_helpful', 'false_positive', 'too_strict', 'too_lenient'];
   if (!validFeedbackTypes.includes(feedbackType)) {
-    return NextResponse.json({ error: '无效的反馈类型' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid feedback type' }, { status: 400 });
   }
 
-  const supabase = await createClient();
+  await requireReportAccess(reportId, user.id);
+  const supabase = createAdminClient();
 
   const { data, error } = await supabase
     .from('rule_feedback')
@@ -69,7 +71,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const ruleId = searchParams.get('ruleId');
 
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   if (ruleId) {
     const { data, error } = await supabase

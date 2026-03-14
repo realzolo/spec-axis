@@ -5,8 +5,11 @@ import { Providers } from './providers';
 import { getLocale } from '@/lib/locale';
 
 export const metadata: Metadata = {
-  title: 'spec-axis',
-  description: 'spec-axis app',
+  title: 'Nexaly',
+  description: 'Nexaly app',
+  icons: {
+    icon: '/icon.svg',
+  },
 };
 
 export default async function RootLayout({

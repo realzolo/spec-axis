@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
+import { requireReportAccess } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -27,10 +28,11 @@ export async function POST(
   const { message, conversationId, issueId } = body;
 
   if (!message) {
-    return NextResponse.json({ error: '消息不能为空' }, { status: 400 });
+    return NextResponse.json({ error: 'Message is required' }, { status: 400 });
   }
 
-  const supabase = await createClient();
+  await requireReportAccess(reportId, user.id);
+  const supabase = createAdminClient();
 
   // Get report details
   const { data: report } = await supabase
@@ -40,7 +42,7 @@ export async function POST(
     .single();
 
   if (!report) {
-    return NextResponse.json({ error: '报告不存在' }, { status: 404 });
+    return NextResponse.json({ error: 'Report not found' }, { status: 404 });
   }
 
   // Get or create conversation
@@ -70,19 +72,19 @@ export async function POST(
   const messages = conversation?.messages || [];
 
   // Build context
-  let context = `你是一位资深代码审查专家，正在与开发者讨论代码质量问题。
+  let context = `You are a senior code reviewer assisting a developer with code quality questions.
 
-## 项目信息
-- 项目名称：${report.projects?.name}
-- 仓库：${report.projects?.repo}
-- 总体评分：${report.score}/100
+## Project
+- Name: ${report.projects?.name}
+- Repository: ${report.projects?.repo}
+- Overall score: ${report.score}/100
 
-## 报告摘要
+## Report summary
 ${report.summary}
 
-## 问题统计
-- 总问题数：${report.issues?.length ?? 0}
-- 严重问题：${report.issues?.filter((i: Record<string, unknown>) => i.severity === 'critical' || i.severity === 'high').length ?? 0}
+## Issue stats
+- Total issues: ${report.issues?.length ?? 0}
+- Critical/high issues: ${report.issues?.filter((i: Record<string, unknown>) => i.severity === 'critical' || i.severity === 'high').length ?? 0}
 
 `;
 
@@ -102,23 +104,23 @@ ${report.summary}
     }
 
     if (issue) {
-      context += `\n## 当前讨论的问题
-文件：${issue.file}
-行号：${issue.line ?? '未知'}
-严重程度：${issue.severity}
-类别：${issue.category}
-规则：${issue.rule}
-问题描述：${issue.message}
-修复建议：${issue.suggestion ?? '无'}
+      context += `\n## Focus issue
+File: ${issue.file}
+Line: ${issue.line ?? 'Unknown'}
+Severity: ${issue.severity}
+Category: ${issue.category}
+Rule: ${issue.rule}
+Issue: ${issue.message}
+Suggestion: ${issue.suggestion ?? 'None'}
 `;
       if (issue.code_snippet || issue.codeSnippet) {
         const snippet = (issue.code_snippet || issue.codeSnippet) as string;
-        context += `\n代码片段：\n\`\`\`\n${snippet}\n\`\`\`\n`;
+        context += `\nCode snippet:\n\`\`\`\n${snippet}\n\`\`\`\n`;
       }
     }
   }
 
-  context += `\n请用中文回答开发者的问题，提供专业、详细、可操作的建议。`;
+  context += `\nPlease respond in English with clear, actionable guidance.`;
 
   // Call Claude API
   const client = new Anthropic({
@@ -178,7 +180,9 @@ export async function GET(
   const { searchParams } = new URL(request.url);
   const conversationId = searchParams.get('conversationId');
 
-  const supabase = await createClient();
+  const supabase = createAdminClient();
+
+  await requireReportAccess(reportId, user.id);
 
   if (conversationId) {
     const { data, error } = await supabase

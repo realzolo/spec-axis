@@ -40,11 +40,11 @@ export default function Topbar({ dict }: { dict: Dictionary }) {
   const isSettings = pathname.startsWith('/settings');
 
   const title =
-    isProjects ? 'All Projects' :
+    isProjects ? dict.projects.allProjects :
     isReports ? dict.reports.title :
     isRules ? dict.rules.title :
     isSettings ? dict.settings.title :
-    'Overview';
+    dict.dashboard.overview;
 
   const q = searchParams.get('q') ?? '';
   const view = searchParams.get('view') === 'list' ? 'list' : 'grid';
@@ -66,7 +66,7 @@ export default function Topbar({ dict }: { dict: Dictionary }) {
           <div className="text-sm font-medium text-foreground">{title}</div>
         )}
         <div className="ml-auto text-xs text-muted-foreground">
-          {isProjects ? 'Overview' : ''}
+          {isProjects ? dict.projects.overview : ''}
         </div>
       </div>
 
@@ -111,7 +111,7 @@ export default function Topbar({ dict }: { dict: Dictionary }) {
             <DropdownMenuTrigger asChild>
               <Button className="gap-1.5">
                 <Plus className="h-4 w-4" />
-                Add New
+                {dict.projects.addProject}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -122,7 +122,7 @@ export default function Topbar({ dict }: { dict: Dictionary }) {
                   }
                 }}
               >
-                New Project
+                {dict.projects.addProject}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

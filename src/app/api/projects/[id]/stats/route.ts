@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { logger } from '@/services/logger';
 import { projectIdSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
+import { requireProjectAccess } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,14 +49,15 @@ export async function GET(
   try {
     const { id } = await params;
 
-    // 验证项目 ID
+    // Validate project ID
     const projectId = projectIdSchema.parse(id);
 
     logger.setContext({ projectId });
 
-    // 获取项目统计数据（带重试）
+    // Fetch project stats with retry
     const stats = await withRetry(async () => {
-      const supabase = await createClient();
+      await requireProjectAccess(projectId, user.id);
+      const supabase = createAdminClient();
 
       const { data: reports, error } = await supabase
         .from('reports')
@@ -83,7 +85,7 @@ export async function GET(
 }
 
 /**
- * 计算项目统计数据
+ * Calculate project stats
  */
 function calculateStats(reports: Report[]): StatsResponse {
   if (!reports || reports.length === 0) {
@@ -103,14 +105,14 @@ function calculateStats(reports: Report[]): StatsResponse {
     (r) => r.status === 'pending' || r.status === 'analyzing'
   ).length;
 
-  // 计算平均分数
+  // Calculate average score
   const scores = doneReports
     .map((r) => r.score)
     .filter((s): s is number => s != null);
   const averageScore =
     scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
-  // 计算问题统计
+  // Calculate issue stats
   let totalIssues = 0;
   let criticalIssues = 0;
 
@@ -123,7 +125,7 @@ function calculateStats(reports: Report[]): StatsResponse {
     }
   });
 
-  // 计算趋势（最近 7 天 vs 之前 7 天）
+  // Calculate trend (last 7 days vs previous 7 days)
   const now = Date.now();
   const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
   const fourteenDaysAgo = now - 14 * 24 * 60 * 60 * 1000;

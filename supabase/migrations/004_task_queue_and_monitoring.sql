@@ -1,4 +1,4 @@
--- 任务队列表
+-- Task queue table
 CREATE TABLE IF NOT EXISTS task_queue (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   type TEXT NOT NULL CHECK (type IN ('analyze', 'export', 'learn')),
@@ -16,13 +16,13 @@ CREATE TABLE IF NOT EXISTS task_queue (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 创建索引以优化查询
+-- Indexes for query optimization
 CREATE INDEX IF NOT EXISTS idx_task_queue_status ON task_queue(status);
 CREATE INDEX IF NOT EXISTS idx_task_queue_project_id ON task_queue(project_id);
 CREATE INDEX IF NOT EXISTS idx_task_queue_priority ON task_queue(priority DESC, created_at ASC);
 CREATE INDEX IF NOT EXISTS idx_task_queue_created_at ON task_queue(created_at DESC);
 
--- 性能指标表
+-- Performance metrics table
 CREATE TABLE IF NOT EXISTS performance_metrics (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   report_id UUID NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
@@ -32,12 +32,12 @@ CREATE TABLE IF NOT EXISTS performance_metrics (
   recorded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 创建索引
+-- Indexes
 CREATE INDEX IF NOT EXISTS idx_performance_metrics_report_id ON performance_metrics(report_id);
 CREATE INDEX IF NOT EXISTS idx_performance_metrics_metric_name ON performance_metrics(metric_name);
 CREATE INDEX IF NOT EXISTS idx_performance_metrics_recorded_at ON performance_metrics(recorded_at DESC);
 
--- 审计日志表
+-- Audit logs table
 CREATE TABLE IF NOT EXISTS audit_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   action TEXT NOT NULL,
@@ -50,12 +50,12 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 创建索引
+-- Indexes
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity_type ON audit_logs(entity_type);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
 
--- 优化现有表的索引
+-- Additional indexes
 CREATE INDEX IF NOT EXISTS idx_reports_project_id_status ON reports(project_id, status);
 CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_rules_ruleset_id_enabled ON rules(ruleset_id, is_enabled);

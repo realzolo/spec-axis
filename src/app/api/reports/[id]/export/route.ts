@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
+import { requireReportAccess } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,8 @@ export async function GET(
   const { searchParams } = new URL(request.url);
   const format = searchParams.get('format') || 'json';
 
-  const supabase = await createClient();
+  await requireReportAccess(id, user.id);
+  const supabase = createAdminClient();
 
   const { data: report, error } = await supabase
     .from('reports')
@@ -33,7 +35,7 @@ export async function GET(
     .single();
 
   if (error || !report) {
-    return NextResponse.json({ error: '报告不存在' }, { status: 404 });
+    return NextResponse.json({ error: 'Report not found' }, { status: 404 });
   }
 
   if (format === 'markdown') {
@@ -63,20 +65,20 @@ export async function GET(
 function generateMarkdown(report: Record<string, unknown>): string {
   const lines: string[] = [];
 
-  lines.push(`# 代码审查报告`);
+  lines.push(`# Code Review Report`);
   lines.push('');
-  lines.push(`**项目**: ${(report.projects as Record<string, unknown>)?.name || '未知'}`);
-  lines.push(`**仓库**: ${(report.projects as Record<string, unknown>)?.repo || '未知'}`);
-  lines.push(`**报告ID**: ${report.id}`);
-  lines.push(`**创建时间**: ${new Date(report.created_at as string).toLocaleString('zh-CN')}`);
-  lines.push(`**状态**: ${report.status}`);
+  lines.push(`**Project**: ${(report.projects as Record<string, unknown>)?.name || 'Unknown'}`);
+  lines.push(`**Repository**: ${(report.projects as Record<string, unknown>)?.repo || 'Unknown'}`);
+  lines.push(`**Report ID**: ${report.id}`);
+  lines.push(`**Created At**: ${new Date(report.created_at as string).toLocaleString()}`);
+  lines.push(`**Status**: ${report.status}`);
   lines.push('');
 
   if (report.status === 'done') {
-    lines.push(`## 总体评分: ${report.score}/100`);
+    lines.push(`## Overall Score: ${report.score}/100`);
     lines.push('');
 
-    lines.push('### 分类评分');
+    lines.push('### Category Scores');
     lines.push('');
     if (report.category_scores) {
       Object.entries(report.category_scores as Record<string, unknown>).forEach(([cat, score]) => {
@@ -85,16 +87,16 @@ function generateMarkdown(report: Record<string, unknown>): string {
     }
     lines.push('');
 
-    lines.push('### 代码变更统计');
+    lines.push('### Change Summary');
     lines.push('');
-    lines.push(`- 变更文件: ${report.total_files || 0}`);
-    lines.push(`- 新增行数: ${report.total_additions || 0}`);
-    lines.push(`- 删除行数: ${report.total_deletions || 0}`);
-    lines.push(`- 提交数量: ${(report.commits as unknown[])?.length || 0}`);
+    lines.push(`- Files changed: ${report.total_files || 0}`);
+    lines.push(`- Additions: ${report.total_additions || 0}`);
+    lines.push(`- Deletions: ${report.total_deletions || 0}`);
+    lines.push(`- Commits: ${(report.commits as unknown[])?.length || 0}`);
     lines.push('');
 
     if (report.issues && Array.isArray(report.issues) && report.issues.length > 0) {
-      lines.push(`## 问题列表 (${report.issues.length})`);
+      lines.push(`## Issues (${report.issues.length})`);
       lines.push('');
 
       const severityGroups: Record<string, Record<string, unknown>[]> = {};
@@ -114,15 +116,15 @@ function generateMarkdown(report: Record<string, unknown>): string {
           issues.forEach((issue: Record<string, unknown>, idx: number) => {
             lines.push(`#### ${idx + 1}. ${issue.file}${issue.line ? `:${issue.line}` : ''}`);
             lines.push('');
-            lines.push(`**规则**: ${issue.rule}`);
-            lines.push(`**分类**: ${issue.category}`);
-            lines.push(`**问题**: ${issue.message}`);
+            lines.push(`**Rule**: ${issue.rule}`);
+            lines.push(`**Category**: ${issue.category}`);
+            lines.push(`**Issue**: ${issue.message}`);
             if (issue.suggestion) {
               lines.push('');
-              lines.push(`**建议**: ${issue.suggestion}`);
+              lines.push(`**Suggestion**: ${issue.suggestion}`);
             }
             if (issue.priority) {
-              lines.push(`**优先级**: P${issue.priority}`);
+              lines.push(`**Priority**: P${issue.priority}`);
             }
             lines.push('');
           });
@@ -131,7 +133,7 @@ function generateMarkdown(report: Record<string, unknown>): string {
     }
 
     if (report.summary) {
-      lines.push('## AI 总结');
+      lines.push('## AI Summary');
       lines.push('');
       lines.push(report.summary as string);
       lines.push('');
@@ -139,12 +141,12 @@ function generateMarkdown(report: Record<string, unknown>): string {
 
     if (report.context_analysis) {
       const contextAnalysis = report.context_analysis as Record<string, unknown>;
-      lines.push('## 上下文分析');
+      lines.push('## Context Analysis');
       lines.push('');
-      lines.push(`- **变更类型**: ${contextAnalysis.changeType}`);
-      lines.push(`- **风险等级**: ${contextAnalysis.riskLevel}`);
-      lines.push(`- **业务影响**: ${contextAnalysis.businessImpact}`);
-      lines.push(`- **破坏性变更**: ${contextAnalysis.breakingChanges ? '是' : '否'}`);
+      lines.push(`- **Change type**: ${contextAnalysis.changeType}`);
+      lines.push(`- **Risk level**: ${contextAnalysis.riskLevel}`);
+      lines.push(`- **Business impact**: ${contextAnalysis.businessImpact}`);
+      lines.push(`- **Breaking changes**: ${contextAnalysis.breakingChanges ? 'Yes' : 'No'}`);
       lines.push('');
     }
   }
@@ -156,7 +158,7 @@ function generateCSV(report: Record<string, unknown>): string {
   const lines: string[] = [];
 
   // Header
-  lines.push('文件,行号,严重程度,分类,规则,问题描述,修复建议,优先级');
+  lines.push('File,Line,Severity,Category,Rule,Issue,Suggestion,Priority');
 
   // Issues
   if (report.issues && Array.isArray(report.issues) && report.issues.length > 0) {

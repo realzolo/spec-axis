@@ -11,6 +11,7 @@ import { requireUser, unauthorized } from '@/services/auth';
 import { createAdminClient } from '@/lib/supabase/server';
 import { createVCSClient } from '@/services/integrations';
 import { readSecret } from '@/lib/vault';
+import { getDefaultOrgId } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,8 @@ export async function GET(request: NextRequest) {
   if (!user) return unauthorized();
 
   try {
-    const data = await withRetry(() => getProjects());
+    const orgId = await getDefaultOrgId(user.id, user.email ?? undefined);
+    const data = await withRetry(() => getProjects(orgId));
     logger.info(`Projects fetched: ${data.length} projects`);
     return NextResponse.json(data);
   } catch (err) {
@@ -49,6 +51,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = createProjectSchema.parse(body);
     const { name, repo, description, default_branch, ruleset_id } = validated;
+    const orgId = await getDefaultOrgId(user.id, user.email ?? undefined);
 
     logger.setContext({ repo });
 
@@ -90,10 +93,10 @@ export async function POST(request: NextRequest) {
     const token = await readSecret(vcsIntegration.vault_secret_name);
     const vcsClient = createVCSClient(vcsIntegration, token);
 
-    // 验证仓库
+    // Validate repository access
     const valid = await withRetry(() => vcsClient.testConnection());
     if (!valid) {
-      return NextResponse.json({ error: '仓库不存在或无法访问' }, { status: 400 });
+      return NextResponse.json({ error: 'Repository not accessible' }, { status: 400 });
     }
 
     // Create project first to get projectId
@@ -105,18 +108,19 @@ export async function POST(request: NextRequest) {
         default_branch: default_branch || 'main',
         ruleset_id,
         user_id: user.id,
+        org_id: orgId,
         vcs_integration_id: vcsIntegration.id,
         ai_integration_id: aiIntegration.id,
       })
     );
 
-    // 获取分支列表 (now we have projectId)
+    // Fetch branches (now we have projectId)
     const branches = await withRetry(() => getRepoBranches(repo, tempProject.id)).catch(() => [tempProject.default_branch]);
 
     // Update project with correct branch if needed
     const project = tempProject;
 
-    // 记录审计日志
+    // Audit log
     const clientInfo = extractClientInfo(request);
     await auditLogger.log({
       action: 'create',

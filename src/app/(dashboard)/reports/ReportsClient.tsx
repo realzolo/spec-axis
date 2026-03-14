@@ -182,7 +182,7 @@ export default function ReportsClient({ initialReports, dict }: { initialReports
                       <Badge size="sm" variant={st.variant}>{st.label}</Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {(report.commits as unknown[])?.length ?? 0} {dict.reports.commit} · {new Date(report.created_at).toLocaleString()}
+                      {(report.commits as unknown[])?.length ?? 0} {dict.reports.commit} - {new Date(report.created_at).toLocaleString()}
                     </p>
                   </div>
 

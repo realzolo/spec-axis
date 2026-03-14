@@ -1,6 +1,6 @@
 /**
- * Server-Sent Events 推送服务
- * 用于实时推送分析进度
+ * Server-Sent Events (SSE) service
+ * Streams analysis progress updates
  */
 
 import { NextResponse } from 'next/server';
@@ -15,14 +15,14 @@ interface SSEClient {
 const clients = new Map<string, SSEClient[]>();
 
 /**
- * 创建 SSE 响应
+ * Create SSE response
  */
 export function createSSEResponse(reportId: string) {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const client: SSEClient = { reportId, controller };
 
-      // 添加客户端到列表
+      // Add client to list
       if (!clients.has(reportId)) {
         clients.set(reportId, []);
       }
@@ -30,11 +30,11 @@ export function createSSEResponse(reportId: string) {
 
       logger.info(`SSE client connected: ${reportId}`);
 
-      // 发送初始连接消息
+      // Send initial connection message
       const encoder = new TextEncoder();
       controller.enqueue(encoder.encode('data: {"type":"connected"}\n\n'));
 
-      // 设置心跳，保持连接活跃
+      // Heartbeat to keep connection alive
       const heartbeat = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(': heartbeat\n\n'));
@@ -43,7 +43,7 @@ export function createSSEResponse(reportId: string) {
         }
       }, 30000);
 
-      // 清理函数
+      // Cleanup
       const cleanup = () => {
         clearInterval(heartbeat);
         const clientList = clients.get(reportId);
@@ -59,16 +59,16 @@ export function createSSEResponse(reportId: string) {
         logger.info(`SSE client disconnected: ${reportId}`);
       };
 
-      // 监听客户端断开连接
+      // Handle client disconnect
       const abortHandler = () => cleanup();
       try {
-        // 尝试使用 abort 事件（如果支持）
+        // Try abort event if supported
         const controllerWithSignal = controller as ReadableStreamDefaultController<Uint8Array> & {
           signal?: { addEventListener?: (event: string, handler: () => void) => void };
         };
         controllerWithSignal.signal?.addEventListener?.('abort', abortHandler);
       } catch {
-        // 如果不支持，忽略错误
+        // Ignore if not supported
       }
     },
   });
@@ -84,7 +84,7 @@ export function createSSEResponse(reportId: string) {
 }
 
 /**
- * 向所有连接的客户端广播消息
+ * Broadcast updates to all connected clients
  */
 export function broadcastUpdate(reportId: string, data: Record<string, unknown>) {
   const clientList = clients.get(reportId);
@@ -106,7 +106,7 @@ export function broadcastUpdate(reportId: string, data: Record<string, unknown>)
 }
 
 /**
- * 监听报告状态变化并推送更新
+ * Watch report status updates and broadcast changes
  */
 export async function watchReportStatus(reportId: string) {
   const supabase = await createClient();
@@ -140,7 +140,7 @@ export async function watchReportStatus(reportId: string) {
 }
 
 /**
- * 清理所有 SSE 连接
+ * Cleanup all SSE connections
  */
 export function cleanupSSEConnections() {
   clients.forEach((clientList) => {
@@ -148,7 +148,7 @@ export function cleanupSSEConnections() {
       try {
         client.controller.close();
       } catch {
-        // 忽略关闭错误
+        // Ignore close errors
       }
     });
   });

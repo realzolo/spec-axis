@@ -11,13 +11,14 @@ import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { auditLogger, extractClientInfo } from '@/services/audit';
+import { requireProjectAccess } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.analyze);
 
 export async function POST(request: NextRequest) {
-  // 速率限制检查
+  // Rate limit
   const rateLimitResponse = rateLimiter(request);
   if (rateLimitResponse) {
     return rateLimitResponse;
@@ -35,32 +36,33 @@ export async function POST(request: NextRequest) {
 
     logger.setContext({ projectId });
 
-    // 验证项目存在
+    // Validate project exists
+    await withRetry(() => requireProjectAccess(projectId, user.id));
     const project = await withRetry(() => getProjectById(projectId));
     if (!project) {
-      return NextResponse.json({ error: '项目不存在' }, { status: 404 });
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
     if (!project.ruleset_id) {
-      return NextResponse.json({ error: '项目未配置规则集' }, { status: 400 });
+      return NextResponse.json({ error: 'Project has no rule set configured' }, { status: 400 });
     }
 
-    // 获取规则集
+    // Get rule set
     const rules = await withRetry(() => getRulesBySetId(project.ruleset_id));
     if (!rules.length) {
-      return NextResponse.json({ error: '规则集没有启用的规则' }, { status: 400 });
+      return NextResponse.json({ error: 'No enabled rules in rule set' }, { status: 400 });
     }
 
-    // 获取提交信息（按 SHA 精确获取）
+    // Resolve commits by SHA
     const selectedCommits = await withRetry(() =>
       buildReportCommits(project.repo, selectedHashes, projectId)
     );
 
     if (selectedCommits.length === 0) {
-      return NextResponse.json({ error: '未找到指定的提交' }, { status: 400 });
+      return NextResponse.json({ error: 'Specified commits not found' }, { status: 400 });
     }
 
-    // 检查是否使用增量分析
+    // Check whether to use incremental analysis
     const supabase = await createClient();
     const { data: recentReports } = await supabase
       .from('reports')
@@ -74,10 +76,11 @@ export async function POST(request: NextRequest) {
       !forceFullAnalysis &&
       shouldUseIncrementalAnalysis(project, selectedHashes, recentReports || []);
 
-    // 创建报告
+    // Create report
     const report = await withRetry(() =>
       createReport({
         project_id: projectId,
+        org_id: project.org_id ?? null,
         ruleset_snapshot: rules,
         commits: selectedCommits,
       })
@@ -85,7 +88,7 @@ export async function POST(request: NextRequest) {
 
     logger.info(`Report created: ${report.id}`);
 
-    // 将分析任务加入队列（高优先级）
+    // Enqueue analysis task (high priority)
     await taskQueue.enqueue(
       'analyze',
       projectId,
@@ -96,7 +99,7 @@ export async function POST(request: NextRequest) {
         rules,
         previousReport: useIncremental ? recentReports?.[0] : null,
       } as Record<string, unknown>,
-      8, // 高优先级
+      8, // High priority
       report.id
     );
 

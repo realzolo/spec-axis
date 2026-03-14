@@ -12,7 +12,7 @@ export default function ThemeToggle() {
     <Button
       size="icon"
       variant="ghost"
-      aria-label={isDark ? '切换到浅色模式' : '切换到深色模式'}
+      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
       onClick={toggle}
       className="h-8 w-8"
     >

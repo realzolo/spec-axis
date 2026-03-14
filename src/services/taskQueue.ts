@@ -1,6 +1,6 @@
 /**
- * 任务队列服务
- * 使用 Supabase 作为队列存储，支持并发控制
+ * Task queue service
+ * Uses Supabase as a queue store with concurrency control
  */
 
 import { createAdminClient } from '@/lib/supabase/server';
@@ -13,7 +13,7 @@ export interface QueuedTask {
   reportId?: string;
   payload: Record<string, unknown>;
   status: 'pending' | 'processing' | 'completed' | 'failed';
-  priority: number; // 1-10，10 最高
+  priority: number; // 1-10, 10 is highest
   attempts: number;
   maxAttempts: number;
   error?: string;
@@ -65,13 +65,13 @@ class TaskQueue {
     const db = createAdminClient();
 
     while (true) {
-      // 检查是否有空闲的处理槽位
+      // Check for available processing slots
       if (this.processingTasks.size >= MAX_CONCURRENT_TASKS) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         continue;
       }
 
-      // 获取下一个待处理任务（按优先级排序）
+      // Fetch next pending task by priority
       const { data: tasks, error } = await db
         .from('task_queue')
         .select('*')
@@ -87,7 +87,7 @@ class TaskQueue {
 
       const task = mapTask(tasks[0]);
 
-      // 标记为处理中
+      // Mark as processing
       await db
         .from('task_queue')
         .update({
@@ -96,7 +96,7 @@ class TaskQueue {
         })
         .eq('id', task.id);
 
-      // 异步处理任务
+      // Process task asynchronously
       const promise = this.executeTask(task, handler, db);
       this.processingTasks.set(task.id, promise);
 
@@ -153,7 +153,7 @@ class TaskQueue {
 
       await handler(task);
 
-      // 标记为完成
+      // Mark as completed
       await db
         .from('task_queue')
         .update({
@@ -167,7 +167,7 @@ class TaskQueue {
       const error = err instanceof Error ? err : new Error(String(err));
       logger.error(`Task failed: ${task.id}`, error);
 
-      // 检查是否需要重试
+      // Check retry
       if (task.attempts < task.maxAttempts) {
         await db
           .from('task_queue')
@@ -180,7 +180,7 @@ class TaskQueue {
 
         logger.info(`Task requeued: ${task.id} (attempt ${task.attempts + 1}/${task.maxAttempts})`);
       } else {
-        // 标记为失败
+        // Mark as failed
         await db
           .from('task_queue')
           .update({

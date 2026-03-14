@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { upsertRule, deleteRule } from '@/services/db';
+import { upsertRule, deleteRule, getRuleSetById } from '@/services/db';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { z } from 'zod';
+import { getDefaultOrgId } from '@/services/orgs';
+import { createAdminClient } from '@/lib/supabase/server';
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 
@@ -26,6 +28,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!user) return unauthorized();
 
   const { setId } = await params;
+  const ruleSet = await getRuleSetById(setId);
+  if (!ruleSet) {
+    return NextResponse.json({ error: 'Rule set not found' }, { status: 404 });
+  }
+  if (!ruleSet.is_global) {
+    const orgId = await getDefaultOrgId(user.id, user.email ?? undefined);
+    if (ruleSet.org_id && ruleSet.org_id !== orgId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
   const body = await request.json();
   const validated = ruleSchema.parse(body);
   const data = await upsertRule({ ...validated, ruleset_id: setId });
@@ -40,6 +52,30 @@ export async function DELETE(request: NextRequest) {
   if (!user) return unauthorized();
 
   const { id } = await request.json();
+
+  const db = createAdminClient();
+  const { data: rule, error } = await db
+    .from('rules')
+    .select('ruleset_id')
+    .eq('id', id)
+    .single();
+
+  if (error || !rule) {
+    return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
+  }
+
+  const ruleSet = await getRuleSetById(rule.ruleset_id);
+  if (!ruleSet) {
+    return NextResponse.json({ error: 'Rule set not found' }, { status: 404 });
+  }
+
+  if (!ruleSet.is_global) {
+    const orgId = await getDefaultOrgId(user.id, user.email ?? undefined);
+    if (ruleSet.org_id && ruleSet.org_id !== orgId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+
   await deleteRule(id);
   return NextResponse.json({ success: true });
 }

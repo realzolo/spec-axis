@@ -53,8 +53,8 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
           <Code2 className="text-foreground size-4" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold leading-none">AIDOL_Test</div>
-          <div className="text-[11px] text-muted-foreground mt-1">Pro</div>
+          <div className="text-sm font-semibold leading-none">{dict.nav.workspaceDefault}</div>
+          <div className="text-[11px] text-muted-foreground mt-1">{dict.nav.planDefault}</div>
         </div>
       </div>
 
@@ -62,7 +62,7 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <Input
-            placeholder="Find…"
+            placeholder={dict.nav.searchPlaceholder}
             className="h-8 pl-8 bg-muted/40 border-border text-xs"
           />
         </div>

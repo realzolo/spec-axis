@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 64">
+  <defs>
+    <linearGradient id="nexaly-gradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4CF4FF" />
+      <stop offset="1" stop-color="#5B7CFF" />
+    </linearGradient>
+  </defs>
+  <g transform="translate(4,4)">
+    <path
+      d="M10 42V10H18L38 34V10H46V42H38L18 18V42H10Z"
+      fill="url(#nexaly-gradient)"
+    />
+  </g>
+  <text
+    x="66"
+    y="41"
+    font-family="Satoshi, Geist Sans, Inter, system-ui, -apple-system, Segoe UI, sans-serif"
+    font-size="30"
+    font-weight="600"
+    fill="#0B0F14"
+    letter-spacing="0.5"
+  >Nexaly</text>
+</svg>

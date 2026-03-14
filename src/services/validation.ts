@@ -1,11 +1,11 @@
 /**
- * 输入验证服务
- * 使用 Zod 进行运行时类型验证
+ * Input validation service
+ * Uses Zod for runtime validation
  */
 
 import { z } from 'zod';
 
-// 通用验证 schema
+// Common schema
 export const projectIdSchema = z.string().uuid('Invalid project ID');
 export const reportIdSchema = z.string().uuid('Invalid report ID');
 export const rulesetIdSchema = z.string().uuid('Invalid ruleset ID');
@@ -21,7 +21,7 @@ export const dateRangeSchema = z.object({
   days: z.coerce.number().int().min(1).max(365).default(30),
 });
 
-// API 请求 schema
+// API request schema
 export const analyzeRequestSchema = z.object({
   projectId: projectIdSchema,
   commits: z.array(z.string()).min(1),
@@ -54,7 +54,7 @@ export const createRuleSchema = z.object({
 });
 
 /**
- * 验证请求参数
+ * Validate request payload
  */
 export function validateRequest<T>(schema: z.ZodSchema<T>, data: unknown): T {
   try {
@@ -69,7 +69,7 @@ export function validateRequest<T>(schema: z.ZodSchema<T>, data: unknown): T {
 }
 
 /**
- * 安全的 JSON 解析
+ * Safe JSON parse
  */
 export function safeJsonParse<T>(json: string, fallback: T): T {
   try {

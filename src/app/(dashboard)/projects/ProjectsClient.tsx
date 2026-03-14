@@ -9,6 +9,7 @@ import { FolderOpen } from 'lucide-react';
 import ProjectCard from '@/components/project/ProjectCard';
 import AddProjectModal from '@/components/project/AddProjectModal';
 import DashboardStats from '@/components/dashboard/DashboardStats';
+import { t } from '@/lib/i18n-utils';
 import type { Dictionary } from '@/i18n';
 
 type Project = {
@@ -77,24 +78,24 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
             <div className="grid gap-6 xl:grid-cols-[320px_1fr]">
               <div className="space-y-4">
                 <div className="rounded-xl border border-border bg-card p-4">
-                  <div className="text-xs text-muted-foreground mb-2">Usage</div>
+                  <div className="text-xs text-muted-foreground mb-2">{dict.projects.usage}</div>
                   <DashboardStats dict={dict} />
                 </div>
                 <div className="rounded-xl border border-border bg-card p-4">
-                  <div className="text-xs text-muted-foreground mb-2">Alerts</div>
+                  <div className="text-xs text-muted-foreground mb-2">{dict.projects.alerts}</div>
                   <div className="text-sm text-muted-foreground">
-                    Get alerted for anomalies. Monitor your projects and get notified.
+                    {dict.projects.alertsDescription}
                   </div>
                   <Button variant="outline" className="mt-3 h-8 text-xs">
-                    Upgrade to Observability Plus
+                    {dict.projects.upgradePlan}
                   </Button>
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm font-semibold">Projects</div>
-                  <div className="text-xs text-muted-foreground">{filtered.length} projects</div>
+                  <div className="text-sm font-semibold">{dict.projects.title}</div>
+                  <div className="text-xs text-muted-foreground">{t(dict.projects.projectsCount, { count: filtered.length })}</div>
                 </div>
                 {view === 'grid' ? (
                   <div className="grid gap-4 md:grid-cols-2">

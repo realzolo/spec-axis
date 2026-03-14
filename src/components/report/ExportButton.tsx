@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
+import type { Dictionary } from '@/i18n';
 
 const FORMAT_ITEMS = [
   { id: 'json', label: 'JSON', icon: FileJson },
@@ -18,7 +19,7 @@ const FORMAT_ITEMS = [
   { id: 'csv', label: 'CSV', icon: FileSpreadsheet },
 ];
 
-export default function ExportButton({ reportId }: { reportId: string }) {
+export default function ExportButton({ reportId, dict }: { reportId: string; dict: Dictionary }) {
   const [exporting, setExporting] = useState(false);
   const [format, setFormat] = useState('json');
 
@@ -29,7 +30,7 @@ export default function ExportButton({ reportId }: { reportId: string }) {
       const res = await fetch(`/api/reports/${reportId}/export?format=${format}`);
 
       if (!res.ok) {
-        toast.error('导出失败');
+        toast.error(dict.reports.exportFailed);
         setExporting(false);
         return;
       }
@@ -47,9 +48,9 @@ export default function ExportButton({ reportId }: { reportId: string }) {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
-      toast.success('报告已导出');
+      toast.success(dict.reports.exportSuccess);
     } catch (err) {
-      const message = err instanceof Error ? err.message : '导出失败';
+      const message = err instanceof Error ? err.message : dict.reports.exportFailed;
       toast.error(message);
     } finally {
       setExporting(false);
@@ -75,7 +76,7 @@ export default function ExportButton({ reportId }: { reportId: string }) {
       </Select>
       <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting} className="gap-2 h-8">
         <Download className="size-4" />
-        导出
+        {dict.common.export}
       </Button>
     </div>
   );

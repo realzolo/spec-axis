@@ -17,7 +17,7 @@ const filterSchema = z.object({
   isDefault: z.boolean().optional(),
 });
 
-// 获取用户保存的筛选器
+// Get saved filters
 export async function GET(request: NextRequest) {
   const rateLimitResponse = rateLimiter(request);
   if (rateLimitResponse) {
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     if (!user) return unauthorized();
 
     if (requestedUserId && requestedUserId !== user.id) {
-      return NextResponse.json({ error: '无权访问该用户筛选器' }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const userId = user.id;
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// 创建保存的筛选器
+// Create saved filter
 export async function POST(request: NextRequest) {
   const rateLimitResponse = rateLimiter(request);
   if (rateLimitResponse) {
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     const data = await withRetry(async () => {
       const supabase = await createClient();
 
-      // 如果设置为默认，取消其他默认设置
+      // If set as default, unset others
       if (isDefault) {
         await supabase
           .from('saved_filters')
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 删除保存的筛选器
+// Delete saved filter
 export async function DELETE(request: NextRequest) {
   const rateLimitResponse = rateLimiter(request);
   if (rateLimitResponse) {
@@ -137,7 +137,7 @@ export async function DELETE(request: NextRequest) {
     const filterId = searchParams.get('filterId');
 
     if (!filterId) {
-      return NextResponse.json({ error: '筛选器ID不能为空' }, { status: 400 });
+      return NextResponse.json({ error: 'filterId is required' }, { status: 400 });
     }
 
     logger.setContext({ filterId });

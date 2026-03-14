@@ -39,7 +39,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
   async function fetchCommits(targetBranch: string, targetPage: number, append = false) {
     if (!append) setLoading(true); else setLoadingMore(true);
     try {
-      const data = await fetch(`/api/commits?repo=${project.repo}&branch=${targetBranch}&per_page=${PER_PAGE}&page=${targetPage}`).then(r => r.json());
+      const data = await fetch(`/api/commits?repo=${project.repo}&branch=${targetBranch}&per_page=${PER_PAGE}&page=${targetPage}&project_id=${project.id}`).then(r => r.json());
       setHasMore(data.length === PER_PAGE);
       if (append) setCommits(prev => [...prev, ...data]);
       else { setCommits(data); setSelected([]); }
@@ -90,7 +90,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
     if (h < 1) return dict.commits.justNow;
     if (h < 24) return dict.commits.hoursAgo.replace('{{hours}}', h.toString());
     if (days < 30) return dict.commits.daysAgo.replace('{{days}}', days.toString());
-    return new Date(d).toLocaleDateString('zh-CN');
+    return new Date(d).toLocaleDateString();
   }
 
   const branchItems = branches.map(b => ({ id: b, label: b }));
@@ -205,7 +205,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
               <div className="flex justify-center pt-2">
               <Button variant="ghost" disabled={loadingMore} onClick={() => { const next = page + 1; setPage(next); fetchCommits(branch, next, true); }}>
                 {loadingMore ? <Spinner size="sm" /> : null}
-                {loadingMore ? '加载中…' : '加载更多提交'}
+                {loadingMore ? dict.common.loading : dict.commits.loadMore}
               </Button>
             </div>
           )}
@@ -217,26 +217,26 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="max-w-[420px]">
           <DialogHeader>
-            <DialogTitle>开始代码审查</DialogTitle>
+            <DialogTitle>{dict.commits.confirmReview}</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-4 p-4 rounded-xl bg-muted/50 border border-border">
               <div className="flex-1">
-                <div className="text-xs text-muted-foreground mb-1">待分析提交数</div>
+                <div className="text-xs text-muted-foreground mb-1">{dict.commits.pendingCommitCount}</div>
                 <div className="text-2xl font-bold">{selected.length}</div>
               </div>
               <div className="flex-1">
-                <div className="text-xs text-muted-foreground mb-1">规则集</div>
+                <div className="text-xs text-muted-foreground mb-1">{dict.projects.ruleSet}</div>
                 <div className="text-sm font-semibold">{ruleSetName || '—'}</div>
               </div>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Claude 将根据您配置的规则分析所选提交，生成质量报告。这可能需要一两分钟。
+              {dict.commits.analysisNote}
             </p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)}>取消</Button>
-            <Button onClick={startReview}>开始分析</Button>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>{dict.common.cancel}</Button>
+            <Button onClick={startReview}>{dict.commits.startReview}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

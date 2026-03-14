@@ -5,6 +5,7 @@ import { Send, Loader2, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import type { Dictionary } from '@/i18n';
 
 type Message = {
   role: 'user' | 'assistant';
@@ -12,7 +13,7 @@ type Message = {
   timestamp: string;
 };
 
-export default function AIChat({ reportId, issueId }: { reportId: string; issueId?: string }) {
+export default function AIChat({ reportId, issueId, dict }: { reportId: string; issueId?: string; dict: Dictionary }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -41,7 +42,7 @@ export default function AIChat({ reportId, issueId }: { reportId: string; issueI
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? '发送失败');
+        toast.error(data.error ?? dict.reportDetail.aiChatSendFailed);
         setMessages(prev => prev.slice(0, -1));
         return;
       }
@@ -49,7 +50,7 @@ export default function AIChat({ reportId, issueId }: { reportId: string; issueI
       setConversationId(data.conversationId);
       setMessages(prev => [...prev, { role: 'assistant', content: data.message, timestamp: new Date().toISOString() }]);
     } catch {
-      toast.error('网络错误');
+      toast.error(dict.reportDetail.aiChatNetworkError);
       setMessages(prev => prev.slice(0, -1));
     } finally {
       setLoading(false);
@@ -62,9 +63,9 @@ export default function AIChat({ reportId, issueId }: { reportId: string; issueI
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center gap-3">
             <MessageCircle className="size-12 text-muted-foreground" />
-            <div className="text-sm font-semibold">与 AI 代码审查员对话</div>
+            <div className="text-sm font-semibold">{dict.reportDetail.aiChatEmptyTitle}</div>
             <div className="text-xs text-muted-foreground max-w-sm">
-              询问代码问题、请求详细解释、讨论最佳实践，或获取修复建议
+              {dict.reportDetail.aiChatEmptyDescription}
             </div>
           </div>
         ) : (
@@ -75,7 +76,7 @@ export default function AIChat({ reportId, issueId }: { reportId: string; issueI
               }`}>
                 <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</div>
                 <div className={`text-[10px] mt-1.5 ${msg.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                  {new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                  {new Date(msg.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>
             </div>
@@ -97,7 +98,7 @@ export default function AIChat({ reportId, issueId }: { reportId: string; issueI
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
-            placeholder="输入您的问题..."
+            placeholder={dict.reportDetail.aiChatInputPlaceholder}
             disabled={loading}
             className="flex-1"
           />

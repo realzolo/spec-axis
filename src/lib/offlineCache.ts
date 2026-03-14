@@ -1,14 +1,14 @@
 'use client';
 
 /**
- * 离线缓存服务
- * 使用 IndexedDB 存储数据，支持离线访问
+ * Offline cache service
+ * Uses IndexedDB to store data for offline access
  */
 
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
-  ttl?: number; // 生存时间（毫秒）
+  ttl?: number; // Time to live in ms
 }
 
 class OfflineCache {
@@ -36,7 +36,7 @@ class OfflineCache {
   }
 
   /**
-   * 设置缓存
+   * Set cache entry
    */
   async set<T>(key: string, data: T, ttl?: number): Promise<void> {
     if (!this.db) await this.init();
@@ -58,7 +58,7 @@ class OfflineCache {
   }
 
   /**
-   * 获取缓存
+   * Get cache entry
    */
   async get<T>(key: string): Promise<T | null> {
     if (!this.db) await this.init();
@@ -77,7 +77,7 @@ class OfflineCache {
           return;
         }
 
-        // 检查是否过期
+        // Check expiration
         if (entry.ttl && Date.now() - entry.timestamp > entry.ttl) {
           this.remove(key).catch(console.error);
           resolve(null);
@@ -90,7 +90,7 @@ class OfflineCache {
   }
 
   /**
-   * 删除缓存
+   * Remove cache entry
    */
   async remove(key: string): Promise<void> {
     if (!this.db) await this.init();
@@ -106,7 +106,7 @@ class OfflineCache {
   }
 
   /**
-   * 清空所有缓存
+   * Clear all cache
    */
   async clear(): Promise<void> {
     if (!this.db) await this.init();
@@ -122,7 +122,7 @@ class OfflineCache {
   }
 
   /**
-   * 获取所有缓存键
+   * List cache keys
    */
   async keys(): Promise<string[]> {
     if (!this.db) await this.init();
@@ -141,37 +141,37 @@ class OfflineCache {
 export const offlineCache = new OfflineCache();
 
 /**
- * 缓存 API 响应
+ * Cache API responses
  */
 export async function cacheApiResponse<T>(
   key: string,
   fetcher: () => Promise<T>,
-  ttl: number = 5 * 60 * 1000 // 默认 5 分钟
+  ttl: number = 5 * 60 * 1000 // Default 5 minutes
 ): Promise<T> {
-  // 先尝试从缓存获取
+  // Try cache first
   const cached = await offlineCache.get<T>(key);
   if (cached) {
     return cached;
   }
 
-  // 从网络获取
+  // Fetch from network
   const data = await fetcher();
 
-  // 保存到缓存
+  // Save to cache
   await offlineCache.set(key, data, ttl);
 
   return data;
 }
 
 /**
- * 检查网络连接
+ * Check network connection
  */
 export function isOnline(): boolean {
   return typeof navigator !== 'undefined' && navigator.onLine;
 }
 
 /**
- * 监听网络状态变化
+ * Listen for network status changes
  */
 export function onNetworkStatusChange(callback: (online: boolean) => void) {
   if (typeof window === 'undefined') return;

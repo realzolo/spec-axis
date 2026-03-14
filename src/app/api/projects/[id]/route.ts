@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getProjectById, deleteProject, updateProject } from '@/services/db';
+import { deleteProject, updateProject } from '@/services/db';
 import { logger } from '@/services/logger';
 import { projectIdSchema, updateProjectSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { requireUser, unauthorized } from '@/services/auth';
+import { requireProjectAccess } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +31,7 @@ export async function GET(
 
     logger.setContext({ projectId });
 
-    const project = await withRetry(() => getProjectById(projectId));
+    const project = await withRetry(() => requireProjectAccess(projectId, user.id));
     logger.info(`Project fetched: ${projectId}`);
     return NextResponse.json(project);
   } catch (err) {
@@ -63,11 +64,13 @@ export async function PUT(
 
     logger.setContext({ projectId });
 
+    await withRetry(() => requireProjectAccess(projectId, user.id));
+
     const data = await withRetry(() =>
       updateProject(projectId, { name, description, ruleset_id: ruleset_id || null })
     );
 
-    // 记录审计日志
+    // Audit log
     const clientInfo = extractClientInfo(request);
     await auditLogger.log({
       action: 'update',
@@ -106,9 +109,10 @@ export async function DELETE(
 
     logger.setContext({ projectId });
 
+    await withRetry(() => requireProjectAccess(projectId, user.id));
     await withRetry(() => deleteProject(projectId));
 
-    // 记录审计日志
+    // Audit log
     const clientInfo = extractClientInfo(request);
     await auditLogger.log({
       action: 'delete',

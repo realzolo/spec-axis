@@ -7,6 +7,7 @@ import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { requireUser, unauthorized } from '@/services/auth';
+import { requireReportAccess } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,9 +31,10 @@ export async function GET(
 
     logger.setContext({ reportId });
 
+    await withRetry(() => requireReportAccess(reportId, user.id));
     const report = await withRetry(() => getReportById(reportId));
     if (!report) {
-      return NextResponse.json({ error: '报告不存在' }, { status: 404 });
+      return NextResponse.json({ error: 'Report not found' }, { status: 404 });
     }
 
     logger.info(`Report fetched: ${reportId}`);
@@ -64,9 +66,10 @@ export async function DELETE(
 
     logger.setContext({ reportId });
 
+    await withRetry(() => requireReportAccess(reportId, user.id));
     await withRetry(() => deleteReport(reportId));
 
-    // 记录审计日志
+    // Audit log
     const clientInfo = extractClientInfo(request);
     await auditLogger.log({
       action: 'delete',

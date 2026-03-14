@@ -10,7 +10,7 @@ export const maxDuration = 60;
 export async function POST(request: NextRequest) {
   const token = request.headers.get('x-task-token');
   if (process.env.TASK_RUNNER_TOKEN && token !== process.env.TASK_RUNNER_TOKEN) {
-    return NextResponse.json({ error: '无效的任务令牌' }, { status: 403 });
+    return NextResponse.json({ error: 'Invalid task token' }, { status: 403 });
   }
 
   if (!process.env.TASK_RUNNER_TOKEN) {

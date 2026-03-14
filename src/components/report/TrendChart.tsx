@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import type { Dictionary } from '@/i18n';
 
 type Snapshot = {
   snapshot_date: string;
@@ -14,7 +15,7 @@ type Snapshot = {
   low_issues: number;
 };
 
-export default function TrendChart({ projectId }: { projectId: string }) {
+export default function TrendChart({ projectId, dict }: { projectId: string; dict: Dictionary }) {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
@@ -36,11 +37,11 @@ export default function TrendChart({ projectId }: { projectId: string }) {
   }, [projectId, days]);
 
   if (loading) {
-    return <div className="text-sm text-muted-foreground">加载趋势数据...</div>;
+    return <div className="text-sm text-muted-foreground">{dict.reportDetail.trendLoading}</div>;
   }
 
   if (snapshots.length === 0) {
-    return <div className="text-sm text-muted-foreground">暂无历史数据</div>;
+    return <div className="text-sm text-muted-foreground">{dict.reportDetail.trendNoData}</div>;
   }
 
   const latest = snapshots[snapshots.length - 1];
@@ -58,7 +59,7 @@ export default function TrendChart({ projectId }: { projectId: string }) {
       <div className="flex items-center gap-6">
         <div>
           <div className="text-2xl font-bold">{latest.score}</div>
-          <div className="text-xs text-muted-foreground">当前评分</div>
+          <div className="text-xs text-muted-foreground">{dict.reportDetail.currentScore}</div>
         </div>
         <div className="flex items-center gap-1.5">
           {scoreDiff > 0 ? (
@@ -66,13 +67,13 @@ export default function TrendChart({ projectId }: { projectId: string }) {
           ) : scoreDiff < 0 ? (
             <><TrendingDown className="size-4 text-danger" /><span className="text-sm font-semibold text-danger">{scoreDiff}</span></>
           ) : (
-            <><Minus className="size-4 text-muted-foreground" /><span className="text-sm text-muted-foreground">无变化</span></>
+            <><Minus className="size-4 text-muted-foreground" /><span className="text-sm text-muted-foreground">{dict.reportDetail.noChange}</span></>
           )}
         </div>
         <div className="h-8 w-px bg-border" />
         <div>
           <div className="text-2xl font-bold">{latest.total_issues}</div>
-          <div className="text-xs text-muted-foreground">问题总数</div>
+          <div className="text-xs text-muted-foreground">{dict.reportDetail.totalIssues}</div>
         </div>
         <div className="flex items-center gap-1.5">
           {issuesDiff < 0 ? (
@@ -80,7 +81,7 @@ export default function TrendChart({ projectId }: { projectId: string }) {
           ) : issuesDiff > 0 ? (
             <><TrendingDown className="size-4 text-danger" /><span className="text-sm font-semibold text-danger">+{issuesDiff}</span></>
           ) : (
-            <><Minus className="size-4 text-muted-foreground" /><span className="text-sm text-muted-foreground">无变化</span></>
+            <><Minus className="size-4 text-muted-foreground" /><span className="text-sm text-muted-foreground">{dict.reportDetail.noChange}</span></>
           )}
         </div>
       </div>
@@ -102,7 +103,7 @@ export default function TrendChart({ projectId }: { projectId: string }) {
               </div>
               {idx % Math.ceil(snapshots.length / 7) === 0 && (
                 <div className="text-[10px] text-muted-foreground">
-                  {new Date(snap.snapshot_date).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}
+                  {new Date(snap.snapshot_date).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })}
                 </div>
               )}
             </div>
@@ -120,7 +121,7 @@ export default function TrendChart({ projectId }: { projectId: string }) {
               days === d ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
             }`}
           >
-            {d}天
+            {dict.reportDetail.periodDays.replace('{{days}}', String(d))}
           </button>
         ))}
       </div>

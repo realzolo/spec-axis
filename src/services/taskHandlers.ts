@@ -7,12 +7,12 @@ export async function handleQueuedTask(task: QueuedTask) {
   switch (task.type) {
     case 'analyze': {
       if (!task.reportId) {
-        throw new Error('分析任务缺少 reportId');
+        throw new Error('Analyze task is missing reportId');
       }
       try {
         await runAnalyzeTask(task.projectId, task.payload as Parameters<typeof runAnalyzeTask>[1]);
       } catch (err) {
-        const message = err instanceof Error ? err.message : '分析失败';
+        const message = err instanceof Error ? err.message : 'Analysis failed';
         await updateReport(task.reportId, { status: 'failed', error_message: message });
         throw err;
       }

@@ -5,6 +5,7 @@ import { logger } from '@/services/logger';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
+import { getDefaultOrgId } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,8 @@ export async function GET(request: NextRequest) {
   if (!user) return unauthorized();
 
   try {
-    const data = await withRetry(() => getReports());
+    const orgId = await getDefaultOrgId(user.id, user.email ?? undefined);
+    const data = await withRetry(() => getReports(orgId));
     logger.info(`Reports fetched: ${data.length} reports`);
     return NextResponse.json(data);
   } catch (err) {

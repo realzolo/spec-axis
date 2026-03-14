@@ -44,37 +44,37 @@ export async function analyzeIncremental(
     .map((r, i) => `${i + 1}. [${r.category.toUpperCase()}] ${r.name}: ${r.prompt}`)
     .join('\n');
 
-  const prompt = `你是一位资深代码审查专家。这是一次**增量分析**，请重点关注变更的文件。
+  const prompt = `You are a senior code reviewer. This is an **incremental analysis**, focus on changed files.
 
-## 审查规则
+## Review Rules
 ${rulesText}
 
-## 代码变更 (Git Diff)
+## Code Changes (Git Diff)
 \`\`\`diff
 ${currentDiff.slice(0, 150000)}
 \`\`\`
 
-## 上次分析的问题（仅变更文件）
-${relevantPreviousIssues.length > 0 ? JSON.stringify(relevantPreviousIssues, null, 2) : '无'}
+## Previous Issues (changed files only)
+${relevantPreviousIssues.length > 0 ? JSON.stringify(relevantPreviousIssues, null, 2) : 'None'}
 
-## 增量分析要求
+## Incremental Analysis Requirements
 
-1. **重点分析变更文件**：只深入分析本次变更的文件
-2. **对比上次结果**：
-   - 标记哪些问题已修复
-   - 标记哪些问题仍然存在
-   - 标记新增的问题
-3. **评分策略**：
-   - 如果修复了问题，给予加分
-   - 如果引入新问题，给予减分
-   - 基于变更质量评分，而非整体代码质量
+1. **Focus on changed files**: deeply analyze only files changed in this diff
+2. **Compare with previous results**:
+   - Mark issues that are fixed
+   - Mark issues that still exist
+   - Mark newly introduced issues
+3. **Scoring strategy**:
+   - Add points if issues were fixed
+   - Subtract points if new issues were introduced
+   - Score the change quality, not the overall codebase
 
-## 输出格式
-返回标准的 ReviewResult JSON 格式，但在 issues 数组中，每个问题额外包含：
-- \`isNew\`: true/false（是否为新问题）
-- \`wasFixed\`: true/false（是否修复了旧问题）
+## Output Format
+Return the standard ReviewResult JSON. In the issues array, include:
+- \`isNew\`: true/false
+- \`wasFixed\`: true/false
 
-所有文本内容必须使用中文。`;
+All text fields must be in English.`;
 
   // Use the generic AI client interface
   const result = await client.analyze(prompt, '') as ReviewResult;
