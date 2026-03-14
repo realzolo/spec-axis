@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Script from 'next/script';
 import './globals.css';
 import { Providers } from './providers';
 import { getLocale } from '@/lib/locale';
@@ -16,7 +17,20 @@ export default async function RootLayout({
   const locale = await getLocale();
 
   return (
-    <html lang={locale} suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning className="dark" data-theme="dark">
+      <head>
+        <Script id="theme-init" strategy="beforeInteractive">
+          {`(() => {
+  try {
+    const stored = window.localStorage.getItem('theme');
+    const theme = stored === 'light' || stored === 'dark' ? stored : 'dark';
+    const root = document.documentElement;
+    root.setAttribute('data-theme', theme);
+    root.classList.toggle('dark', theme === 'dark');
+  } catch {}
+})();`}
+        </Script>
+      </head>
       <body className="min-h-screen bg-background text-foreground antialiased">
         <Providers>{children}</Providers>
       </body>

@@ -2,33 +2,6 @@
 
 @layer base {
   :root {
-    color-scheme: light;
-    --background: 0 0% 98%;
-    --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --muted: 0 0% 96%;
-    --muted-foreground: 215 16% 47%;
-    --border: 0 0% 90%;
-    --input: 0 0% 90%;
-    --primary: 0 0% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 94%;
-    --secondary-foreground: 222 47% 11%;
-    --accent: 210 100% 48%;
-    --accent-foreground: 0 0% 98%;
-    --success: 142 70% 40%;
-    --warning: 38 92% 50%;
-    --danger: 0 84% 60%;
-    --ring: var(--accent);
-    --sidebar: 0 0% 98%;
-    --sidebar-foreground: 222 47% 11%;
-    --sidebar-muted: 0 0% 94%;
-    --sidebar-border: 0 0% 88%;
-  }
-
-  [data-theme="dark"],
-  .dark {
     color-scheme: dark;
     --background: 0 0% 4%;
     --foreground: 0 0% 96%;
@@ -52,6 +25,32 @@
     --sidebar-foreground: 0 0% 90%;
     --sidebar-muted: 0 0% 9%;
     --sidebar-border: 0 0% 12%;
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --background: 0 0% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 215 16% 47%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --primary: 0 0% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 94%;
+    --secondary-foreground: 222 47% 11%;
+    --accent: 210 100% 48%;
+    --accent-foreground: 0 0% 98%;
+    --success: 142 70% 40%;
+    --warning: 38 92% 50%;
+    --danger: 0 84% 60%;
+    --ring: var(--accent);
+    --sidebar: 0 0% 98%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-muted: 0 0% 94%;
+    --sidebar-border: 0 0% 88%;
   }
 
   * {
@@ -114,6 +113,7 @@
   min-height: 100vh;
   display: grid;
   place-items: center;
+  padding: 2.5rem 1.25rem;
   background:
     radial-gradient(circle at 20% 20%, hsl(var(--accent) / 0.12), transparent 45%),
     radial-gradient(circle at 80% 80%, hsl(var(--primary) / 0.08), transparent 40%),
@@ -121,12 +121,12 @@
 }
 
 .auth-card {
-  width: 420px;
-  max-width: calc(100vw - 2rem);
-  border-radius: 16px;
-  padding: 2.5rem;
+  width: 100%;
+  max-width: 480px;
+  border-radius: 18px;
+  padding: clamp(1.75rem, 3vw, 2.75rem);
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
-  box-shadow: 0 24px 60px hsl(0 0% 0% / 0.25);
+  box-shadow: 0 28px 70px hsl(0 0% 0% / 0.28);
 }
 

@@ -20,20 +20,23 @@ export function ThemeProvider({
   defaultTheme?: ThemeMode;
 }) {
   const [theme, setTheme] = useState<ThemeMode>(defaultTheme);
+  const [isResolved, setIsResolved] = useState(false);
 
   useEffect(() => {
     const stored = window.localStorage.getItem('theme') as ThemeMode | null;
     if (stored === 'light' || stored === 'dark') {
       setTheme(stored);
     }
+    setIsResolved(true);
   }, []);
 
   useEffect(() => {
+    if (!isResolved) return;
     const root = document.documentElement;
     root.setAttribute('data-theme', theme);
     root.classList.toggle('dark', theme === 'dark');
     window.localStorage.setItem('theme', theme);
-  }, [theme]);
+  }, [theme, isResolved]);
 
   const value = useMemo(
     () => ({
