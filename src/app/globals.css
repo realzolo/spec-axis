@@ -146,12 +146,14 @@
 
 .auth-card {
   width: 100%;
-  max-width: 480px;
-  border-radius: 18px;
-  padding: clamp(1.75rem, 3vw, 2.75rem);
-  background: hsl(var(--card));
+  max-width: 420px;
+  border-radius: 20px;
+  padding: 0;
+  background: hsl(var(--card) / 0.98);
   border: 1px solid hsl(var(--border));
-  box-shadow: 0 28px 70px hsl(0 0% 0% / 0.28);
+  box-shadow: 0 32px 90px hsl(0 0% 0% / 0.35);
+  backdrop-filter: blur(14px);
+  overflow: hidden;
 }
 
 .auth-tools {
