@@ -113,9 +113,48 @@ export default function EnhancedReportDetailClient({ initialReport }: { initialR
 
   useEffect(() => {
     if (report.status !== 'pending' && report.status !== 'analyzing') return;
-    const interval = setInterval(pollReport, 2500);
-    return () => clearInterval(interval);
-  }, [report.status, pollReport]);
+
+    let polling: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => {
+      if (polling) return;
+      polling = setInterval(pollReport, 2500);
+    };
+
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(`/api/reports/${report.id}/stream`);
+      es.onmessage = (event) => {
+        if (!event.data) return;
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.type === 'status_update') {
+            setReport((prev) => ({
+              ...prev,
+              status: payload.status ?? prev.status,
+              score: payload.score ?? prev.score,
+            }));
+            if (payload.status === 'done' || payload.status === 'failed') {
+              pollReport();
+              es?.close();
+            }
+          }
+        } catch {
+          // ignore parse errors
+        }
+      };
+      es.onerror = () => {
+        es?.close();
+        startPolling();
+      };
+    } catch {
+      startPolling();
+    }
+
+    return () => {
+      if (es) es.close();
+      if (polling) clearInterval(polling);
+    };
+  }, [report.id, report.status, pollReport]);
 
   async function handleRetry() {
     const commitShas = report.commits.map(c => c.sha);

@@ -2,18 +2,18 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { logger } from '@/services/logger';
-import { reportIdSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { z } from 'zod';
+import { requireUser, unauthorized } from '@/services/auth';
 
 export const dynamic = 'force-dynamic';
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 
 const updateIssueSchema = z.object({
-  status: z.enum(['open', 'resolved', 'ignored']).optional(),
+  status: z.enum(['open', 'fixed', 'ignored', 'false_positive', 'planned']).optional(),
   notes: z.string().optional(),
   assigned_to: z.string().optional(),
 });
@@ -33,8 +33,11 @@ export async function GET(
     return rateLimitResponse;
   }
 
+  const user = await requireUser();
+  if (!user) return unauthorized();
+
   try {
-    const { issueId } = await params;
+    const { id: reportId, issueId } = await params;
 
     logger.setContext({ issueId });
 
@@ -44,6 +47,7 @@ export async function GET(
         .from('report_issues')
         .select('*, issue_comments(*)')
         .eq('id', issueId)
+        .eq('report_id', reportId)
         .single();
 
       if (error) {
@@ -74,8 +78,11 @@ export async function PATCH(
     return rateLimitResponse;
   }
 
+  const user = await requireUser();
+  if (!user) return unauthorized();
+
   try {
-    const { issueId } = await params;
+    const { id: reportId, issueId } = await params;
     const body = await request.json();
     const validated = updateIssueSchema.parse(body);
     const { status, notes, assigned_to } = validated;
@@ -94,6 +101,7 @@ export async function PATCH(
         .from('report_issues')
         .update(updateData)
         .eq('id', issueId)
+        .eq('report_id', reportId)
         .select()
         .single();
 
@@ -134,6 +142,9 @@ export async function POST(
   if (rateLimitResponse) {
     return rateLimitResponse;
   }
+
+  const user = await requireUser();
+  if (!user) return unauthorized();
 
   try {
     const { issueId } = await params;

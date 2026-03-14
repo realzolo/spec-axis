@@ -1,7 +1,20 @@
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { getRepoCommits } from '@/services/github';
+import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
+import { requireUser, unauthorized } from '@/services/auth';
 
-export async function GET(request: Request) {
+const rateLimiter = createRateLimiter(RATE_LIMITS.general);
+
+export async function GET(request: NextRequest) {
+  const rateLimitResponse = rateLimiter(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
+  const user = await requireUser();
+  if (!user) return unauthorized();
+
   const { searchParams } = new URL(request.url);
   const repo = searchParams.get('repo');
   const branch = searchParams.get('branch') ?? 'main';

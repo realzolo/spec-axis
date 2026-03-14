@@ -5,6 +5,7 @@ import { logger } from '@/services/logger';
 import { projectIdSchema, dateRangeSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
+import { requireUser, unauthorized } from '@/services/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,9 @@ export async function GET(
   if (rateLimitResponse) {
     return rateLimitResponse;
   }
+
+  const user = await requireUser();
+  if (!user) return unauthorized();
 
   try {
     const { id } = await params;
@@ -58,11 +62,7 @@ export async function GET(
 
     logger.info(`Trends fetched: ${projectId} (${data.length} snapshots)`);
 
-    return NextResponse.json({
-      data,
-      count: data.length,
-      period: { days, startDate: startDateStr },
-    });
+    return NextResponse.json(data ?? []);
   } catch (err) {
     const { error, statusCode } = formatErrorResponse(err);
     logger.error('Trends request failed', err instanceof Error ? err : undefined);

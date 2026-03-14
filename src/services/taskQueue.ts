@@ -85,7 +85,7 @@ class TaskQueue {
         continue;
       }
 
-      const task = tasks[0] as QueuedTask;
+      const task = mapTask(tasks[0]);
 
       // 标记为处理中
       await db
@@ -104,6 +104,42 @@ class TaskQueue {
         this.processingTasks.delete(task.id);
       });
     }
+  }
+
+  async processOnce(handler: (task: QueuedTask) => Promise<void>): Promise<boolean> {
+    const db = createAdminClient();
+
+    const { data: tasks, error } = await db
+      .from('task_queue')
+      .select('*')
+      .eq('status', 'pending')
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: true })
+      .limit(1);
+
+    if (error || !tasks || tasks.length === 0) {
+      return false;
+    }
+
+    const task = mapTask(tasks[0]);
+
+    const { data: updated, error: updateError } = await db
+      .from('task_queue')
+      .update({
+        status: 'processing',
+        started_at: new Date().toISOString(),
+      })
+      .eq('id', task.id)
+      .eq('status', 'pending')
+      .select()
+      .single();
+
+    if (updateError || !updated) {
+      return false;
+    }
+
+    await this.executeTask(task, handler, db);
+    return true;
   }
 
   private async executeTask(
@@ -179,3 +215,21 @@ class TaskQueue {
 }
 
 export const taskQueue = new TaskQueue();
+
+function mapTask(row: Record<string, unknown>): QueuedTask {
+  return {
+    id: row.id as string,
+    type: row.type as QueuedTask['type'],
+    projectId: row.project_id as string,
+    reportId: (row.report_id as string) || undefined,
+    payload: (row.payload as Record<string, unknown>) || {},
+    status: row.status as QueuedTask['status'],
+    priority: row.priority as number,
+    attempts: row.attempts as number,
+    maxAttempts: row.max_attempts as number,
+    error: (row.error as string) || undefined,
+    createdAt: row.created_at as string,
+    startedAt: (row.started_at as string) || undefined,
+    completedAt: (row.completed_at as string) || undefined,
+  };
+}

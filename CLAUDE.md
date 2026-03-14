@@ -9,6 +9,7 @@
 Next.js 16 + React 19 + TypeScript 的 AI 代码审查平台，使用 HeroUI v3（beta）+ Tailwind CSS v4。
 支持多 GitHub 项目管理、提交选择、Claude AI 分析、可配置规则集、质量报告评分。
 UI 使用 HeroUI v3 复合组件 API + lucide-react，全中文界面，白色主题，左对齐的 Supabase Dashboard 风格。
+后端支持任务队列与分析 worker（按提交 SHA 分析），报告增量更新支持 SSE。
 
 ## 技术栈
 
@@ -281,10 +282,12 @@ src/
       settings/           # 连接状态页
     api/
       analyze/            # POST 触发 AI 分析（fire-and-forget）
+      tasks/run/          # POST 触发任务队列处理
       commits/            # GET GitHub commits
       projects/           # CRUD
       reports/            # GET 列表 + 详情
       rules/              # 规则集 CRUD
+      stream/             # SSE 更新
       stats/              # 统计数据
       github/             # GitHub 状态
     layout.tsx            # 根 layout，挂载 Providers（含 Toaster）
@@ -325,6 +328,9 @@ src/
     performance.ts        # 性能监控
     audit.ts              # 审计日志
     taskQueue.ts          # 任务队列
+    analyzeTask.ts        # 分析任务 worker
+    taskHandlers.ts       # 任务处理器
+    issues.ts             # report_issues 同步
     incremental.ts        # 增量分析
     languages.ts          # 语言检测
   middleware/
@@ -341,6 +347,7 @@ SUPABASE_SERVICE_ROLE_KEY=
 GITHUB_PAT=              # Organization 级别 PAT
 ANTHROPIC_API_KEY=
 ANTHROPIC_BASE_URL=      # 可选，自定义 API 端点（代理）
+TASK_RUNNER_TOKEN=       # 可选，保护任务执行接口
 ```
 
 ## 常用命令
@@ -352,11 +359,22 @@ pnpm start   # 启动生产服务
 pnpm lint    # 运行 ESLint
 ```
 
+## 数据库迁移
+
+- `supabase/migrations/005_fix_snapshot_severity.sql` 修复历史质量快照严重度统计
+
 ## AI 分析流程
 
 1. 前端 POST `/api/analyze` → 立即返回 `{ reportId }`
-2. 后端 fire-and-forget：获取 diff → Claude 分析 → 更新 report status
-3. 前端轮询 `/api/reports/[id]`，每 2.5s 一次，直到 status 变为 `done` 或 `failed`
+2. 后端入队任务（基于提交 SHA 精确获取 diff）
+3. 任务 worker 执行：拉取 diff → Claude 分析 → 同步 `report_issues` → 更新 report status
+4. 前端优先 SSE 监听 `/api/stream`，完成后回退刷新 `/api/reports/[id]`
+
+### 任务队列执行
+
+- 触发接口：`POST /api/tasks/run?limit=1`
+- 鉴权：优先 `x-task-token`（需配置 `TASK_RUNNER_TOKEN`），否则要求登录态
+- `limit` 最大 10
 
 ## Toast 使用
 
@@ -399,3 +417,18 @@ A: Next.js 16 + Turbopack 存在已知问题，使用系统字体栈。
 
 ### Q: 深色模式支持吗？
 A: 当前使用白色主题，在 `html` 标签添加 `dark` 类可切换深色，HeroUI v3 CSS 变量自动适配。
+
+## 运行时约束与契约
+
+### API 鉴权
+
+- 所有 API 路由默认要求登录态
+- 任务队列接口可使用 `x-task-token` 免登录调用
+
+### 问题状态枚举
+
+`report_issues.status` 统一为：`open | fixed | ignored | false_positive | planned`
+
+### 趋势接口返回
+
+`/api/projects/[id]/trends` 返回数组（前端兼容旧的 `data` 包裹）

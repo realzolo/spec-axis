@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import type { NextRequest } from 'next/server';
+import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
+import { requireUser, unauthorized } from '@/services/auth';
 import { createHash } from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +16,17 @@ interface CacheEntry {
 const analysisCache = new Map<string, CacheEntry>();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
-export async function POST(request: Request) {
+const rateLimiter = createRateLimiter(RATE_LIMITS.general);
+
+export async function POST(request: NextRequest) {
+  const rateLimitResponse = rateLimiter(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
+  const user = await requireUser();
+  if (!user) return unauthorized();
+
   const body = await request.json();
   const { projectId, commits, useCache = true } = body;
 

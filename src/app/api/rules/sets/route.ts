@@ -1,12 +1,29 @@
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { getRuleSets, createRuleSet } from '@/services/db';
+import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
+import { requireUser, unauthorized } from '@/services/auth';
 
-export async function GET() {
+const rateLimiter = createRateLimiter(RATE_LIMITS.general);
+
+export async function GET(request: NextRequest) {
+  const rateLimitResponse = rateLimiter(request);
+  if (rateLimitResponse) return rateLimitResponse;
+
+  const user = await requireUser();
+  if (!user) return unauthorized();
+
   const data = await getRuleSets();
   return NextResponse.json(data);
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const rateLimitResponse = rateLimiter(request);
+  if (rateLimitResponse) return rateLimitResponse;
+
+  const user = await requireUser();
+  if (!user) return unauthorized();
+
   const body = await request.json();
   if (!body.name) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 });

@@ -1,10 +1,21 @@
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
+import { requireUser, unauthorized } from '@/services/auth';
 
 export const dynamic = 'force-dynamic';
 
 // Submit feedback for a rule
-export async function POST(request: Request) {
+const rateLimiter = createRateLimiter(RATE_LIMITS.general);
+
+export async function POST(request: NextRequest) {
+  const rateLimitResponse = rateLimiter(request);
+  if (rateLimitResponse) return rateLimitResponse;
+
+  const user = await requireUser();
+  if (!user) return unauthorized();
+
   const body = await request.json();
   const {
     ruleId,
@@ -12,11 +23,10 @@ export async function POST(request: Request) {
     issueFile,
     issueLine,
     feedbackType,
-    userId,
     notes,
   } = body;
 
-  if (!ruleId || !reportId || !issueFile || !feedbackType || !userId) {
+  if (!ruleId || !reportId || !issueFile || !feedbackType) {
     return NextResponse.json({ error: '缺少必要参数' }, { status: 400 });
   }
 
@@ -35,7 +45,7 @@ export async function POST(request: Request) {
       issue_file: issueFile,
       issue_line: issueLine,
       feedback_type: feedbackType,
-      user_id: userId,
+      user_id: user.id,
       notes,
     })
     .select()
@@ -49,7 +59,13 @@ export async function POST(request: Request) {
 }
 
 // Get rule statistics
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  const rateLimitResponse = rateLimiter(request);
+  if (rateLimitResponse) return rateLimitResponse;
+
+  const user = await requireUser();
+  if (!user) return unauthorized();
+
   const { searchParams } = new URL(request.url);
   const ruleId = searchParams.get('ruleId');
 

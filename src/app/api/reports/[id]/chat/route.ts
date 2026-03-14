@@ -1,14 +1,27 @@
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
+import { requireUser, unauthorized } from '@/services/auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+const rateLimiter = createRateLimiter(RATE_LIMITS.general);
+
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimitResponse = rateLimiter(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
+  const user = await requireUser();
+  if (!user) return unauthorized();
+
   const { id: reportId } = await params;
   const body = await request.json();
   const { message, conversationId, issueId } = body;
@@ -46,7 +59,7 @@ export async function POST(
       .from('ai_conversations')
       .insert({
         report_id: reportId,
-        issue_id: issueId,
+        issue_id: isUuid(issueId) ? issueId : null,
         messages: []
       })
       .select()
@@ -73,8 +86,21 @@ ${report.summary}
 
 `;
 
-  if (issueId && report.issues) {
-    const issue = report.issues.find((i: Record<string, unknown>) => i.file === issueId);
+  if (issueId) {
+    let issue: Record<string, unknown> | null = null;
+    if (isUuid(issueId)) {
+      const { data } = await supabase
+        .from('report_issues')
+        .select('*')
+        .eq('id', issueId)
+        .single();
+      issue = data || null;
+    }
+
+    if (!issue && report.issues) {
+      issue = report.issues.find((i: Record<string, unknown>) => i.file === issueId) || null;
+    }
+
     if (issue) {
       context += `\n## 当前讨论的问题
 文件：${issue.file}
@@ -85,8 +111,9 @@ ${report.summary}
 问题描述：${issue.message}
 修复建议：${issue.suggestion ?? '无'}
 `;
-      if (issue.codeSnippet) {
-        context += `\n代码片段：\n\`\`\`\n${issue.codeSnippet}\n\`\`\`\n`;
+      if (issue.code_snippet || issue.codeSnippet) {
+        const snippet = (issue.code_snippet || issue.codeSnippet) as string;
+        context += `\n代码片段：\n\`\`\`\n${snippet}\n\`\`\`\n`;
       }
     }
   }
@@ -136,9 +163,17 @@ ${report.summary}
 
 // Get conversation history
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rateLimitResponse = rateLimiter(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
+  const user = await requireUser();
+  if (!user) return unauthorized();
+
   const { id: reportId } = await params;
   const { searchParams } = new URL(request.url);
   const conversationId = searchParams.get('conversationId');
@@ -171,4 +206,9 @@ export async function GET(
   }
 
   return NextResponse.json(data ?? []);
+}
+
+function isUuid(value?: string | null) {
+  if (!value) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { logger } from '@/services/logger';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
+import { requireUser, unauthorized } from '@/services/auth';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -11,7 +12,6 @@ export const dynamic = 'force-dynamic';
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 
 const filterSchema = z.object({
-  userId: z.string().min(1),
   name: z.string().min(1).max(100),
   filterConfig: z.record(z.string(), z.unknown()),
   isDefault: z.boolean().optional(),
@@ -26,12 +26,16 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    const requestedUserId = searchParams.get('userId');
 
-    if (!userId) {
-      return NextResponse.json({ error: '用户ID不能为空' }, { status: 400 });
+    const user = await requireUser();
+    if (!user) return unauthorized();
+
+    if (requestedUserId && requestedUserId !== user.id) {
+      return NextResponse.json({ error: '无权访问该用户筛选器' }, { status: 403 });
     }
 
+    const userId = user.id;
     logger.setContext({ userId });
 
     const data = await withRetry(async () => {
@@ -68,9 +72,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const user = await requireUser();
+    if (!user) return unauthorized();
+
     const body = await request.json();
     const validated = filterSchema.parse(body);
-    const { userId, name, filterConfig, isDefault } = validated;
+    const { name, filterConfig, isDefault } = validated;
+    const userId = user.id;
 
     logger.setContext({ userId });
 
@@ -122,6 +130,9 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
+    const user = await requireUser();
+    if (!user) return unauthorized();
+
     const { searchParams } = new URL(request.url);
     const filterId = searchParams.get('filterId');
 
@@ -136,7 +147,8 @@ export async function DELETE(request: NextRequest) {
       const { error } = await supabase
         .from('saved_filters')
         .delete()
-        .eq('id', filterId);
+        .eq('id', filterId)
+        .eq('user_id', user.id);
 
       if (error) {
         throw new Error(error.message);

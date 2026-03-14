@@ -4,6 +4,7 @@ import { getReports } from '@/services/db';
 import { logger } from '@/services/logger';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
+import { requireUser, unauthorized } from '@/services/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,9 @@ export async function GET(request: NextRequest) {
   if (rateLimitResponse) {
     return rateLimitResponse;
   }
+
+  const user = await requireUser();
+  if (!user) return unauthorized();
 
   try {
     const data = await withRetry(() => getReports());

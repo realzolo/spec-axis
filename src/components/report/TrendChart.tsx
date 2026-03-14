@@ -23,7 +23,13 @@ export default function TrendChart({ projectId }: { projectId: string }) {
     fetch(`/api/projects/${projectId}/trends?days=${days}`)
       .then(r => r.json())
       .then(data => {
-        setSnapshots(Array.isArray(data) ? data : []);
+        if (Array.isArray(data)) {
+          setSnapshots(data);
+        } else if (Array.isArray(data?.data)) {
+          setSnapshots(data.data);
+        } else {
+          setSnapshots([]);
+        }
         setLoading(false);
       })
       .catch(() => setLoading(false));

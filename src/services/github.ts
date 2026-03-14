@@ -98,3 +98,27 @@ export async function getCommitsDiff(repo: string, hashes: string[]): Promise<st
   return diffs.join('');
 }
 
+export async function getCommitBySha(repo: string, sha: string) {
+  const [owner, repoName] = repo.split('/');
+  const { data } = await getOctokit().rest.repos.getCommit({
+    owner,
+    repo: repoName,
+    ref: sha,
+  });
+
+  return {
+    sha: data.sha,
+    message: data.commit.message.split('\n')[0],
+    author: data.commit.author?.name ?? data.author?.login ?? 'Unknown',
+    date: data.commit.author?.date ?? '',
+    url: data.html_url,
+  };
+}
+
+export async function getCommitsBySha(repo: string, hashes: string[]) {
+  const commits = [];
+  for (const sha of hashes) {
+    commits.push(await getCommitBySha(repo, sha));
+  }
+  return commits;
+}

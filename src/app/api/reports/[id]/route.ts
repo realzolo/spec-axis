@@ -6,6 +6,7 @@ import { reportIdSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { auditLogger, extractClientInfo } from '@/services/audit';
+import { requireUser, unauthorized } from '@/services/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,9 @@ export async function GET(
   if (rateLimitResponse) {
     return rateLimitResponse;
   }
+
+  const user = await requireUser();
+  if (!user) return unauthorized();
 
   try {
     const { id } = await params;
@@ -50,6 +54,9 @@ export async function DELETE(
   if (rateLimitResponse) {
     return rateLimitResponse;
   }
+
+  const user = await requireUser();
+  if (!user) return unauthorized();
 
   try {
     const { id } = await params;

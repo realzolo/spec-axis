@@ -5,6 +5,7 @@ import { Save, Trash2, Star } from 'lucide-react';
 import { Input, Modal, useOverlayState } from '@heroui/react';
 import { Button } from '@heroui/react';
 import { toast } from 'sonner';
+import { createClient } from '@/lib/supabase/client';
 
 type SavedFilter = {
   id: string; name: string;
@@ -17,7 +18,7 @@ type FilterConfig = {
 };
 
 export default function SavedFilters({ userId, currentFilter, onApplyFilter }: {
-  userId: string;
+  userId?: string;
   currentFilter: FilterConfig;
   onApplyFilter: (filter: FilterConfig) => void;
 }) {
@@ -25,11 +26,26 @@ export default function SavedFilters({ userId, currentFilter, onApplyFilter }: {
   const [filterName, setFilterName] = useState('');
   const [saving, setSaving] = useState(false);
   const dialogState = useOverlayState();
+  const [resolvedUserId, setResolvedUserId] = useState<string | null>(userId ?? null);
 
-  useEffect(() => { loadFilters(); }, [userId]);
+  useEffect(() => {
+    if (userId) {
+      setResolvedUserId(userId);
+      return;
+    }
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      setResolvedUserId(data.user?.id ?? null);
+    });
+  }, [userId]);
 
-  async function loadFilters() {
-    const res = await fetch(`/api/filters?userId=${userId}`);
+  useEffect(() => {
+    if (!resolvedUserId) return;
+    loadFilters(resolvedUserId);
+  }, [resolvedUserId]);
+
+  async function loadFilters(uid: string) {
+    const res = await fetch(`/api/filters?userId=${uid}`);
     if (res.ok) setFilters(await res.json());
   }
 
@@ -40,7 +56,7 @@ export default function SavedFilters({ userId, currentFilter, onApplyFilter }: {
     const res = await fetch('/api/filters', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, name: filterName.trim(), filterConfig: currentFilter, isDefault: false }),
+      body: JSON.stringify({ name: filterName.trim(), filterConfig: currentFilter, isDefault: false }),
     });
 
     setSaving(false);
@@ -54,14 +70,14 @@ export default function SavedFilters({ userId, currentFilter, onApplyFilter }: {
     toast.success('筛选器已保存');
     dialogState.close();
     setFilterName('');
-    loadFilters();
+    if (resolvedUserId) loadFilters(resolvedUserId);
   }
 
   async function handleDelete(filterId: string) {
     const res = await fetch(`/api/filters?filterId=${filterId}`, { method: 'DELETE' });
     if (!res.ok) { toast.error('删除失败'); return; }
     toast.success('筛选器已删除');
-    loadFilters();
+    if (resolvedUserId) loadFilters(resolvedUserId);
   }
 
   return (

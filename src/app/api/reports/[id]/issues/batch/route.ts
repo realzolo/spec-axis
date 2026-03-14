@@ -6,6 +6,7 @@ import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { z } from 'zod';
+import { requireUser, unauthorized } from '@/services/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,7 @@ const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 const batchOperationSchema = z.object({
   action: z.enum(['update_status', 'assign', 'delete']),
   issueIds: z.array(z.string()).min(1),
-  status: z.enum(['open', 'resolved', 'ignored']).optional(),
+  status: z.enum(['open', 'fixed', 'ignored', 'false_positive', 'planned']).optional(),
   assigned_to: z.string().optional(),
 });
 
@@ -27,6 +28,9 @@ export async function POST(
   if (rateLimitResponse) {
     return rateLimitResponse;
   }
+
+  const user = await requireUser();
+  if (!user) return unauthorized();
 
   try {
     const { id: reportId } = await params;

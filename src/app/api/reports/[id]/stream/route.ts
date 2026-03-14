@@ -3,6 +3,7 @@ import { createSSEResponse, watchReportStatus } from '@/services/sse';
 import { logger } from '@/services/logger';
 import { reportIdSchema } from '@/services/validation';
 import { formatErrorResponse } from '@/services/retry';
+import { requireUser, unauthorized } from '@/services/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const user = await requireUser();
+  if (!user) return unauthorized();
+
   try {
     const { id } = await params;
 

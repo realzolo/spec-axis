@@ -1,15 +1,16 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getProjectById, getRulesBySetId, createReport, updateReport } from '@/services/db';
-import { getCommitsDiff, getRepoCommits } from '@/services/github';
-import { analyzeCode } from '@/services/claude';
-import { analyzeIncremental, shouldUseIncrementalAnalysis } from '@/services/incremental';
+import { getProjectById, getRulesBySetId, createReport } from '@/services/db';
+import { shouldUseIncrementalAnalysis } from '@/services/incremental';
+import { buildReportCommits } from '@/services/analyzeTask';
 import { createClient } from '@/lib/supabase/server';
 import { taskQueue } from '@/services/taskQueue';
 import { logger } from '@/services/logger';
 import { analyzeRequestSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
+import { requireUser, unauthorized } from '@/services/auth';
+import { auditLogger, extractClientInfo } from '@/services/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,11 @@ export async function POST(request: NextRequest) {
   const rateLimitResponse = rateLimiter(request);
   if (rateLimitResponse) {
     return rateLimitResponse;
+  }
+
+  const user = await requireUser();
+  if (!user) {
+    return unauthorized();
   }
 
   try {
@@ -45,11 +51,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '规则集没有启用的规则' }, { status: 400 });
     }
 
-    // 获取提交信息
-    const allCommits = await withRetry(() =>
-      getRepoCommits(project.repo, project.default_branch, 100)
+    // 获取提交信息（按 SHA 精确获取）
+    const selectedCommits = await withRetry(() =>
+      buildReportCommits(project.repo, selectedHashes)
     );
-    const selectedCommits = allCommits.filter((c) => selectedHashes.includes(c.sha));
 
     if (selectedCommits.length === 0) {
       return NextResponse.json({ error: '未找到指定的提交' }, { status: 400 });
@@ -94,6 +99,16 @@ export async function POST(request: NextRequest) {
       8, // 高优先级
       report.id
     );
+
+    const clientInfo = extractClientInfo(request);
+    await auditLogger.log({
+      action: 'analyze',
+      entityType: 'project',
+      entityId: projectId,
+      changes: { reportId: report.id, commits: selectedHashes.length },
+      userId: user.id,
+      ...clientInfo,
+    });
 
     return NextResponse.json({
       reportId: report.id,
