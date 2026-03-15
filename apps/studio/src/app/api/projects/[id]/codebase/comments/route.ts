@@ -16,6 +16,7 @@ const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 
 const createCommentSchema = z.object({
   ref: z.string().min(1),
+  commit: z.string().regex(/^[0-9a-f]{7,40}$/i, 'commit is required'),
   path: z.string().min(1),
   line: z.number().int().positive(),
   line_end: z.number().int().positive().optional(),
@@ -51,6 +52,7 @@ export async function GET(
       return NextResponse.json({ error: 'Project is not configured' }, { status: 400 });
     }
     const ref = request.nextUrl.searchParams.get('ref') || project.default_branch;
+    const commit = request.nextUrl.searchParams.get('commit');
     const path = request.nextUrl.searchParams.get('path') || '';
     const lineParam = request.nextUrl.searchParams.get('line');
     const line = lineParam ? Number(lineParam) : undefined;
@@ -58,9 +60,12 @@ export async function GET(
     if (!path) {
       return NextResponse.json({ error: 'path is required' }, { status: 400 });
     }
+    if (commit && !/^[0-9a-f]{7,40}$/i.test(commit)) {
+      return NextResponse.json({ error: 'Invalid commit' }, { status: 400 });
+    }
 
     const comments = await withRetry(async () => {
-      const params: any[] = [projectId, project.org_id, project.repo, ref, path];
+      const params: any[] = [projectId, project.org_id, project.repo, path];
       let sql = `
         select c.*,
                coalesce(
@@ -75,9 +80,16 @@ export async function GET(
         where c.project_id = $1
           and c.org_id = $2
           and c.repo = $3
-          and c.ref = $4
-          and c.path = $5
+          and c.path = $4
       `;
+
+      if (commit) {
+        params.push(commit);
+        sql += ` and c.commit_sha = $${params.length}`;
+      } else {
+        params.push(ref);
+        sql += ` and c.ref = $${params.length}`;
+      }
 
       if (Number.isFinite(line)) {
         params.push(line);
@@ -134,14 +146,15 @@ export async function POST(
       return withTransaction(async (client) => {
         const insertResult = await client.query(
           `insert into codebase_comments
-            (org_id, project_id, repo, ref, path, line, line_end, selection_text, author_id, author_email, body, created_at)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
+            (org_id, project_id, repo, ref, commit_sha, path, line, line_end, selection_text, author_id, author_email, body, created_at)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now())
            returning *`,
           [
             project.org_id,
             projectId,
             project.repo,
             validated.ref,
+            validated.commit,
             validated.path,
             validated.line,
             lineEnd,

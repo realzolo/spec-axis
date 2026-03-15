@@ -7,21 +7,19 @@ import { projectIdSchema } from '@/services/validation';
 import { formatErrorResponse } from '@/services/retry';
 import { requireUser, unauthorized } from '@/services/auth';
 import { logger } from '@/services/logger';
+import { getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES, requireProjectAccess } from '@/services/orgs';
+import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+const orgIdSchema = z.string().uuid('Invalid org ID');
+
 export async function POST(request: NextRequest) {
   const token = request.headers.get('x-task-token');
-  if (process.env.TASK_RUNNER_TOKEN) {
-    if (token !== process.env.TASK_RUNNER_TOKEN) {
-      const user = await requireUser();
-      if (!user) return unauthorized();
-    }
-  } else {
-    const user = await requireUser();
-    if (!user) return unauthorized();
-  }
+  const isTaskRunner = Boolean(process.env.TASK_RUNNER_TOKEN && token === process.env.TASK_RUNNER_TOKEN);
+  const user = isTaskRunner ? null : await requireUser();
+  if (!isTaskRunner && !user) return unauthorized();
 
   try {
     const { searchParams } = new URL(request.url);
@@ -34,29 +32,41 @@ export async function POST(request: NextRequest) {
 
     if (projectIdParam) {
       const projectId = projectIdSchema.parse(projectIdParam);
-      const data = await queryOne<{ id: string; org_id: string | null; repo: string | null }>(
-        `select id, org_id, repo
-         from code_projects
-         where id = $1`,
-        [projectId]
-      );
-      if (!data) {
-        return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+      if (isTaskRunner) {
+        const data = await queryOne<{ id: string; org_id: string | null; repo: string | null }>(
+          `select id, org_id, repo
+           from code_projects
+           where id = $1`,
+          [projectId]
+        );
+        if (!data) {
+          return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+        }
+        projects = [data];
+      } else if (user) {
+        const project = await requireProjectAccess(projectId, user.id);
+        projects = [{ id: project.id, org_id: project.org_id, repo: project.repo }];
       }
-      projects = [data];
     } else {
-      let sql = `select id, org_id, repo
-                 from code_projects
-                 where org_id is not null`;
-      const params: any[] = [];
-
-      if (orgIdParam) {
-        params.push(orgIdParam);
-        sql += ` and org_id = $${params.length}`;
+      if (!orgIdParam) {
+        return NextResponse.json({ error: 'project_id or org_id is required' }, { status: 400 });
       }
 
-      params.push(limit);
-      sql += ` order by created_at desc limit $${params.length}`;
+      const orgId = orgIdSchema.parse(orgIdParam);
+
+      if (!isTaskRunner && user) {
+        const role = await getOrgMemberRole(orgId, user.id);
+        if (!isRoleAllowed(role, ORG_ADMIN_ROLES)) {
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+      }
+
+      const params: any[] = [orgId, limit];
+      const sql = `select id, org_id, repo
+                   from code_projects
+                   where org_id = $1
+                   order by created_at desc
+                   limit $2`;
 
       projects = await query<{ id: string; org_id: string | null; repo: string | null }>(sql, params);
     }

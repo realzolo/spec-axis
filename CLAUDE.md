@@ -276,10 +276,13 @@ pnpm dev     # Console dev server (port 8109)
 pnpm build   # Console production build (TypeScript check)
 pnpm start   # Console production server
 pnpm lint    # Console ESLint
+pnpm codebase:cleanup   # Cleanup stale workspaces (uses TASK_RUNNER_TOKEN; optional STUDIO_BASE_URL)
 psql "$DATABASE_URL" -f docs/db/init.sql   # Initialize schema (fresh DB)
 cd apps/runner && go run ./cmd/runner   # Runner service
 cd apps/runner && migrate -path ./migrations -database "$DATABASE_URL" up   # DB migrations (golang-migrate)
 ```
+
+`pnpm codebase:cleanup` uses `TASK_RUNNER_TOKEN` and optional `STUDIO_BASE_URL` (default `http://localhost:8109`).
 
 ## Dependency Build Scripts
 
@@ -312,13 +315,14 @@ If new install warnings appear, approve the dependency and update the allowlist.
 `CodebaseService` manages per-project local Git mirrors and per-job workspaces for AI analysis and pipeline tasks.
 Mirrors are cache-only (not a source of truth) and are synced on demand or on a schedule; workspaces are isolated and must be cleaned after each job.
 Codebase browsing uses the same mirror cache and enforces a max preview size for files.
-Line-level comments for code browsing are stored in `codebase_comments` and scoped by org, project, repo, ref, and path. Optional line ranges (`line_end`) and selection text (`selection_text`) capture multi-line or partial-text comments.
+Line-level comments for code browsing are stored in `codebase_comments` and scoped by org, project, repo, commit SHA, and path (with `ref` retained for display). Optional line ranges (`line_end`) and selection text (`selection_text`) capture multi-line or partial-text comments.
 Comment assignees are stored in `codebase_comment_assignees` and attached to codebase comments.
 Codebase tree/file endpoints accept `sync=0` to skip mirror fetch for faster browsing (manual sync still available).
 Automatic mirror sync can be triggered by:
 - GitHub `push` webhooks (forces mirror fetch for matching projects).
 - Scheduled POST to `/api/codebase/sync` (uses `x-task-token` if `TASK_RUNNER_TOKEN` is set). Supports `limit`, `force`, `project_id`, and `org_id`.
 - Project creation triggers an initial mirror sync in the background.
+Stale workspaces can be cleared via `POST /api/codebase/cleanup` (uses `x-task-token` if `TASK_RUNNER_TOKEN` is set).
 
 Local cache directories (for example `apps/studio/.codebase/` and `/.pnpm-store/`) are not committed to Git.
 
@@ -332,6 +336,7 @@ CODEBASE_LOCK_STALE_MS=
 CODEBASE_WORKSPACE_TTL_MS=
 CODEBASE_FILE_MAX_BYTES=
 CODEBASE_GIT_BIN=
+CODEBASE_GIT_TIMEOUT_MS=
 ```
 
 ## Toast Usage

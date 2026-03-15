@@ -49,6 +49,7 @@ export type TreeEntry = {
 export type ReadFileResult = {
   path: string;
   ref: string;
+  commit: string;
   size: number;
   content: string;
   truncated: boolean;
@@ -64,6 +65,7 @@ export type CodebaseServiceOptions = {
   lockStaleMs?: number;
   workspaceTtlMs?: number;
   fileMaxBytes?: number;
+  gitTimeoutMs?: number;
   gitBin?: string;
 };
 
@@ -111,6 +113,7 @@ const DEFAULT_LOCK_TIMEOUT_MS = 120_000;
 const DEFAULT_LOCK_STALE_MS = 300_000;
 const DEFAULT_WORKSPACE_TTL_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_FILE_MAX_BYTES = 256 * 1024;
+const DEFAULT_GIT_TIMEOUT_MS = 120_000;
 const DEFAULT_CACHE_TTL_MS = 10_000;
 const DEFAULT_CACHE_MAX_ENTRIES = 500;
 
@@ -123,10 +126,11 @@ export class CodebaseService {
   private lockStaleMs: number;
   private workspaceTtlMs: number;
   private fileMaxBytes: number;
+  private gitTimeoutMs: number;
   private gitBin: string;
   private cacheTtlMs: number;
   private cacheMaxEntries: number;
-  private treeCache = new Map<string, CacheEntry<{ ref: string; path: string; entries: TreeEntry[] }>>();
+  private treeCache = new Map<string, CacheEntry<{ ref: string; commit: string; path: string; entries: TreeEntry[] }>>();
   private fileCache = new Map<string, CacheEntry<ReadFileResult>>();
 
   constructor(options: CodebaseServiceOptions = {}) {
@@ -144,6 +148,7 @@ export class CodebaseService {
     this.lockStaleMs = readNumberEnv('CODEBASE_LOCK_STALE_MS', options.lockStaleMs, DEFAULT_LOCK_STALE_MS);
     this.workspaceTtlMs = readNumberEnv('CODEBASE_WORKSPACE_TTL_MS', options.workspaceTtlMs, DEFAULT_WORKSPACE_TTL_MS);
     this.fileMaxBytes = readNumberEnv('CODEBASE_FILE_MAX_BYTES', options.fileMaxBytes, DEFAULT_FILE_MAX_BYTES);
+    this.gitTimeoutMs = readNumberEnv('CODEBASE_GIT_TIMEOUT_MS', options.gitTimeoutMs, DEFAULT_GIT_TIMEOUT_MS);
     this.gitBin = options.gitBin ?? process.env.CODEBASE_GIT_BIN ?? 'git';
     this.cacheTtlMs = DEFAULT_CACHE_TTL_MS;
     this.cacheMaxEntries = DEFAULT_CACHE_MAX_ENTRIES;
@@ -174,6 +179,7 @@ export class CodebaseService {
           this.runGit([...auth.args, 'clone', '--mirror', remoteUrl, paths.mirrorPath], { env: auth.env })
         );
         const now = new Date().toISOString();
+        this.clearCacheForMirror(paths.mirrorPath);
         await this.writeJson<MirrorMeta>(paths.metaPath, {
           orgId: ref.orgId,
           projectId: ref.projectId,
@@ -219,6 +225,7 @@ export class CodebaseService {
             { env: auth.env }
           )
         );
+        this.clearCacheForMirror(paths.mirrorPath);
       }
 
       const now = new Date().toISOString();
@@ -249,18 +256,23 @@ export class CodebaseService {
     const workspacePath = this.getWorkspacePath(ref.orgId, ref.projectId, ref.repo, workspaceId);
     const targetRef = await this.resolveRef(mirror.mirrorPath, ref.ref);
 
-    await this.removeDir(workspacePath);
-    await fs.mkdir(path.dirname(workspacePath), { recursive: true });
-
+    const releaseWorktree = await this.acquireLock(this.getWorktreeLockPath(mirror.mirrorPath));
     try {
-      await this.addWorktree(mirror.mirrorPath, workspacePath, targetRef);
-    } catch (err) {
-      if (!options.forceSync && isRefMissing(err)) {
-        await this.ensureMirror(ref, { forceSync: true });
+      await this.removeDir(workspacePath);
+      await fs.mkdir(path.dirname(workspacePath), { recursive: true });
+
+      try {
         await this.addWorktree(mirror.mirrorPath, workspacePath, targetRef);
-      } else {
-        throw err;
+      } catch (err) {
+        if (!options.forceSync && isRefMissing(err)) {
+          await this.ensureMirror(ref, { forceSync: true });
+          await this.addWorktree(mirror.mirrorPath, workspacePath, targetRef);
+        } else {
+          throw err;
+        }
       }
+    } finally {
+      await releaseWorktree();
     }
 
     const createdAt = new Date().toISOString();
@@ -297,10 +309,20 @@ export class CodebaseService {
     }
 
     if (mirrorPath) {
+      const releaseWorktree = await this.acquireLock(this.getWorktreeLockPath(mirrorPath));
       try {
-        await this.runGit(['--git-dir', mirrorPath, 'worktree', 'remove', '--force', workspacePath]);
-      } catch (err) {
-        logger.warn(`Failed to remove worktree for ${workspacePath}`, err instanceof Error ? err : undefined);
+        try {
+          await this.runGit(['--git-dir', mirrorPath, 'worktree', 'remove', '--force', workspacePath]);
+        } catch (err) {
+          logger.warn(`Failed to remove worktree for ${workspacePath}`, err instanceof Error ? err : undefined);
+        }
+        try {
+          await this.runGit(['--git-dir', mirrorPath, 'worktree', 'prune']);
+        } catch (err) {
+          logger.warn(`Failed to prune worktrees for ${mirrorPath}`, err instanceof Error ? err : undefined);
+        }
+      } finally {
+        await releaseWorktree();
       }
     }
 
@@ -340,7 +362,7 @@ export class CodebaseService {
     ref: CodebaseRef,
     treePath: string = '',
     options: EnsureMirrorOptions = {}
-  ): Promise<{ ref: string; path: string; entries: TreeEntry[] }> {
+  ): Promise<{ ref: string; commit: string; path: string; entries: TreeEntry[] }> {
     const mirror = await this.ensureMirror(ref, options);
     const targetRef = await this.resolveRef(mirror.mirrorPath, ref.ref);
     const safePath = normalizeRepoFilePath(treePath);
@@ -352,10 +374,11 @@ export class CodebaseService {
       if (cached) return cached;
     }
 
+    const commit = await this.resolveCommitSha(mirror.mirrorPath, targetRef);
     const result = await this.runGit(['--git-dir', mirror.mirrorPath, 'ls-tree', '-l', treeRef]);
     const entries = parseLsTree(result.stdout, safePath);
 
-    const payload = { ref: targetRef, path: safePath, entries };
+    const payload = { ref: targetRef, commit, path: safePath, entries };
     this.setCache(this.treeCache, cacheKey, payload);
     return payload;
   }
@@ -378,11 +401,13 @@ export class CodebaseService {
       if (cached) return cached;
     }
 
+    const commit = await this.resolveCommitSha(mirror.mirrorPath, targetRef);
     const size = await this.getBlobSize(mirror.mirrorPath, `${targetRef}:${safePath}`);
     if (size > this.fileMaxBytes) {
       const payload = {
         path: safePath,
         ref: targetRef,
+        commit,
         size,
         content: '',
         truncated: true,
@@ -399,6 +424,7 @@ export class CodebaseService {
     const payload = {
       path: safePath,
       ref: targetRef,
+      commit,
       size,
       content: isBinary ? '' : content,
       truncated: false,
@@ -494,6 +520,10 @@ export class CodebaseService {
     };
   }
 
+  private getWorktreeLockPath(mirrorPath: string) {
+    return path.join(path.dirname(mirrorPath), 'lock.json');
+  }
+
   private getWorkspacePath(orgId: string, projectId: string, repo: string, workspaceId: string) {
     return path.join(
       this.workspacesDir,
@@ -505,19 +535,53 @@ export class CodebaseService {
   }
 
   private async resolveRef(mirrorPath: string, ref?: string): Promise<string> {
-    if (ref) return normalizeRef(ref);
+    if (ref) {
+      const normalized = normalizeRef(ref);
+      await this.ensureRefExists(mirrorPath, normalized);
+      return normalized;
+    }
     try {
       const result = await this.runGit(['--git-dir', mirrorPath, 'symbolic-ref', '--short', 'HEAD']);
       const resolved = result.stdout.trim();
-      return resolved ? normalizeRef(resolved) : 'main';
+      if (resolved) {
+        const normalized = normalizeRef(resolved);
+        await this.ensureRefExists(mirrorPath, normalized);
+        return normalized;
+      }
     } catch {
-      return 'main';
+      // ignore
     }
+    try {
+      const head = await this.runGit(['--git-dir', mirrorPath, 'rev-parse', '--verify', '--quiet', 'HEAD']);
+      const resolved = head.stdout.trim();
+      if (resolved) return resolved;
+    } catch {
+      // ignore
+    }
+    await this.ensureRefExists(mirrorPath, 'main');
+    return 'main';
   }
 
   private async addWorktree(mirrorPath: string, workspacePath: string, ref: string) {
     await this.runGit(['--git-dir', mirrorPath, 'worktree', 'prune']);
     await this.runGit(['--git-dir', mirrorPath, 'worktree', 'add', '--force', '--detach', workspacePath, ref]);
+  }
+
+  private async resolveCommitSha(mirrorPath: string, ref: string) {
+    const result = await this.runGit([
+      '--git-dir',
+      mirrorPath,
+      'rev-parse',
+      '--verify',
+      '--quiet',
+      '--',
+      ref,
+    ]);
+    const sha = result.stdout.trim();
+    if (!sha) {
+      throw new Error('Invalid ref');
+    }
+    return sha;
   }
 
   private async getBlobSize(mirrorPath: string, refPath: string): Promise<number> {
@@ -664,10 +728,11 @@ export class CodebaseService {
         stderr += chunk.toString();
       });
 
-      const timeout = options.timeoutMs
+      const timeoutMs = options.timeoutMs ?? this.gitTimeoutMs;
+      const timeout = timeoutMs > 0
         ? setTimeout(() => {
             child.kill('SIGKILL');
-          }, options.timeoutMs)
+          }, timeoutMs)
         : null;
 
       child.on('error', (err) => {
@@ -707,6 +772,46 @@ export class CodebaseService {
     const firstKey = cache.keys().next().value;
     if (firstKey) cache.delete(firstKey);
   }
+
+  private clearCacheForMirror(mirrorPath: string) {
+    const prefix = `${mirrorPath}:`;
+    for (const key of this.treeCache.keys()) {
+      if (key.startsWith(prefix)) this.treeCache.delete(key);
+    }
+    for (const key of this.fileCache.keys()) {
+      if (key.startsWith(prefix)) this.fileCache.delete(key);
+    }
+  }
+
+  private async ensureRefExists(mirrorPath: string, ref: string) {
+    const trimmed = ref.trim();
+    if (!trimmed) {
+      throw new Error('Invalid ref');
+    }
+    const isSha = /^[0-9a-f]{7,40}$/i.test(trimmed);
+    try {
+      if (!isSha) {
+        const args = trimmed.startsWith('refs/')
+          ? ['check-ref-format', '--', trimmed]
+          : ['check-ref-format', '--branch', '--', trimmed];
+        await this.runGit(args);
+      }
+      const result = await this.runGit([
+        '--git-dir',
+        mirrorPath,
+        'rev-parse',
+        '--verify',
+        '--quiet',
+        '--',
+        trimmed,
+      ]);
+      if (!result.stdout.trim()) {
+        throw new Error('Invalid ref');
+      }
+    } catch {
+      throw new Error('Invalid ref');
+    }
+  }
 }
 
 export const codebaseService = new CodebaseService();
@@ -742,7 +847,7 @@ function normalizeRepoPath(repo: string) {
 }
 
 function normalizeRef(ref: string) {
-  return ref.replace(/^refs\/heads\//, '').replace(/^origin\//, '');
+  return ref.trim().replace(/^refs\/heads\//, '').replace(/^origin\//, '');
 }
 
 function normalizeRepoFilePath(input: string) {
@@ -757,6 +862,8 @@ function normalizeRepoFilePath(input: string) {
   }
   return segments.join('/');
 }
+
+ 
 
 function stripTrailingSlash(value: string) {
   return value.replace(/\/+$/g, '');

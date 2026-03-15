@@ -53,6 +53,7 @@ type TreeEntry = {
 
 type TreeResponse = {
   ref: string;
+  commit: string;
   path: string;
   entries: TreeEntry[];
 };
@@ -60,6 +61,7 @@ type TreeResponse = {
 type FileResponse = {
   path: string;
   ref: string;
+  commit: string;
   size: number;
   content: string;
   truncated: boolean;
@@ -136,6 +138,7 @@ export default function CodebaseClient({
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [lastLineClicked, setLastLineClicked] = useState<number | null>(null);
+  const [forceSyncUntil, setForceSyncUntil] = useState(0);
 
   const treeRequestId = useRef(0);
   const fileRequestId = useRef(0);
@@ -189,7 +192,8 @@ export default function CodebaseClient({
       try {
         const params = new URLSearchParams();
         params.set('ref', branch);
-        params.set('sync', '0');
+        const shouldForceSync = forceSyncUntil > Date.now();
+        params.set('sync', shouldForceSync ? '1' : '0');
         if (currentPath) params.set('path', currentPath);
         const res = await fetch(`/api/projects/${project.id}/codebase/tree?${params.toString()}`);
         if (!res.ok) throw new Error('tree_fetch_failed');
@@ -300,7 +304,7 @@ export default function CodebaseClient({
     void loadFile(entry.path);
   };
 
-  const loadFile = async (path: string) => {
+  const loadFile = async (path: string, forceSync?: boolean) => {
     const requestId = ++fileRequestId.current;
     setFileLoading(true);
     setFileError(null);
@@ -309,7 +313,8 @@ export default function CodebaseClient({
     try {
       const params = new URLSearchParams();
       params.set('ref', branch);
-      params.set('sync', '0');
+      const shouldForceSync = forceSync ? true : forceSyncUntil > Date.now();
+      params.set('sync', shouldForceSync ? '1' : '0');
       params.set('path', path);
       const res = await fetch(`/api/projects/${project.id}/codebase/file?${params.toString()}`);
       if (!res.ok) throw new Error('file_fetch_failed');
@@ -330,13 +335,14 @@ export default function CodebaseClient({
     }
   };
 
-  const loadComments = async (path: string) => {
+  const loadComments = async (path: string, commit?: string | null) => {
     const requestId = ++commentRequestId.current;
     setCommentsLoading(true);
     setCommentError(null);
     try {
       const params = new URLSearchParams();
       params.set('ref', branch);
+      if (commit) params.set('commit', commit);
       params.set('path', path);
       const res = await fetch(`/api/projects/${project.id}/codebase/comments?${params.toString()}`);
       if (!res.ok) throw new Error('comments_fetch_failed');
@@ -361,8 +367,8 @@ export default function CodebaseClient({
 
   useEffect(() => {
     if (!filePath) return;
-    void loadComments(filePath);
-  }, [filePath, branch, project.id]);
+    void loadComments(filePath, fileData?.commit ?? null);
+  }, [filePath, branch, project.id, fileData?.commit]);
 
   const lines = useMemo(() => {
     if (!fileData || fileData.isBinary || fileData.truncated) return [];
@@ -371,6 +377,10 @@ export default function CodebaseClient({
 
   const handleSubmitComment = async () => {
     if (!filePath || !draftSelection || !draftBody.trim()) return;
+    if (!fileData?.commit) {
+      setCommentError('missing_commit');
+      return;
+    }
     setCommentSaving(true);
     try {
       const selectionText = normalizeSelectionText(draftSelection.text);
@@ -380,6 +390,7 @@ export default function CodebaseClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ref: branch,
+          commit: fileData.commit,
           path: filePath,
           line: draftSelection.lineStart,
           line_end: lineEnd,
@@ -410,9 +421,10 @@ export default function CodebaseClient({
         throw new Error('sync_failed');
       }
       setSyncMessage(dict.projects.codebaseSyncSuccess);
+      setForceSyncUntil(Date.now() + 10_000);
       setRefreshKey((value) => value + 1);
       if (filePath) {
-        await loadFile(filePath);
+        await loadFile(filePath, true);
       }
     } catch {
       setSyncMessage(dict.projects.codebaseSyncFailed);

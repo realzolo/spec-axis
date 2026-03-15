@@ -487,6 +487,7 @@ create table codebase_comments (
   project_id uuid not null references code_projects(id) on delete cascade,
   repo text not null,
   ref text not null,
+  commit_sha text not null check (commit_sha ~* '^[0-9a-f]{7,40}$'),
   path text not null,
   line int not null check (line > 0),
   line_end int,
@@ -503,6 +504,8 @@ create index idx_codebase_comments_project on codebase_comments(project_id);
 create index idx_codebase_comments_file on codebase_comments(project_id, ref, path);
 create index idx_codebase_comments_line on codebase_comments(project_id, ref, path, line);
 create index idx_codebase_comments_line_end on codebase_comments(project_id, ref, path, line_end);
+create index idx_codebase_comments_commit on codebase_comments(project_id, commit_sha, path);
+create index idx_codebase_comments_commit_line on codebase_comments(project_id, commit_sha, path, line);
 
 create table codebase_comment_assignees (
   id uuid primary key default gen_random_uuid(),
