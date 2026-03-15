@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getProjectById, getRulesBySetId, createReport } from '@/services/db';
+import { getProjectById, getRulesBySetId, createReport, updateReport } from '@/services/db';
 import { shouldUseIncrementalAnalysis } from '@/services/incremental';
 import { buildReportCommits } from '@/services/analyzeTask';
 import { createClient } from '@/lib/supabase/server';
-import { taskQueue } from '@/services/taskQueue';
+import { enqueueAnalyze } from '@/services/runnerClient';
 import { logger } from '@/services/logger';
 import { analyzeRequestSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
@@ -92,26 +92,32 @@ export async function POST(request: NextRequest) {
     logger.info(`Report created: ${report.id}`);
 
     // Enqueue analysis task (high priority)
-    await taskQueue.enqueue(
-      'analyze',
-      projectId,
-      {
+    let taskId: string | undefined;
+    try {
+      const result = await enqueueAnalyze({
+        projectId,
         reportId: report.id,
         repo: project.repo,
         hashes: selectedHashes,
         rules,
-        previousReport: useIncremental ? recentReports?.[0] : null,
-      } as Record<string, unknown>,
-      8, // High priority
-      report.id
-    );
+        previousReport: useIncremental ? (recentReports?.[0] as Record<string, unknown>) : null,
+        useIncremental,
+      });
+      taskId = result.taskId;
+    } catch (err) {
+      await updateReport(report.id, {
+        status: 'failed',
+        error_message: err instanceof Error ? err.message : 'Runner enqueue failed',
+      });
+      throw err;
+    }
 
     const clientInfo = extractClientInfo(request);
     await auditLogger.log({
       action: 'analyze',
       entityType: 'project',
       entityId: projectId,
-      changes: { reportId: report.id, commits: selectedHashes.length },
+      changes: { reportId: report.id, commits: selectedHashes.length, taskId },
       userId: user.id,
       ...clientInfo,
     });
@@ -120,6 +126,7 @@ export async function POST(request: NextRequest) {
       reportId: report.id,
       incrementalAnalysis: useIncremental,
       status: 'queued',
+      taskId,
     });
   } catch (err) {
     const { error, statusCode } = formatErrorResponse(err);

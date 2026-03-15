@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import crypto from 'crypto';
 import { createAdminClient } from '@/lib/supabase/server';
-import { getProjectById, listProjectsByRepo, getRulesBySetId, createReport } from '@/services/db';
+import { getProjectById, listProjectsByRepo, getRulesBySetId, createReport, updateReport } from '@/services/db';
 import { buildReportCommits } from '@/services/analyzeTask';
-import { taskQueue } from '@/services/taskQueue';
+import { enqueueAnalyze } from '@/services/runnerClient';
 import { logger } from '@/services/logger';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { codebaseService } from '@/services/CodebaseService';
@@ -194,19 +194,23 @@ export async function POST(request: NextRequest) {
       status: 'queued',
     });
 
-    await taskQueue.enqueue(
-      'analyze',
-      project.id,
-      {
+    try {
+      await enqueueAnalyze({
+        projectId: project.id,
         reportId: report.id,
         repo: project.repo,
         hashes: [headSha],
         rules,
         previousReport: null,
-      } as Record<string, unknown>,
-      8,
-      report.id
-    );
+        useIncremental: false,
+      });
+    } catch (err) {
+      await updateReport(report.id, {
+        status: 'failed',
+        error_message: err instanceof Error ? err.message : 'Runner enqueue failed',
+      });
+      throw err;
+    }
 
     const clientInfo = extractClientInfo(request);
     await auditLogger.log({

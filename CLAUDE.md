@@ -28,7 +28,9 @@ const dict = await getDictionary(locale);
 
 AI code review platform: Next.js 16 + React 19 + TypeScript + HeroUI v3 (beta) + Tailwind CSS v4.
 Multi-GitHub project management, commit selection, Claude AI analysis, configurable rule sets, quality report scoring.
-Backend: task queue + analysis workers (by commit SHA), incremental report updates via SSE.
+Backend: Go runner executes analysis jobs via Redis queue; status updates can be published via NATS.
+Monorepo layout: `apps/studio` (Next.js), `apps/runner` (Go runner), `packages/*` (shared contracts).
+Unless stated otherwise, paths in this guide are relative to `apps/studio`.
 
 ## Organization Model & Routing
 
@@ -68,6 +70,9 @@ Supabase-style multi-tenant org system (Vercel-like UI). Each user has a **perso
 | Supabase | `@supabase/ssr ^0.9` | Database + auth |
 | Octokit | `^5.0.5` | GitHub API |
 | Anthropic SDK | `^0.78` | Claude AI, supports `ANTHROPIC_BASE_URL` |
+| Go | 1.22 | Runner service |
+| Asynq | ^0.28 | Redis-backed job queue (runner) |
+| NATS | ^1.36 | Report status events (optional) |
 | sonner | ^2 | Toast notifications |
 | zod | `^4.3.6` | Runtime validation |
 | lucide-react | ^0.577 | Icons |
@@ -170,48 +175,54 @@ Avoid custom font sizes unless a new token is added.
 
 ## Next.js 16 Special Configuration
 
-- **Middleware**: file is `middleware.ts` at repo root (Next.js middleware). It handles `/o/:orgId` rewrites and org redirects.
-- `src/proxy.ts` is legacy and currently unused.
+- **Middleware**: file is `apps/studio/middleware.ts` (Next.js middleware). It handles `/o/:orgId` rewrites and org redirects.
+- `apps/studio/src/proxy.ts` is legacy and currently unused.
 - **Dynamic pages**: all dashboard pages with Supabase must have `export const dynamic = 'force-dynamic'`
 - **Vercel timeout**: analyze route configured for 300s in `vercel.json`
 
 ## Directory Structure
 
 ```
-src/
-  app/
-    (auth)/login/           # Login (no Sidebar)
-    (auth)/invite/[token]/  # Invite accept
-    auth/callback/          # OAuth callback
-    (dashboard)/            # Protected pages + Sidebar
-      layout.tsx
-      projects/             # ProjectsClient
-        [id]/               # CommitsClient + EnhancedProjectDetail + Tabs
-      reports/              # ReportsClient
-        [id]/               # EnhancedReportDetailClient (primary), ReportDetailClient (legacy)
-      rules/                # RulesClient
-        [id]/               # RuleSetDetailClient
-      settings/integrations/
-    api/
-      analyze/              # POST → fire-and-forget AI analysis
-      tasks/run/            # POST → task queue
-      commits/ projects/ reports/ rules/ stats/ github/ stream/
-    layout.tsx providers.tsx globals.css
-  components/
-    layout/Sidebar.tsx
-    project/ProjectCard, AddProjectModal, EditProjectModal, ProjectConfigPanel
-    report/EnhancedIssueCard, AIChat, TrendChart, ExportButton
-    dashboard/DashboardStats.tsx
-    common/LanguageSwitcher.tsx
-  i18n/
-    index.ts                # getDictionary(), Dictionary type (inferred from en.json)
-    dictionaries/           # en.json zh.json ja.json es.json zh-TW.json
-  lib/locale.ts             # getLocale() — reads NEXT_LOCALE cookie
-  lib/orgPath.ts            # /o/:orgId path helpers
-  lib/useOrgRole.ts         # client hook for org role + admin gating
-  services/db.ts github.ts claude.ts taskQueue.ts analyzeTask.ts ...
-  proxy.ts                  # Legacy auth middleware (unused)
-middleware.ts               # Org path rewrite + redirect (Next.js middleware)
+apps/
+  studio/
+    src/
+      app/
+        (auth)/login/           # Login (no Sidebar)
+        (auth)/invite/[token]/  # Invite accept
+        auth/callback/          # OAuth callback
+        (dashboard)/            # Protected pages + Sidebar
+          layout.tsx
+          projects/             # ProjectsClient
+            [id]/               # CommitsClient + EnhancedProjectDetail + Tabs
+          reports/              # ReportsClient
+            [id]/               # EnhancedReportDetailClient (primary), ReportDetailClient (legacy)
+          rules/                # RulesClient
+            [id]/               # RuleSetDetailClient
+          settings/integrations/
+        api/
+          analyze/              # POST → enqueue runner task
+          tasks/run/            # Deprecated (runner handles tasks)
+          commits/ projects/ reports/ rules/ stats/ github/ stream/
+        layout.tsx providers.tsx globals.css
+      components/
+        layout/Sidebar.tsx
+        project/ProjectCard, AddProjectModal, EditProjectModal, ProjectConfigPanel
+        report/EnhancedIssueCard, AIChat, TrendChart, ExportButton
+        dashboard/DashboardStats.tsx
+        common/LanguageSwitcher.tsx
+      i18n/
+        index.ts                # getDictionary(), Dictionary type (inferred from en.json)
+        dictionaries/           # en.json zh.json ja.json es.json zh-TW.json
+      lib/locale.ts             # getLocale() — reads NEXT_LOCALE cookie
+      lib/orgPath.ts            # /o/:orgId path helpers
+      lib/useOrgRole.ts         # client hook for org role + admin gating
+      services/db.ts github.ts claude.ts taskQueue.ts analyzeTask.ts ...
+      proxy.ts                  # Legacy auth middleware (unused)
+    middleware.ts               # Org path rewrite + redirect (Next.js middleware)
+  runner/
+    cmd/runner/                 # Go runner entrypoint
+packages/
+  contracts/                    # Shared API/contracts (future)
 ```
 
 ## Environment Variables
@@ -220,8 +231,22 @@ middleware.ts               # Org path rewrite + redirect (Next.js middleware)
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-TASK_RUNNER_TOKEN=          # Optional, protects /api/tasks/run
+RUNNER_BASE_URL=            # Runner base URL (e.g. http://localhost:8200)
+RUNNER_TOKEN=               # Shared token for runner auth
+NATS_URL=                   # Optional, report status events
+TASK_RUNNER_TOKEN=          # Optional, protects internal task endpoints (e.g. /api/codebase/sync)
 ```
+
+**Runner env (apps/runner):**
+```
+RUNNER_PORT=8200
+RUNNER_TOKEN=
+DATABASE_URL=               # Postgres connection string
+REDIS_URL=                  # Redis queue
+NATS_URL=                   # Optional
+ENCRYPTION_KEY=             # Same key used by studio for decrypting secrets
+```
+Environment files live under `apps/studio` (e.g. `apps/studio/.env`).
 
 **VCS and AI integrations** are configured via web UI at **Settings > Integrations** — NOT via env vars.
 - VCS: GitHub, GitLab, Generic Git
@@ -232,10 +257,11 @@ TASK_RUNNER_TOKEN=          # Optional, protects /api/tasks/run
 ## Common Commands
 
 ```bash
-pnpm dev     # Dev server (port 8109)
-pnpm build   # Production build (TypeScript check)
-pnpm start   # Production server
-pnpm lint    # ESLint
+pnpm dev     # Console dev server (port 8109)
+pnpm build   # Console production build (TypeScript check)
+pnpm start   # Console production server
+pnpm lint    # Console ESLint
+cd apps/runner && go run ./cmd/runner   # Runner service
 ```
 
 ## Dependency Build Scripts
@@ -246,11 +272,9 @@ If new install warnings appear, approve the dependency and update the allowlist.
 
 ## AI Analysis Flow
 
-1. `POST /api/analyze` → returns `{ reportId }` immediately, enqueues task
-2. Worker: fetch diff by commit SHA → Claude analysis → sync `report_issues` → update status
-3. Frontend: SSE on `/api/reports/[id]/stream`, fallback to polling every 2.5s
-
-**Task queue:** `POST /api/tasks/run?limit=1` — auth via `x-task-token` or login; max limit 10
+1. `POST /api/analyze` → returns `{ reportId }` immediately, enqueues runner task
+2. Runner: fetch diff by commit SHA → AI analysis → sync `report_issues` → update status
+3. Frontend: SSE on `/api/reports/[id]/stream` (NATS-backed if configured), fallback to polling every 2.5s
 
 **GitHub webhook:** `/api/webhooks/github` supports `?project_id=...`. If a repo matches multiple projects, the endpoint returns 409 and requires `project_id`.
 
@@ -267,7 +291,7 @@ Automatic mirror sync can be triggered by:
 - Scheduled POST to `/api/codebase/sync` (uses `x-task-token` if `TASK_RUNNER_TOKEN` is set). Supports `limit`, `force`, `project_id`, and `org_id`.
 - Project creation triggers an initial mirror sync in the background.
 
-Local cache directories `/.codebase/` and `/.pnpm-store/` are not committed to Git.
+Local cache directories (for example `apps/studio/.codebase/` and `/.pnpm-store/`) are not committed to Git.
 
 ```
 CODEBASE_ROOT=
@@ -287,11 +311,11 @@ CODEBASE_GIT_BIN=
 import { toast } from 'sonner';
 toast.success('...'); toast.error('...'); toast.warning('...');
 ```
-`Toaster` mounted in `src/app/providers.tsx`.
+`Toaster` mounted in `apps/studio/src/app/providers.tsx`.
 
 ## Runtime Contracts
 
-- All API routes require login; task endpoints accept `x-task-token`
+- All API routes require login; runner endpoints accept `X-Runner-Token`
 - `report_issues.status`: `open | fixed | ignored | false_positive | planned`
 - `/api/projects/[id]/trends` returns array directly (no `data` wrapper)
 - Rules learning endpoints are admin-only (org-scoped)

@@ -1,12 +1,12 @@
 # spec-axis
 
-An AI-powered code review platform built with Next.js 16 + React 19 + TypeScript. It integrates GitHub/GitLab repository management, commit-based analysis, configurable AI models (Claude, GPT-4, etc.), custom rule sets, and quality scoring. The UI follows a Supabase Dashboard-style white theme using HeroUI v3 (beta) and Tailwind CSS v4. The backend runs analysis via a task queue and streams incremental updates over SSE.
+An AI-powered code review platform built with Next.js 16 + React 19 + TypeScript. It integrates GitHub/GitLab repository management, commit-based analysis, configurable AI models (Claude, GPT-4, etc.), custom rule sets, and quality scoring. The UI follows a Supabase Dashboard-style white theme using HeroUI v3 (beta) and Tailwind CSS v4. The backend runs analysis in a Go runner via a Redis-backed queue and streams updates via SSE (NATS optional). The repo is a monorepo with `apps/studio` (Next.js console) and `apps/runner` (Go runner).
 
 ## ✨ Features
 
 - **Multi-VCS Support**: GitHub, GitLab, and generic Git repositories
 - **AI-Powered Analysis**: Claude, GPT-4, DeepSeek, and other OpenAI-compatible models
-- **Smart Task Queue**: Background processing with incremental updates via SSE
+- **Smart Task Queue**: Go runner with Redis-backed queue and SSE updates (NATS optional)
 - **Configurable Rule Sets**: Custom code quality rules per project
 - **Quality Scoring**: Detailed reports with severity-based metrics
 - **Multi-Tenant**: Complete user isolation with secure integration storage
@@ -19,6 +19,9 @@ An AI-powered code review platform built with Next.js 16 + React 19 + TypeScript
 - Node.js 18+
 - pnpm
 - Supabase project
+- Go 1.22 (runner)
+- Redis (queue)
+- NATS (optional, report status events)
 
 ### Installation
 
@@ -31,15 +34,17 @@ pnpm install
 
 2. **Setup environment variables**:
 ```bash
-cp .env.example .env
+cp apps/studio/.env.example apps/studio/.env
 ```
 
-Edit `.env` and add your Supabase credentials:
+Edit `apps/studio/.env` and add your Supabase credentials:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ENCRYPTION_KEY=<generated-key>  # See encryption setup below
+RUNNER_BASE_URL=http://localhost:8200
+RUNNER_TOKEN=your_runner_token
 ```
 
 3. **Generate encryption key** (required for secure storage):
@@ -47,9 +52,22 @@ ENCRYPTION_KEY=<generated-key>  # See encryption setup below
 node -e "console.log('ENCRYPTION_KEY=' + require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Add the output to your `.env` file.
+Add the output to your `apps/studio/.env` file.
 
-4. **Run database migrations**:
+4. **Setup runner environment**:
+```bash
+cp apps/runner/.env.example apps/runner/.env
+```
+
+Edit `apps/runner/.env` and add:
+```bash
+DATABASE_URL=postgres://...
+REDIS_URL=redis://...
+RUNNER_TOKEN=your_runner_token
+ENCRYPTION_KEY=<same as studio>
+```
+
+5. **Run database migrations**:
 
 Open Supabase SQL Editor and run the migration files in order:
 ```sql
@@ -62,12 +80,18 @@ Open Supabase SQL Editor and run the migration files in order:
 006_user_integrations.sql
 ```
 
-5. **Start development server**:
+6. **Start development server**:
 ```bash
 pnpm dev
 ```
 
 Open [http://localhost:8109](http://localhost:8109) to see the application.
+
+7. **Start runner service**:
+```bash
+cd apps/runner
+go run ./cmd/runner
+```
 
 ## 📚 Documentation
 
@@ -95,12 +119,29 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 # Encryption (for secure token storage)
 ENCRYPTION_KEY=<64-hex-characters>
+
+# Runner
+RUNNER_BASE_URL=http://localhost:8200
+RUNNER_TOKEN=your-runner-token
 ```
 
 ### Optional
 ```bash
-# Task queue authentication
+# Event bus (optional)
+NATS_URL=nats://localhost:4222
+
+# Internal task endpoints (optional)
 TASK_RUNNER_TOKEN=your-secure-token
+```
+
+### Runner (apps/runner)
+```bash
+RUNNER_PORT=8200
+RUNNER_TOKEN=your-runner-token
+DATABASE_URL=postgres://...
+REDIS_URL=redis://...
+NATS_URL=nats://localhost:4222
+ENCRYPTION_KEY=<same as studio>
 ```
 
 **Note**: VCS (GitHub/GitLab) and AI (Claude/GPT-4) integrations are configured through the web UI at **Settings > Integrations**, not via environment variables. See [Quick Setup Guide](./docs/quick-setup-guide.md) for details.
@@ -116,7 +157,7 @@ User Interface (Settings > Integrations)
     ↓
 API Layer (/api/integrations)
     ↓
-Service Layer (src/services/integrations/)
+Service Layer (apps/studio/src/services/integrations/)
     ↓
 Database (user_integrations table + Encrypted secrets)
 ```
@@ -142,17 +183,17 @@ See [Integration System Implementation](./docs/integration-system-implementation
 ## ⚙️ Scripts
 
 ```bash
-pnpm dev     # Development server (port 8109)
-pnpm build   # Production build with TypeScript check
-pnpm start   # Production server
-pnpm lint    # ESLint analysis
+pnpm dev     # Studio dev server (port 8109)
+pnpm build   # Studio production build with TypeScript check
+pnpm start   # Studio production server
+pnpm lint    # Studio ESLint analysis
+cd apps/runner && go run ./cmd/runner   # Runner service
 ```
 
 ## 🌐 API Endpoints
 
 ### Core APIs
 - `POST /api/analyze` - Trigger AI code analysis (returns immediately, queues task)
-- `POST /api/tasks/run?limit=1` - Execute queued analysis tasks
 - `GET /api/stream` - Server-Sent Events for real-time report updates
 - `GET /api/reports/[id]` - Get analysis report details
 - `GET /api/commits` - Fetch commits from VCS provider
@@ -172,32 +213,12 @@ See [API Reference](./docs/api-reference.md) for complete endpoint documentation
 
 ```
 spec-axis/
-├── src/
-│   ├── app/                    # Next.js App Router routes
-│   │   ├── (auth)/            # Authentication pages
-│   │   ├── (dashboard)/       # Protected dashboard pages
-│   │   │   ├── projects/      # Project management
-│   │   │   ├── reports/       # Analysis reports
-│   │   │   ├── rules/         # Rule set configuration
-│   │   │   └── settings/      # User settings & integrations
-│   │   ├── api/               # API endpoints
-│   │   └── layout.tsx         # Root layout
-│   ├── components/            # React components
-│   │   ├── common/           # Shared components
-│   │   ├── dashboard/        # Dashboard widgets
-│   │   ├── project/          # Project-related UI
-│   │   ├── report/           # Report visualization
-│   │   └── settings/         # Settings pages
-│   ├── services/             # Business logic layer
-│   │   ├── integrations/     # VCS & AI integration system
-│   │   ├── db.ts             # Database operations
-│   │   ├── github.ts         # GitHub client
-│   │   ├── claude.ts         # AI analysis client
-│   │   └── taskQueue.ts      # Task queue management
-│   └── lib/                  # Utilities
-│       ├── supabase/         # Supabase clients
-│       ├── encryption.ts     # AES-256-GCM encryption
-│       └── vault.ts          # Secret storage
+├── apps/
+│   ├── studio/                # Next.js console
+│   │   └── src/               # App Router, components, services, libs
+│   └── runner/                # Go runner service
+├── packages/
+│   └── contracts/             # Shared API/contracts (future)
 ├── docs/                     # Documentation
 ├── supabase/migrations/      # Database migrations
 ├── CLAUDE.md                 # Development guide
@@ -238,7 +259,7 @@ See [Quick Setup Guide](./docs/quick-setup-guide.md#production-deployment) for d
 ### Common Issues
 
 **Error: "ENCRYPTION_KEY environment variable is not set"**
-- Solution: Add `ENCRYPTION_KEY` to `.env` and restart server
+- Solution: Add `ENCRYPTION_KEY` to `apps/studio/.env` and restart server
 
 **Error: "relation user_integrations does not exist"**
 - Solution: Run database migration `006_user_integrations.sql`
