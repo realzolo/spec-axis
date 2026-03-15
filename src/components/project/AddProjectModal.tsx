@@ -22,21 +22,66 @@ import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 import { t } from '@/lib/i18n-utils';
 
-type GHRepo = {
-  full_name: string; name: string; description: string | null;
-  default_branch: string; private: boolean; language: string | null; updated_at: string | null;
+type RepoItem = {
+  fullName: string;
+  name: string;
+  description?: string | null;
+  defaultBranch: string;
+  isPrivate?: boolean;
+  language?: string | null;
+  updatedAt?: string | null;
 };
 type RuleSet = { id: string; name: string };
+
+function normalizeRepo(raw: Record<string, any>): RepoItem | null {
+  const ownerValue =
+    typeof raw.owner === 'string'
+      ? raw.owner
+      : typeof raw.owner?.login === 'string'
+        ? raw.owner.login
+        : typeof raw.owner?.name === 'string'
+          ? raw.owner.name
+          : undefined;
+  const fullName =
+    raw.full_name ??
+    raw.fullName ??
+    (ownerValue && raw.name ? `${ownerValue}/${raw.name}` : undefined);
+  const name = raw.name ?? (fullName ? fullName.split('/').pop() : undefined);
+  if (!fullName || !name) return null;
+
+  const defaultBranch = raw.default_branch ?? raw.defaultBranch ?? 'main';
+  const description = raw.description ?? null;
+  const isPrivate =
+    typeof raw.private === 'boolean'
+      ? raw.private
+      : typeof raw.isPrivate === 'boolean'
+        ? raw.isPrivate
+        : typeof raw.visibility === 'string'
+          ? raw.visibility !== 'public'
+          : undefined;
+  const language = raw.language ?? null;
+  const updatedAt = raw.updated_at ?? raw.updatedAt ?? raw.last_activity_at ?? null;
+
+  return {
+    fullName,
+    name,
+    description,
+    defaultBranch,
+    isPrivate,
+    language,
+    updatedAt,
+  };
+}
 
 export default function AddProjectModal({ open, onClose, onCreated, dict }: {
   open: boolean; onClose: () => void; onCreated: () => void; dict: Dictionary;
 }) {
   const [step, setStep] = useState<'pick' | 'confirm'>('pick');
-  const [repos, setRepos] = useState<GHRepo[]>([]);
+  const [repos, setRepos] = useState<RepoItem[]>([]);
   const [reposLoading, setReposLoading] = useState(false);
   const [reposError, setReposError] = useState('');
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<GHRepo | null>(null);
+  const [selected, setSelected] = useState<RepoItem | null>(null);
   const [projectName, setProjectName] = useState('');
   const [rulesetId, setRulesetId] = useState('none');
   const [ruleSets, setRuleSets] = useState<RuleSet[]>([]);
@@ -53,7 +98,10 @@ export default function AddProjectModal({ open, onClose, onCreated, dict }: {
       if (repoData.error) {
         setReposError(repoData.error as string);
       } else {
-        setRepos(Array.isArray(repoData) ? (repoData as GHRepo[]) : []);
+        const normalized = Array.isArray(repoData)
+          ? repoData.map(normalizeRepo).filter((repo): repo is RepoItem => !!repo)
+          : [];
+        setRepos(normalized);
       }
       setRuleSets(Array.isArray(ruleData) ? ruleData : []);
     }).catch(() => setReposError(dict.projects.failedToLoadRepos)).finally(() => setReposLoading(false));
@@ -61,11 +109,11 @@ export default function AddProjectModal({ open, onClose, onCreated, dict }: {
 
   const filtered = useMemo(() =>
     repos.filter(r =>
-      r.full_name.toLowerCase().includes(search.toLowerCase()) ||
+      r.fullName.toLowerCase().includes(search.toLowerCase()) ||
       (r.description ?? '').toLowerCase().includes(search.toLowerCase())
     ), [repos, search]);
 
-  function pickRepo(repo: GHRepo) {
+  function pickRepo(repo: RepoItem) {
     setSelected(repo);
     setProjectName(repo.name);
     setStep('confirm');
@@ -78,7 +126,12 @@ export default function AddProjectModal({ open, onClose, onCreated, dict }: {
     const res = await fetch('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: projectName.trim(), repo: selected.full_name, default_branch: selected.default_branch, ruleset_id: rulesetId === 'none' ? undefined : rulesetId }),
+      body: JSON.stringify({
+        name: projectName.trim(),
+        repo: selected.fullName,
+        default_branch: selected.defaultBranch,
+        ruleset_id: rulesetId === 'none' ? undefined : rulesetId,
+      }),
     });
     const data = await res.json();
     setSubmitting(false);
@@ -124,23 +177,33 @@ export default function AddProjectModal({ open, onClose, onCreated, dict }: {
                 <div className="divide-y divide-border">
                   {filtered.map((repo) => (
                     <button
-                      key={repo.full_name}
+                      key={repo.fullName}
                       onClick={() => pickRepo(repo)}
                       className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors text-left cursor-pointer"
                     >
                       <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center shrink-0">
-                        {repo.private ? <Lock className="size-4" /> : <Github className="size-4" />}
+                        {repo.isPrivate ? <Lock className="size-4" /> : <Github className="size-4" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
-                          <span className="font-medium text-sm truncate">{repo.full_name}</span>
-                          {repo.private && <span className="text-xs px-2 py-0.5 rounded-full bg-muted shrink-0">{dict.projects.privateRepo}</span>}
+                          <span className="font-medium text-sm truncate">{repo.fullName}</span>
+                          {repo.isPrivate && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-muted shrink-0">
+                              {dict.projects.privateRepo}
+                            </span>
+                          )}
                         </div>
-                        {repo.description && <p className="text-xs text-muted-foreground truncate">{repo.description}</p>}
+                        {repo.description && (
+                          <p className="text-xs text-muted-foreground truncate">{repo.description}</p>
+                        )}
                       </div>
                       <div className="text-right shrink-0">
-                        {repo.language && <div className="text-xs text-muted-foreground mb-0.5">{repo.language}</div>}
-                        <div className="text-xs text-muted-foreground">{formatDate(repo.updated_at)}</div>
+                        {repo.language && (
+                          <div className="text-xs text-muted-foreground mb-0.5">{repo.language}</div>
+                        )}
+                        {repo.updatedAt && (
+                          <div className="text-xs text-muted-foreground">{formatDate(repo.updatedAt)}</div>
+                        )}
                       </div>
                     </button>
                   ))}
@@ -158,8 +221,8 @@ export default function AddProjectModal({ open, onClose, onCreated, dict }: {
                 <Github className="size-5" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm truncate">{selected.full_name}</p>
-                <p className="text-xs text-muted-foreground">{dict.projects.branch}: {selected.default_branch}</p>
+                <p className="font-medium text-sm truncate">{selected.fullName}</p>
+                <p className="text-xs text-muted-foreground">{dict.projects.branch}: {selected.defaultBranch}</p>
               </div>
               <Button type="button" variant="ghost" size="sm" onClick={() => setStep('pick')}>{dict.common.edit}</Button>
             </div>

@@ -237,6 +237,12 @@ pnpm start   # Production server
 pnpm lint    # ESLint
 ```
 
+## Dependency Build Scripts
+
+pnpm is configured to only allow approved dependency build scripts.
+The allowlist lives in `.npmrc` under `only-built-dependencies[]` (currently includes `msgpackr-extract`).
+If new install warnings appear, approve the dependency and update the allowlist.
+
 ## AI Analysis Flow
 
 1. `POST /api/analyze` → returns `{ reportId }` immediately, enqueues task
@@ -246,6 +252,30 @@ pnpm lint    # ESLint
 **Task queue:** `POST /api/tasks/run?limit=1` — auth via `x-task-token` or login; max limit 10
 
 **GitHub webhook:** `/api/webhooks/github` supports `?project_id=...`. If a repo matches multiple projects, the endpoint returns 409 and requires `project_id`.
+
+## Codebase Cache (Backend)
+
+`CodebaseService` manages per-project local Git mirrors and per-job workspaces for AI analysis and pipeline tasks.
+Mirrors are cache-only (not a source of truth) and are synced on demand or on a schedule; workspaces are isolated and must be cleaned after each job.
+Codebase browsing uses the same mirror cache and enforces a max preview size for files.
+Line-level comments for code browsing are stored in `codebase_comments` and scoped by org, project, repo, ref, and path.
+Automatic mirror sync can be triggered by:
+- GitHub `push` webhooks (forces mirror fetch for matching projects).
+- Scheduled POST to `/api/codebase/sync` (uses `x-task-token` if `TASK_RUNNER_TOKEN` is set). Supports `limit`, `force`, `project_id`, and `org_id`.
+
+Local cache directories `/.codebase/` and `/.pnpm-store/` are not committed to Git.
+
+```
+CODEBASE_ROOT=
+CODEBASE_MIRRORS_DIR=
+CODEBASE_WORKSPACES_DIR=
+CODEBASE_SYNC_INTERVAL_MS=
+CODEBASE_LOCK_TIMEOUT_MS=
+CODEBASE_LOCK_STALE_MS=
+CODEBASE_WORKSPACE_TTL_MS=
+CODEBASE_FILE_MAX_BYTES=
+CODEBASE_GIT_BIN=
+```
 
 ## Toast Usage
 

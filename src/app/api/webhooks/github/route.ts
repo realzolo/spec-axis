@@ -7,6 +7,7 @@ import { buildReportCommits } from '@/services/analyzeTask';
 import { taskQueue } from '@/services/taskQueue';
 import { logger } from '@/services/logger';
 import { auditLogger, extractClientInfo } from '@/services/audit';
+import { codebaseService } from '@/services/CodebaseService';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,15 +31,68 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
   }
 
-  if (event !== 'pull_request') {
-    return NextResponse.json({ ok: true });
-  }
-
   let payload: any;
   try {
     payload = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  if (event === 'push') {
+    const repoFullName = payload?.repository?.full_name as string | undefined;
+    if (!repoFullName) {
+      return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const projectId = searchParams.get('project_id');
+    let projects: Record<string, any>[] = [];
+
+    if (projectId) {
+      const project = await getProjectById(projectId).catch(() => null);
+      if (!project) {
+        return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+      }
+      if (project.repo !== repoFullName) {
+        return NextResponse.json({ error: 'Project repository mismatch' }, { status: 400 });
+      }
+      projects = [project as Record<string, any>];
+    } else {
+      projects = (await listProjectsByRepo(repoFullName).catch(() => [])) as Record<string, any>[];
+    }
+
+    if (projects.length === 0) {
+      return NextResponse.json({ ok: true });
+    }
+
+    let synced = 0;
+    let failed = 0;
+    for (const project of projects) {
+      if (!project.org_id || !project.repo) {
+        failed += 1;
+        continue;
+      }
+      try {
+        await codebaseService.ensureMirror(
+          {
+            orgId: project.org_id,
+            projectId: project.id,
+            repo: project.repo,
+          },
+          { forceSync: true }
+        );
+        synced += 1;
+      } catch (err) {
+        failed += 1;
+        logger.warn('Codebase sync from webhook failed', err instanceof Error ? err : undefined);
+      }
+    }
+
+    return NextResponse.json({ ok: true, synced, failed });
+  }
+
+  if (event !== 'pull_request') {
+    return NextResponse.json({ ok: true });
   }
 
   const action = payload.action;

@@ -39,40 +39,57 @@ export class GitHubClient implements VCSClient {
 
   async getRepositories(owner?: string): Promise<Repository[]> {
     try {
-      const targetOwner = owner || this.config.org;
+      const ownerInput = typeof owner === 'string' ? owner.trim() : undefined;
+      const configOwner = typeof this.config.org === 'string' ? this.config.org.trim() : undefined;
+      const targetOwner = ownerInput || configOwner;
 
-      if (!targetOwner) {
-        // Get user's repositories
-        const { data } = await this.octokit.rest.repos.listForAuthenticatedUser({
-          per_page: 100,
-          sort: 'updated',
-        });
-
-        return data.map((repo) => ({
-          owner: repo.owner.login,
-          name: repo.name,
-          fullName: repo.full_name,
-          defaultBranch: repo.default_branch,
-          description: repo.description || undefined,
-          url: repo.html_url,
-        }));
-      }
-
-      // Get organization repositories
-      const { data } = await this.octokit.rest.repos.listForOrg({
-        org: targetOwner,
-        per_page: 100,
-        sort: 'updated',
-      });
-
-      return data.map((repo) => ({
-        owner: repo.owner.login,
+      const mapRepo = (repo: any): Repository => ({
+        owner: repo.owner?.login ?? repo.owner,
         name: repo.name,
-        fullName: repo.full_name,
+        fullName: repo.full_name ?? `${repo.owner?.login ?? repo.owner}/${repo.name}`,
         defaultBranch: repo.default_branch || 'main',
         description: repo.description || undefined,
         url: repo.html_url,
-      }));
+      });
+
+      const listForUser = async () =>
+        this.octokit.paginate(this.octokit.rest.repos.listForAuthenticatedUser, {
+          per_page: 100,
+          sort: 'updated',
+          visibility: 'all',
+          affiliation: 'owner,collaborator,organization_member',
+        });
+
+      if (targetOwner) {
+        try {
+          const orgRepos = await this.octokit.paginate(this.octokit.rest.repos.listForOrg, {
+            org: targetOwner,
+            per_page: 100,
+            sort: 'updated',
+            type: 'all',
+          });
+
+          if (orgRepos.length > 0) {
+            return orgRepos.map(mapRepo);
+          }
+        } catch (error) {
+          console.warn('Failed to list org repositories, falling back to user repositories:', error);
+        }
+
+        const userRepos = await listForUser();
+        const filtered = userRepos.filter(
+          (repo) => repo.owner?.login?.toLowerCase() === targetOwner.toLowerCase()
+        );
+
+        if (filtered.length > 0) {
+          return filtered.map(mapRepo);
+        }
+
+        return userRepos.map(mapRepo);
+      }
+
+      const userRepos = await listForUser();
+      return userRepos.map(mapRepo);
     } catch (error) {
       console.error('Failed to get repositories:', error);
       throw new Error('Failed to fetch repositories from GitHub');

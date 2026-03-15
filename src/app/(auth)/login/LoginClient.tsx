@@ -33,18 +33,8 @@ export default function LoginClient({ dict, locale, legalLinks }: LoginClientPro
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [signingUp, setSigningUp] = useState(false);
-  const [oauthLoading, setOauthLoading] = useState<'google' | 'github' | null>(null);
+  const [oauthLoading, setOauthLoading] = useState<'github' | null>(null);
   const currentYear = new Date().getFullYear();
-
-  const GoogleMark = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg viewBox="0 0 48 48" aria-hidden="true" {...props}>
-      <path fill="#EA4335" d="M24 9.5c3.2 0 6.1 1.1 8.4 3.2l6.1-6.1C34.6 2.5 29.6 0 24 0 14.6 0 6.5 5.4 2.5 13.2l7.1 5.5C11.5 13.1 17.2 9.5 24 9.5z" />
-      <path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-2.8-.4-4.2H24v8h12.6c-.5 3.1-2.4 5.8-5.2 7.5l6.3 4.9c3.7-3.4 5.9-8.4 5.9-14.2z" />
-      <path fill="#FBBC05" d="M9.6 28.7c-.6-1.7-.9-3.5-.9-5.4 0-1.9.3-3.7.9-5.4l-7.1-5.5C.9 15.2 0 19.5 0 23.3c0 3.8.9 8.1 2.5 11.4l7.1-6z" />
-      <path fill="#34A853" d="M24 46.5c5.6 0 10.3-1.8 13.8-4.8l-6.3-4.9c-1.7 1.2-4.1 2.1-7.5 2.1-6.8 0-12.5-3.6-15.1-9.2l-7.1 5.5C6.5 42.6 14.6 46.5 24 46.5z" />
-      <path fill="none" d="M0 0h48v48H0z" />
-    </svg>
-  );
 
   const GithubMark = (props: React.SVGProps<SVGSVGElement>) => (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
@@ -65,7 +55,7 @@ export default function LoginClient({ dict, locale, legalLinks }: LoginClientPro
     return '/projects';
   }
 
-  async function handleOAuth(provider: 'google' | 'github') {
+  async function handleOAuth(provider: 'github') {
     setOauthLoading(provider);
 
     try {
@@ -204,24 +194,12 @@ export default function LoginClient({ dict, locale, legalLinks }: LoginClientPro
                   <GithubMark className="h-4 w-4 text-foreground" />
                   {dict.auth.continueWithGithub}
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 w-full justify-center gap-2 px-4"
-                  disabled={oauthLoading !== null}
-                  onClick={() => handleOAuth('google')}
-                >
-                  <GoogleMark className="h-4 w-4" />
-                  {dict.auth.continueWithGoogle}
-                </Button>
               </div>
 
-              <div className="flex items-center gap-3">
-                <span className="h-px flex-1 bg-border" />
-                <span className="text-label-11 uppercase tracking-wide text-muted-foreground">
-                  {dict.auth.orContinueWithEmail}
-                </span>
-                <span className="h-px flex-1 bg-border" />
+              <div className="flex w-full max-w-[320px] mx-auto items-center gap-3 text-label-11 uppercase tracking-wide text-muted-foreground">
+                <span className="auth-divider auth-divider--left" aria-hidden="true" />
+                <span>{dict.auth.orContinueWithEmail}</span>
+                <span className="auth-divider auth-divider--right" aria-hidden="true" />
               </div>
 
               {mode === 'login' ? (

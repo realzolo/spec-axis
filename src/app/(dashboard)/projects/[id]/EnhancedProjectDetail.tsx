@@ -1,8 +1,9 @@
 'use client';
 
-import { Settings, GitBranch, BarChart3 } from 'lucide-react';
+import { Settings, GitBranch, BarChart3, Code2 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import CommitsClient from './CommitsClient';
+import CodebaseClient from './CodebaseClient';
 import ProjectConfigPanel from '@/components/project/ProjectConfigPanel';
 import DashboardStats from '@/components/dashboard/DashboardStats';
 import type { Dictionary } from '@/i18n';
@@ -21,6 +22,10 @@ export default function EnhancedProjectDetail({ project, branches, dict }: { pro
               <GitBranch className="size-4 mr-2" />
               {dict.commits.title}
             </TabsTrigger>
+            <TabsTrigger value="codebase">
+              <Code2 className="size-4 mr-2" />
+              {dict.projects.codebase}
+            </TabsTrigger>
             <TabsTrigger value="stats">
               <BarChart3 className="size-4 mr-2" />
               {dict.projects.statistics}
@@ -35,6 +40,9 @@ export default function EnhancedProjectDetail({ project, branches, dict }: { pro
         <div className="flex-1 overflow-auto">
           <TabsContent value="commits">
             <CommitsClient project={project} branches={branches} dict={dict} />
+          </TabsContent>
+          <TabsContent value="codebase" className="h-full">
+            <CodebaseClient project={project} branches={branches} dict={dict} />
           </TabsContent>
           <TabsContent value="stats" className="p-8 space-y-6">
             <div>
