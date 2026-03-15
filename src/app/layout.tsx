@@ -3,6 +3,11 @@ import Script from 'next/script';
 import './globals.css';
 import { Providers } from './providers';
 import { getLocale } from '@/lib/locale';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
+
+const geistSans = GeistSans;
+const geistMono = GeistMono;
 
 export const metadata: Metadata = {
   title: 'Nexaly',
@@ -20,7 +25,12 @@ export default async function RootLayout({
   const locale = await getLocale();
 
   return (
-    <html lang={locale} suppressHydrationWarning className="dark" data-theme="dark">
+    <html
+      lang={locale}
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable} dark`}
+      data-theme="dark"
+    >
       <head>
         <Script id="theme-init" strategy="beforeInteractive">
           {`(() => {

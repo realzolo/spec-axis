@@ -3,66 +3,110 @@
 @layer base {
   :root {
     color-scheme: dark;
-    --background: 0 0% 4%;
-    --foreground: 0 0% 96%;
-    --card: 0 0% 7%;
-    --card-foreground: 0 0% 96%;
-    --muted: 0 0% 9%;
-    --muted-foreground: 0 0% 60%;
-    --border: 0 0% 12%;
-    --input: 0 0% 12%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 8%;
-    --secondary: 0 0% 12%;
-    --secondary-foreground: 0 0% 98%;
-    --accent: 210 100% 48%;
+    --font-sans: var(--font-geist-sans);
+    --font-mono: var(--font-geist-mono);
+
+    --ds-background-1: 0 0% 4%;
+    --ds-background-2: 0 0% 7%;
+    --ds-surface-1: 0 0% 9%;
+    --ds-surface-2: 0 0% 11%;
+    --ds-surface-3: 0 0% 13%;
+    --ds-border-1: 0 0% 16%;
+    --ds-border-2: 0 0% 20%;
+    --ds-border-3: 0 0% 24%;
+    --ds-text-1: 0 0% 96%;
+    --ds-text-2: 0 0% 70%;
+    --ds-accent-7: 210 100% 48%;
+    --ds-accent-8: 210 100% 54%;
+    --ds-accent-9: 210 100% 60%;
+    --ds-success-7: 142 70% 45%;
+    --ds-warning-7: 38 92% 50%;
+    --ds-danger-7: 0 84% 60%;
+
+    --background: var(--ds-background-1);
+    --foreground: var(--ds-text-1);
+    --card: var(--ds-background-2);
+    --card-foreground: var(--ds-text-1);
+    --muted: var(--ds-surface-1);
+    --muted-foreground: var(--ds-text-2);
+    --border: var(--ds-border-1);
+    --input: var(--ds-border-1);
+    --primary: var(--ds-text-1);
+    --primary-foreground: var(--ds-background-1);
+    --secondary: var(--ds-surface-2);
+    --secondary-foreground: var(--ds-text-1);
+    --accent: var(--ds-accent-7);
     --accent-foreground: 0 0% 98%;
-    --success: 142 70% 45%;
-    --warning: 38 92% 50%;
-    --danger: 0 84% 60%;
-    --ring: var(--accent);
-    --sidebar: 0 0% 6%;
-    --sidebar-foreground: 0 0% 90%;
-    --sidebar-muted: 0 0% 9%;
-    --sidebar-border: 0 0% 12%;
-    --auth-bg-1: 142 70% 40%;
-    --auth-bg-2: 215 35% 35%;
-    --auth-bg-3: 0 0% 4%;
-    --auth-surface: 0 0% 7%;
-    --auth-border: 0 0% 14%;
-    --auth-shadow: 0 30px 80px hsl(0 0% 0% / 0.4);
+    --success: var(--ds-success-7);
+    --warning: var(--ds-warning-7);
+    --danger: var(--ds-danger-7);
+    --ring: var(--ds-accent-7);
+    --sidebar: var(--ds-background-2);
+    --sidebar-foreground: var(--ds-text-1);
+    --sidebar-muted: var(--ds-surface-2);
+    --sidebar-border: var(--ds-border-1);
+
+    --radius-1: 6px;
+    --radius-2: 10px;
+    --radius-3: 14px;
+    --radius-4: 20px;
+
+    --auth-bg-1: var(--ds-accent-7);
+    --auth-bg-2: 0 0% 100%;
+    --auth-bg-3: var(--ds-background-1);
+    --auth-surface: var(--ds-background-2);
+    --auth-border: var(--ds-border-1);
+    --auth-shadow: 0 18px 50px hsl(0 0% 0% / 0.35);
   }
 
   :root[data-theme="light"] {
     color-scheme: light;
-    --background: 0 0% 98%;
-    --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --muted: 0 0% 96%;
-    --muted-foreground: 215 16% 47%;
-    --border: 0 0% 90%;
-    --input: 0 0% 90%;
-    --primary: 0 0% 10%;
+    --ds-background-1: 0 0% 100%;
+    --ds-background-2: 0 0% 98%;
+    --ds-surface-1: 0 0% 96%;
+    --ds-surface-2: 0 0% 94%;
+    --ds-surface-3: 0 0% 92%;
+    --ds-border-1: 0 0% 90%;
+    --ds-border-2: 0 0% 86%;
+    --ds-border-3: 0 0% 80%;
+    --ds-text-1: 222 47% 11%;
+    --ds-text-2: 215 16% 47%;
+    --ds-accent-7: 210 100% 45%;
+    --ds-accent-8: 210 100% 52%;
+    --ds-accent-9: 210 100% 60%;
+    --ds-success-7: 142 70% 40%;
+    --ds-warning-7: 38 92% 50%;
+    --ds-danger-7: 0 84% 60%;
+
+    --background: var(--ds-background-1);
+    --foreground: var(--ds-text-1);
+    --card: var(--ds-background-1);
+    --card-foreground: var(--ds-text-1);
+    --muted: var(--ds-surface-1);
+    --muted-foreground: var(--ds-text-2);
+    --border: var(--ds-border-1);
+    --input: var(--ds-border-1);
+    --primary: var(--ds-text-1);
     --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 94%;
-    --secondary-foreground: 222 47% 11%;
-    --accent: 210 100% 48%;
+    --secondary: var(--ds-surface-2);
+    --secondary-foreground: var(--ds-text-1);
+    --accent: var(--ds-accent-7);
     --accent-foreground: 0 0% 98%;
-    --success: 142 70% 40%;
-    --warning: 38 92% 50%;
-    --danger: 0 84% 60%;
-    --ring: var(--accent);
-    --sidebar: 0 0% 98%;
-    --sidebar-foreground: 222 47% 11%;
-    --sidebar-muted: 0 0% 94%;
-    --sidebar-border: 0 0% 88%;
-    --auth-bg-1: 142 40% 55%;
-    --auth-bg-2: 210 45% 60%;
-    --auth-bg-3: 0 0% 98%;
-    --auth-surface: 0 0% 100%;
-    --auth-border: 0 0% 90%;
-    --auth-shadow: 0 20px 50px hsl(220 20% 20% / 0.12);
+    --success: var(--ds-success-7);
+    --warning: var(--ds-warning-7);
+    --danger: var(--ds-danger-7);
+    --ring: var(--ds-accent-7);
+    --sidebar: var(--ds-background-1);
+    --sidebar-foreground: var(--ds-text-1);
+    --sidebar-muted: var(--ds-surface-2);
+    --sidebar-border: var(--ds-border-1);
+
+    --auth-bg-1: var(--ds-accent-7);
+    --auth-bg-2: 210 40% 70%;
+    --auth-bg-3: var(--ds-background-1);
+    --auth-surface: var(--ds-background-1);
+    --auth-border: var(--ds-border-1);
+    --auth-shadow: 0 12px 40px hsl(220 20% 20% / 0.12);
   }
 
   * {
@@ -73,6 +117,7 @@
     font-family: var(--font-sans, "Geist Sans", "Satoshi", "General Sans", "SF Pro Text", ui-sans-serif, system-ui);
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+    text-rendering: optimizeLegibility;
   }
 
   button,
@@ -90,7 +135,7 @@
   code,
   pre,
   .font-mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-family: var(--font-mono, "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace);
   }
 }
 
@@ -119,6 +164,44 @@
   .text-sidebar-foreground { color: hsl(var(--sidebar-foreground)); }
   .bg-sidebar-muted { background-color: hsl(var(--sidebar-muted)); }
   .border-sidebar { border-color: hsl(var(--sidebar-border)); }
+
+  .text-heading-72 { font-size: 72px; line-height: 1.05; font-weight: 600; letter-spacing: -0.03em; color: hsl(var(--foreground)); }
+  .text-heading-64 { font-size: 64px; line-height: 1.06; font-weight: 600; letter-spacing: -0.03em; color: hsl(var(--foreground)); }
+  .text-heading-56 { font-size: 56px; line-height: 1.08; font-weight: 600; letter-spacing: -0.025em; color: hsl(var(--foreground)); }
+  .text-heading-48 { font-size: 48px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; color: hsl(var(--foreground)); }
+  .text-heading-40 { font-size: 40px; line-height: 1.15; font-weight: 600; letter-spacing: -0.02em; color: hsl(var(--foreground)); }
+  .text-heading-32 { font-size: 32px; line-height: 1.2; font-weight: 600; letter-spacing: -0.015em; color: hsl(var(--foreground)); }
+  .text-heading-24 { font-size: 24px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em; color: hsl(var(--foreground)); }
+  .text-heading-20 { font-size: 20px; line-height: 1.35; font-weight: 600; letter-spacing: -0.01em; color: hsl(var(--foreground)); }
+  .text-heading-18 { font-size: 18px; line-height: 1.4; font-weight: 600; letter-spacing: -0.005em; color: hsl(var(--foreground)); }
+
+  .text-label-24 { font-size: 24px; line-height: 1.35; font-weight: 500; color: hsl(var(--foreground)); }
+  .text-label-20 { font-size: 20px; line-height: 1.4; font-weight: 500; color: hsl(var(--foreground)); }
+  .text-label-18 { font-size: 18px; line-height: 1.45; font-weight: 500; color: hsl(var(--foreground)); }
+  .text-label-16 { font-size: 16px; line-height: 1.5; font-weight: 500; color: hsl(var(--foreground)); }
+  .text-label-14 { font-size: 14px; line-height: 1.5; font-weight: 500; color: hsl(var(--foreground)); }
+  .text-label-13 { font-size: 13px; line-height: 1.5; font-weight: 500; color: hsl(var(--foreground)); }
+  .text-label-12 { font-size: 12px; line-height: 1.5; font-weight: 500; color: hsl(var(--foreground)); }
+  .text-label-11 { font-size: 11px; line-height: 1.45; font-weight: 500; color: hsl(var(--foreground)); }
+  .text-label-10 { font-size: 10px; line-height: 1.4; font-weight: 500; color: hsl(var(--foreground)); }
+
+  .text-copy-20 { font-size: 20px; line-height: 1.6; font-weight: 400; color: hsl(var(--muted-foreground)); }
+  .text-copy-18 { font-size: 18px; line-height: 1.6; font-weight: 400; color: hsl(var(--muted-foreground)); }
+  .text-copy-16 { font-size: 16px; line-height: 1.6; font-weight: 400; color: hsl(var(--muted-foreground)); }
+  .text-copy-14 { font-size: 14px; line-height: 1.6; font-weight: 400; color: hsl(var(--muted-foreground)); }
+  .text-copy-12 { font-size: 12px; line-height: 1.6; font-weight: 400; color: hsl(var(--muted-foreground)); }
+
+  .text-button-16 { font-size: 16px; line-height: 1; font-weight: 500; letter-spacing: -0.01em; }
+  .text-button-14 { font-size: 14px; line-height: 1; font-weight: 500; letter-spacing: -0.01em; }
+  .text-button-12 { font-size: 12px; line-height: 1; font-weight: 500; letter-spacing: -0.005em; }
+
+  [class^="text-copy-"] strong,
+  [class*=" text-copy-"] strong,
+  [class^="text-label-"] strong,
+  [class*=" text-label-"] strong {
+    color: hsl(var(--foreground));
+    font-weight: 600;
+  }
 }
 
 .auth-shell {
@@ -128,8 +211,8 @@
   flex-direction: column;
   padding: 2.5rem 1.25rem;
   background:
-    radial-gradient(900px circle at 50% 0%, hsl(var(--auth-bg-1) / 0.18), transparent 45%),
-    radial-gradient(700px circle at 85% 20%, hsl(var(--auth-bg-2) / 0.16), transparent 40%),
+    radial-gradient(900px circle at 50% 0%, hsl(var(--auth-bg-1) / 0.12), transparent 45%),
+    radial-gradient(700px circle at 85% 20%, hsl(var(--auth-bg-2) / 0.08), transparent 45%),
     hsl(var(--auth-bg-3));
 }
 
@@ -159,12 +242,12 @@
 .auth-card {
   width: 100%;
   max-width: 400px;
-  border-radius: 14px;
+  border-radius: var(--radius-3);
   padding: 0;
   background: hsl(var(--auth-surface));
   border: 1px solid hsl(var(--auth-border));
   box-shadow: var(--auth-shadow);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(8px);
   overflow: hidden;
 }
 
@@ -177,10 +260,10 @@
   gap: 1rem;
   padding: 0.25rem 0.4rem;
   border-radius: 999px;
-  background: hsl(var(--auth-surface) / 0.75);
+  background: hsl(var(--auth-surface) / 0.9);
   border: 1px solid hsl(var(--auth-border));
-  box-shadow: 0 10px 30px hsl(0 0% 0% / 0.08);
-  backdrop-filter: blur(12px);
+  box-shadow: 0 6px 20px hsl(0 0% 0% / 0.12);
+  backdrop-filter: blur(10px);
 }
 
 .auth-tool {
@@ -192,7 +275,10 @@
 }
 
 .auth-tool-label {
-  font-size: 0.75rem;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: hsl(var(--muted-foreground));
 }
 
@@ -224,9 +310,8 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 15% 20%, hsl(var(--accent) / 0.14), transparent 45%),
-    radial-gradient(circle at 85% 15%, hsl(var(--primary) / 0.1), transparent 45%),
-    radial-gradient(circle at 25% 80%, hsl(var(--success) / 0.1), transparent 40%),
+    radial-gradient(circle at 20% 0%, hsl(var(--accent) / 0.1), transparent 45%),
+    radial-gradient(circle at 80% 20%, hsl(var(--foreground) / 0.08), transparent 45%),
     hsl(var(--background));
 }
 
@@ -236,8 +321,8 @@
   background-image:
     linear-gradient(hsl(var(--border) / 0.3) 1px, transparent 1px),
     linear-gradient(90deg, hsl(var(--border) / 0.3) 1px, transparent 1px);
-  background-size: 64px 64px;
-  opacity: 0.12;
+  background-size: 56px 56px;
+  opacity: 0.2;
   pointer-events: none;
 }
 

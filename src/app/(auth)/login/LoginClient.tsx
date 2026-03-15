@@ -169,9 +169,9 @@ export default function LoginClient({ dict, locale }: LoginClientProps) {
                   <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-transparent">
                     <NexalyMark className="h-9 w-9" />
                   </div>
-                  <div className="text-xl font-semibold">Nexaly</div>
+                  <div className="text-heading-20">Nexaly</div>
                 </div>
-                <div className="text-sm text-muted-foreground">
+                <div className="text-copy-14">
                   {mode === 'login' ? dict.auth.login : dict.auth.signUpTitle}
                 </div>
               </div>
@@ -180,7 +180,7 @@ export default function LoginClient({ dict, locale }: LoginClientProps) {
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-11 w-full justify-center gap-2 text-sm px-4"
+                  className="h-11 w-full justify-center gap-2 px-4"
                   disabled={oauthLoading !== null}
                   onClick={() => handleOAuth('github')}
                 >
@@ -190,7 +190,7 @@ export default function LoginClient({ dict, locale }: LoginClientProps) {
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-11 w-full justify-center gap-2 text-sm px-4"
+                  className="h-11 w-full justify-center gap-2 px-4"
                   disabled={oauthLoading !== null}
                   onClick={() => handleOAuth('google')}
                 >
@@ -201,14 +201,16 @@ export default function LoginClient({ dict, locale }: LoginClientProps) {
 
               <div className="flex items-center gap-3">
                 <span className="h-px flex-1 bg-border" />
-                <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{dict.auth.orContinueWithEmail}</span>
+                <span className="text-label-11 uppercase tracking-wide text-muted-foreground">
+                  {dict.auth.orContinueWithEmail}
+                </span>
                 <span className="h-px flex-1 bg-border" />
               </div>
 
               {mode === 'login' ? (
                 <form onSubmit={handleLogin} className="space-y-4 max-w-[320px] w-full mx-auto text-left">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">
+                    <label className="text-label-14">
                       {dict.auth.email}
                     </label>
                     <Input
@@ -219,12 +221,12 @@ export default function LoginClient({ dict, locale }: LoginClientProps) {
                       placeholder={dict.auth.emailPlaceholder}
                       required
                       disabled={loading}
-                      className="h-10 text-sm"
+                      className="h-10"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">
+                    <label className="text-label-14">
                       {dict.auth.password}
                     </label>
                     <Input
@@ -234,14 +236,14 @@ export default function LoginClient({ dict, locale }: LoginClientProps) {
                       placeholder={dict.auth.passwordPlaceholder}
                       required
                       disabled={loading}
-                      className="h-10 text-sm"
+                      className="h-10"
                     />
                   </div>
 
                   <Button
                     type="submit"
                     variant="default"
-                    className="h-11 w-full text-sm font-semibold shadow-sm border border-border"
+                    className="h-11 w-full shadow-sm border border-border"
                     disabled={loading}
                   >
                     {loading ? dict.common.loading : dict.auth.signIn}
@@ -250,7 +252,7 @@ export default function LoginClient({ dict, locale }: LoginClientProps) {
               ) : (
                 <form onSubmit={handleSignUp} className="space-y-4 max-w-[320px] w-full mx-auto text-left">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">
+                    <label className="text-label-14">
                       {dict.auth.email}
                     </label>
                     <Input
@@ -261,12 +263,12 @@ export default function LoginClient({ dict, locale }: LoginClientProps) {
                       placeholder={dict.auth.emailPlaceholder}
                       required
                       disabled={signingUp}
-                      className="h-10 text-sm"
+                      className="h-10"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">
+                    <label className="text-label-14">
                       {dict.auth.password}
                     </label>
                     <Input
@@ -276,12 +278,12 @@ export default function LoginClient({ dict, locale }: LoginClientProps) {
                       placeholder={dict.auth.passwordPlaceholder}
                       required
                       disabled={signingUp}
-                      className="h-10 text-sm"
+                      className="h-10"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <div className="flex items-center justify-between text-copy-12">
                       <span>{dict.auth.passwordStrength}</span>
                       <span className={cn('font-medium', getPasswordStrengthLabel(password).color)}>
                         {getPasswordStrengthLabel(password).label}
@@ -303,7 +305,7 @@ export default function LoginClient({ dict, locale }: LoginClientProps) {
                   <Button
                     type="submit"
                     variant="default"
-                    className="h-11 w-full text-sm font-semibold shadow-sm border border-border"
+                    className="h-11 w-full shadow-sm border border-border"
                     disabled={signingUp || getPasswordStrengthScore(password) < 3}
                   >
                     {signingUp ? dict.common.loading : dict.auth.signUpAction}
@@ -311,7 +313,7 @@ export default function LoginClient({ dict, locale }: LoginClientProps) {
                 </form>
               )}
 
-              <div className="text-center text-xs text-muted-foreground">
+              <div className="text-center text-copy-12">
                 {mode === 'login' ? dict.auth.signUpPrompt : dict.auth.signInPrompt}{' '}
                 <button
                   type="button"
@@ -322,7 +324,7 @@ export default function LoginClient({ dict, locale }: LoginClientProps) {
                 </button>
               </div>
 
-              <div className="text-center text-[11px] leading-relaxed text-muted-foreground">
+              <div className="text-center text-copy-12 leading-relaxed">
                 {dict.auth.termsNotice}
               </div>
             </div>

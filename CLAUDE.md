@@ -38,6 +38,8 @@ Backend: task queue + analysis workers (by commit SHA), incremental report updat
 | React | 19.2.3 | — |
 | HeroUI | 3.0.0-beta.8 | `@heroui/react` |
 | Tailwind CSS | v4.2.1 | `@import "@heroui/styles"` in globals.css |
+| Geist Font | 1.7.x | Geist Sans/Mono via `geist` package |
+| Radix UI Primitives | ^2.1.4 | `@radix-ui/react-primitive` (Radix Select/Popper dependency) |
 | Supabase | `@supabase/ssr ^0.9` | Database + auth |
 | Octokit | `^5.0.5` | GitHub API |
 | Anthropic SDK | `^0.78` | Claude AI, supports `ANTHROPIC_BASE_URL` |
@@ -118,7 +120,12 @@ const modalState = useOverlayState({ isOpen: show, onOpenChange: (v) => { if (!v
 
 ## UI Design Guidelines
 
-Supabase Dashboard white theme: left-aligned, table rows + dividers, minimal headers.
+Geist-aligned neutral theme: layered surfaces, thin borders, restrained shadows, and clear typographic hierarchy.
+Project UI spec: `docs/memories/ui-spec-geist.md` (source of truth).
+
+**Typography:** Use utility classes from `src/app/globals.css`:
+`text-heading-*`, `text-label-*`, `text-copy-*`, `text-button-*`.
+Avoid custom font sizes unless a new token is added.
 
 **Color tokens:** `bg-background` | `bg-card` | `bg-muted` | `bg-muted/30` (hover) | `border-border` | `text-foreground` | `text-muted-foreground` | `text-primary` | `text-success` | `text-warning` | `text-danger` | `text-accent`
 
