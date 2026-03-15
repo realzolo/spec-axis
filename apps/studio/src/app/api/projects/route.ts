@@ -8,7 +8,7 @@ import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { requireUser, unauthorized } from '@/services/auth';
-import { createAdminClient } from '@/lib/supabase/server';
+import { queryOne } from '@/lib/db';
 import { createVCSClient } from '@/services/integrations';
 import { readSecret } from '@/lib/vault';
 import { getActiveOrgId, getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES } from '@/services/orgs';
@@ -60,16 +60,15 @@ export async function POST(request: NextRequest) {
 
     logger.setContext({ repo });
 
-    const supabase = createAdminClient();
-
     if (ruleset_id) {
-      const { data: ruleSet, error: ruleSetError } = await supabase
-        .from('rule_sets')
-        .select('id, is_global, org_id')
-        .eq('id', ruleset_id)
-        .single();
+      const ruleSet = await queryOne<{ id: string; is_global: boolean; org_id: string | null }>(
+        `select id, is_global, org_id
+         from quality_rule_sets
+         where id = $1`,
+        [ruleset_id]
+      );
 
-      if (ruleSetError || !ruleSet) {
+      if (!ruleSet) {
         return NextResponse.json({ error: 'Rule set not found' }, { status: 400 });
       }
 
@@ -79,15 +78,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user's default VCS integration
-    const { data: vcsIntegration, error: vcsError } = await supabase
-      .from('user_integrations')
-      .select('*')
-      .eq('org_id', orgId)
-      .eq('type', 'vcs')
-      .eq('is_default', true)
-      .single();
+    const vcsIntegration = await queryOne<Record<string, any>>(
+      `select *
+       from org_integrations
+       where org_id = $1 and type = 'vcs' and is_default = true
+       limit 1`,
+      [orgId]
+    );
 
-    if (vcsError || !vcsIntegration) {
+    if (!vcsIntegration) {
       return NextResponse.json(
         { error: 'No VCS integration configured. Please add a code repository integration in Settings > Integrations.' },
         { status: 400 }
@@ -95,15 +94,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user's default AI integration
-    const { data: aiIntegration, error: aiError } = await supabase
-      .from('user_integrations')
-      .select('*')
-      .eq('org_id', orgId)
-      .eq('type', 'ai')
-      .eq('is_default', true)
-      .single();
+    const aiIntegration = await queryOne<Record<string, any>>(
+      `select *
+       from org_integrations
+       where org_id = $1 and type = 'ai' and is_default = true
+       limit 1`,
+      [orgId]
+    );
 
-    if (aiError || !aiIntegration) {
+    if (!aiIntegration) {
       return NextResponse.json(
         { error: 'No AI integration configured. Please add an AI model integration in Settings > Integrations.' },
         { status: 400 }

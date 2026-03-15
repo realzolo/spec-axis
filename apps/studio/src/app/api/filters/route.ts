@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { exec, query, queryOne } from '@/lib/db';
 import { logger } from '@/services/logger';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
@@ -39,18 +39,13 @@ export async function GET(request: NextRequest) {
     logger.setContext({ userId });
 
     const data = await withRetry(async () => {
-      const supabase = await createClient();
-      const { data, error } = await supabase
-        .from('saved_filters')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      return data ?? [];
+      return query<Record<string, any>>(
+        `select *
+         from analysis_saved_filters
+         where user_id = $1
+         order by created_at desc`,
+        [userId]
+      );
     });
 
     logger.info(`Filters fetched: ${data.length} filters`);
@@ -83,32 +78,27 @@ export async function POST(request: NextRequest) {
     logger.setContext({ userId });
 
     const data = await withRetry(async () => {
-      const supabase = await createClient();
-
       // If set as default, unset others
       if (isDefault) {
-        await supabase
-          .from('saved_filters')
-          .update({ is_default: false })
-          .eq('user_id', userId);
+        await exec(
+          `update analysis_saved_filters set is_default = false where user_id = $1`,
+          [userId]
+        );
       }
 
-      const { data, error } = await supabase
-        .from('saved_filters')
-        .insert({
-          user_id: userId,
-          name,
-          filter_config: filterConfig,
-          is_default: isDefault ?? false,
-        })
-        .select()
-        .single();
+      const created = await queryOne<Record<string, any>>(
+        `insert into analysis_saved_filters
+          (user_id, name, filter_config, is_default, created_at)
+         values ($1,$2,$3,$4,now())
+         returning *`,
+        [userId, name, JSON.stringify(filterConfig), isDefault ?? false]
+      );
 
-      if (error) {
-        throw new Error(error.message);
+      if (!created) {
+        throw new Error('Failed to create filter');
       }
 
-      return data;
+      return created;
     });
 
     logger.info(`Filter created: ${data.id}`);
@@ -143,16 +133,10 @@ export async function DELETE(request: NextRequest) {
     logger.setContext({ filterId });
 
     await withRetry(async () => {
-      const supabase = await createClient();
-      const { error } = await supabase
-        .from('saved_filters')
-        .delete()
-        .eq('id', filterId)
-        .eq('user_id', user.id);
-
-      if (error) {
-        throw new Error(error.message);
-      }
+      await exec(
+        `delete from analysis_saved_filters where id = $1 and user_id = $2`,
+        [filterId, user.id]
+      );
     });
 
     logger.info(`Filter deleted: ${filterId}`);

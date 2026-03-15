@@ -3,7 +3,7 @@
  * Collects and records key performance metrics
  */
 
-import { createAdminClient } from '@/lib/supabase/server';
+import { exec, query } from '@/lib/db';
 import { logger } from './logger';
 
 export interface PerformanceMetric {
@@ -65,22 +65,22 @@ class PerformanceMonitor {
     }
 
     try {
-      const db = createAdminClient();
-      const records = metrics.map((m) => ({
-        report_id: m.reportId,
-        metric_name: m.name,
-        metric_value: m.value,
-        unit: m.unit,
-      }));
+      const columns = ['report_id', 'metric_name', 'metric_value', 'unit'];
+      const values: any[] = [];
+      const placeholders = metrics.map((metric, index) => {
+        const base = index * columns.length;
+        values.push(metric.reportId, metric.name, metric.value, metric.unit ?? null);
+        return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`;
+      });
 
-      const { error } = await db.from('performance_metrics').insert(records);
+      await exec(
+        `insert into analysis_metrics (${columns.join(', ')})
+         values ${placeholders.join(', ')}`,
+        values
+      );
 
-      if (error) {
-        logger.warn(`Failed to save metrics for ${reportId}`, error);
-      } else {
-        logger.info(`Saved ${records.length} metrics for ${reportId}`);
-        this.metrics.delete(reportId);
-      }
+      logger.info(`Saved ${metrics.length} metrics for ${reportId}`);
+      this.metrics.delete(reportId);
     } catch (err) {
       logger.error('Failed to save metrics', err instanceof Error ? err : undefined);
     }
@@ -122,38 +122,38 @@ export async function measurePerformance<T>(
  * Get key performance metrics
  */
 export async function getKeyMetrics(reportId: string) {
-  const db = createAdminClient();
+  try {
+    const data = await query(
+      `select metric_name, metric_value, unit
+       from analysis_metrics
+       where report_id = $1`,
+      [reportId]
+    );
 
-  const { data, error } = await db
-    .from('performance_metrics')
-    .select('metric_name, metric_value, unit')
-    .eq('report_id', reportId);
+    // Group by metric name
+    const grouped: Record<string, number[]> = {};
+    (data || []).forEach((m: Record<string, unknown>) => {
+      const metricName = m.metric_name as string;
+      if (!grouped[metricName]) {
+        grouped[metricName] = [];
+      }
+      grouped[metricName].push(m.metric_value as number);
+    });
 
-  if (error) {
-    logger.warn(`Failed to get metrics for ${reportId}`, error);
+    // Calculate stats
+    const stats: Record<string, Record<string, number>> = {};
+    for (const [name, values] of Object.entries(grouped)) {
+      stats[name] = {
+        count: values.length,
+        min: Math.min(...values),
+        max: Math.max(...values),
+        avg: Math.round(values.reduce((a, b) => a + b, 0) / values.length),
+      };
+    }
+
+    return stats;
+  } catch (err) {
+    logger.warn(`Failed to get metrics for ${reportId}`, err instanceof Error ? err : undefined);
     return null;
   }
-
-  // Group by metric name
-  const grouped: Record<string, number[]> = {};
-  (data || []).forEach((m: Record<string, unknown>) => {
-    const metricName = m.metric_name as string;
-    if (!grouped[metricName]) {
-      grouped[metricName] = [];
-    }
-    grouped[metricName].push(m.metric_value as number);
-  });
-
-  // Calculate stats
-  const stats: Record<string, Record<string, number>> = {};
-  for (const [name, values] of Object.entries(grouped)) {
-    stats[name] = {
-      count: values.length,
-      min: Math.min(...values),
-      max: Math.max(...values),
-      avg: Math.round(values.reduce((a, b) => a + b, 0) / values.length),
-    };
-  }
-
-  return stats;
 }

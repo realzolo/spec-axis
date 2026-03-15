@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { query, queryOne } from '@/lib/db';
 import type { NextRequest } from 'next/server';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
@@ -36,14 +36,11 @@ export async function POST(request: NextRequest) {
   }
 
   await requireProjectAccess(projectId, user.id);
-  const supabase = createAdminClient();
-
   // Get project
-  const { data: project } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('id', projectId)
-    .single();
+  const project = await queryOne<Record<string, unknown>>(
+    `select * from code_projects where id = $1`,
+    [projectId]
+  );
 
   if (!project) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
@@ -64,12 +61,14 @@ export async function POST(request: NextRequest) {
   }
 
   // Check for recent identical analysis
-  const { data: recentReports } = await supabase
-    .from('reports')
-    .select('id, commits, created_at')
-    .eq('project_id', projectId)
-    .order('created_at', { ascending: false })
-    .limit(10);
+  const recentReports = await query<Record<string, unknown>>(
+    `select id, commits, created_at
+     from analysis_reports
+     where project_id = $1
+     order by created_at desc
+     limit 10`,
+    [projectId]
+  );
 
   if (recentReports && useCache) {
     for (const report of recentReports) {

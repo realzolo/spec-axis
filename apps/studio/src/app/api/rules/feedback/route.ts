@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { query, queryOne } from '@/lib/db';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { getActiveOrgId, requireReportAccess } from '@/services/orgs';
@@ -37,24 +37,16 @@ export async function POST(request: NextRequest) {
   }
 
   await requireReportAccess(reportId, user.id);
-  const supabase = createAdminClient();
+  const data = await queryOne<Record<string, any>>(
+    `insert into quality_rule_feedback
+      (rule_id, report_id, issue_file, issue_line, feedback_type, user_id, notes, created_at)
+     values ($1,$2,$3,$4,$5,$6,$7,now())
+     returning *`,
+    [ruleId, reportId, issueFile, issueLine ?? null, feedbackType, user.id, notes ?? null]
+  );
 
-  const { data, error } = await supabase
-    .from('rule_feedback')
-    .insert({
-      rule_id: ruleId,
-      report_id: reportId,
-      issue_file: issueFile,
-      issue_line: issueLine,
-      feedback_type: feedbackType,
-      user_id: user.id,
-      notes,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data) {
+    return NextResponse.json({ error: 'Failed to save feedback' }, { status: 500 });
   }
 
   return NextResponse.json(data);
@@ -71,37 +63,29 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const ruleId = searchParams.get('ruleId');
 
-  const supabase = createAdminClient();
   const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
 
   if (ruleId) {
-    const { data: ruleRow, error: ruleError } = await supabase
-      .from('rules')
-      .select('id, rule_sets!inner(org_id, is_global)')
-      .eq('id', ruleId)
-      .single();
+    const ruleSet = await queryOne<{ org_id: string | null; is_global: boolean }>(
+      `select rs.org_id, rs.is_global
+       from quality_rules r
+       join quality_rule_sets rs on rs.id = r.ruleset_id
+       where r.id = $1`,
+      [ruleId]
+    );
 
-    if (ruleError || !ruleRow) {
+    if (!ruleSet) {
       return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
     }
 
-    const ruleSetJoin = (ruleRow as {
-      rule_sets: { org_id: string | null; is_global: boolean } | { org_id: string | null; is_global: boolean }[];
-    }).rule_sets;
-    const ruleSet = Array.isArray(ruleSetJoin) ? ruleSetJoin[0] : ruleSetJoin;
-    if (!ruleSet || ruleSet.is_global || ruleSet.org_id !== orgId) {
+    if (ruleSet.is_global || ruleSet.org_id !== orgId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { data, error } = await supabase
-      .from('rule_statistics')
-      .select('*')
-      .eq('rule_id', ruleId)
-      .single();
-
-    if (error && error.code !== 'PGRST116') {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    const data = await queryOne<Record<string, any>>(
+      `select * from quality_rule_stats where rule_id = $1`,
+      [ruleId]
+    );
 
     return NextResponse.json(data || {
       total_triggers: 0,
@@ -112,30 +96,26 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const { data: rules, error: rulesError } = await supabase
-    .from('rules')
-    .select('id, name, category, rule_sets!inner(org_id, is_global)')
-    .eq('rule_sets.org_id', orgId)
-    .eq('rule_sets.is_global', false);
-
-  if (rulesError) {
-    return NextResponse.json({ error: rulesError.message }, { status: 500 });
-  }
+  const rules = await query<{ id: string; name: string; category: string }>(
+    `select r.id, r.name, r.category
+     from quality_rules r
+     join quality_rule_sets rs on rs.id = r.ruleset_id
+     where rs.org_id = $1 and rs.is_global = false`,
+    [orgId]
+  );
 
   const ruleIds = (rules || []).map((r: { id: string }) => r.id);
   if (ruleIds.length === 0) {
     return NextResponse.json([]);
   }
 
-  const { data, error } = await supabase
-    .from('rule_statistics')
-    .select('*')
-    .in('rule_id', ruleIds)
-    .order('accuracy_score', { ascending: false });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  const data = await query<Record<string, any>>(
+    `select *
+     from quality_rule_stats
+     where rule_id = any($1::uuid[])
+     order by accuracy_score desc`,
+    [ruleIds]
+  );
 
   const ruleMap = new Map(
     (rules || []).map((r: { id: string; name: string; category: string }) => [

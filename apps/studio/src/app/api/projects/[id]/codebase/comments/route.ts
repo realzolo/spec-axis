@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 
-import { createAdminClient } from '@/lib/supabase/server';
+import { query, queryOne, withTransaction } from '@/lib/db';
 import { logger } from '@/services/logger';
 import { projectIdSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
@@ -47,6 +47,9 @@ export async function GET(
     logger.setContext({ projectId });
 
     const project = await withRetry(() => requireProjectAccess(projectId, user.id));
+    if (!project.org_id || !project.repo) {
+      return NextResponse.json({ error: 'Project is not configured' }, { status: 400 });
+    }
     const ref = request.nextUrl.searchParams.get('ref') || project.default_branch;
     const path = request.nextUrl.searchParams.get('path') || '';
     const lineParam = request.nextUrl.searchParams.get('line');
@@ -57,27 +60,33 @@ export async function GET(
     }
 
     const comments = await withRetry(async () => {
-      const supabase = createAdminClient();
-      let query = supabase
-        .from('codebase_comments')
-        .select('*, assignees:codebase_comment_assignees(user_id,email)')
-        .eq('project_id', projectId)
-        .eq('org_id', project.org_id)
-        .eq('repo', project.repo)
-        .eq('ref', ref)
-        .eq('path', path)
-        .order('created_at', { ascending: true });
+      const params: any[] = [projectId, project.org_id, project.repo, ref, path];
+      let sql = `
+        select c.*,
+               coalesce(
+                 jsonb_agg(
+                   jsonb_build_object('user_id', a.user_id, 'email', a.email)
+                   order by a.created_at
+                 ) filter (where a.id is not null),
+                 '[]'::jsonb
+               ) as assignees
+        from codebase_comments c
+        left join codebase_comment_assignees a on a.comment_id = c.id
+        where c.project_id = $1
+          and c.org_id = $2
+          and c.repo = $3
+          and c.ref = $4
+          and c.path = $5
+      `;
 
       if (Number.isFinite(line)) {
-        query = query.eq('line', line);
+        params.push(line);
+        sql += ` and c.line = $${params.length}`;
       }
 
-      const { data, error } = await query;
-      if (error) {
-        throw new Error(error.message);
-      }
+      sql += ` group by c.id order by c.created_at asc`;
 
-      return data ?? [];
+      return query<Record<string, any>>(sql, params);
     });
 
     return NextResponse.json(comments);
@@ -112,86 +121,97 @@ export async function POST(
     logger.setContext({ projectId });
 
     const project = await withRetry(() => requireProjectAccess(projectId, user.id));
+    if (!project.org_id || !project.repo) {
+      return NextResponse.json({ error: 'Project is not configured' }, { status: 400 });
+    }
 
     const comment = await withRetry(async () => {
-      const supabase = createAdminClient();
       const selectionText = validated.selection_text?.trim();
       const lineEnd = validated.line_end && validated.line_end >= validated.line
         ? validated.line_end
         : null;
-      const { data, error } = await supabase
-        .from('codebase_comments')
-        .insert({
-          org_id: project.org_id,
-          project_id: projectId,
-          repo: project.repo,
-          ref: validated.ref,
-          path: validated.path,
-          line: validated.line,
-          line_end: lineEnd,
-          selection_text: selectionText || null,
-          author_id: user.id,
-          author_email: user.email ?? 'unknown',
-          body: validated.body,
-        })
-        .select()
-        .single();
 
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      const assigneeIds = Array.from(new Set(validated.assignees ?? []));
-      if (assigneeIds.length > 0) {
-        const { data: members, error: memberError } = await supabase
-          .from('org_members')
-          .select('user_id')
-          .eq('org_id', project.org_id)
-          .in('user_id', assigneeIds);
-
-        if (memberError) {
-          throw new Error(memberError.message);
-        }
-
-        const allowedIds = new Set((members ?? []).map((member) => member.user_id));
-        const assigneeRows = await Promise.all(
-          assigneeIds
-            .filter((id) => allowedIds.has(id))
-            .map(async (id) => {
-              let email: string | null = null;
-              try {
-                const { data: userData } = await supabase.auth.admin.getUserById(id);
-                email = userData?.user?.email ?? null;
-              } catch {}
-              return {
-                comment_id: data.id,
-                user_id: id,
-                email,
-              };
-            })
+      return withTransaction(async (client) => {
+        const insertResult = await client.query(
+          `insert into codebase_comments
+            (org_id, project_id, repo, ref, path, line, line_end, selection_text, author_id, author_email, body, created_at)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
+           returning *`,
+          [
+            project.org_id,
+            projectId,
+            project.repo,
+            validated.ref,
+            validated.path,
+            validated.line,
+            lineEnd,
+            selectionText || null,
+            user.id,
+            user.email ?? 'unknown',
+            validated.body,
+          ]
         );
 
-        if (assigneeRows.length > 0) {
-          const { error: assignError } = await supabase
-            .from('codebase_comment_assignees')
-            .upsert(assigneeRows, { onConflict: 'comment_id,user_id' });
-          if (assignError) {
-            throw new Error(assignError.message);
+        const inserted = insertResult.rows[0];
+        if (!inserted) {
+          throw new Error('Failed to create comment');
+        }
+
+        const assigneeIds = Array.from(new Set(validated.assignees ?? []));
+        if (assigneeIds.length > 0) {
+          const memberResult = await client.query(
+            `select user_id
+             from org_members
+             where org_id = $1 and user_id = any($2::uuid[])`,
+            [project.org_id, assigneeIds]
+          );
+          const allowedIds = memberResult.rows.map((row) => row.user_id);
+
+          if (allowedIds.length > 0) {
+            const userRows = await client.query(
+              `select id, email
+               from auth_users
+               where id = any($1::uuid[])`,
+              [allowedIds]
+            );
+            const emailMap = new Map(
+              userRows.rows.map((row) => [row.id, row.email ?? null])
+            );
+
+            const values: any[] = [];
+            const placeholders = allowedIds.map((id, idx) => {
+              const base = idx * 3;
+              values.push(inserted.id, id, emailMap.get(id) ?? null);
+              return `($${base + 1}, $${base + 2}, $${base + 3})`;
+            });
+
+            await client.query(
+              `insert into codebase_comment_assignees (comment_id, user_id, email)
+               values ${placeholders.join(', ')}
+               on conflict (comment_id, user_id) do nothing`,
+              values
+            );
           }
         }
-      }
 
-      const { data: enriched, error: fetchError } = await supabase
-        .from('codebase_comments')
-        .select('*, assignees:codebase_comment_assignees(user_id,email)')
-        .eq('id', data.id)
-        .single();
+        const enrichedResult = await client.query(
+          `select c.*,
+                 coalesce(
+                   jsonb_agg(
+                     jsonb_build_object('user_id', a.user_id, 'email', a.email)
+                     order by a.created_at
+                   ) filter (where a.id is not null),
+                   '[]'::jsonb
+                 ) as assignees
+           from codebase_comments c
+           left join codebase_comment_assignees a on a.comment_id = c.id
+           where c.id = $1
+           group by c.id`,
+          [inserted.id]
+        );
 
-      if (fetchError || !enriched) {
-        return data;
-      }
-
-      return enriched;
+        return enrichedResult.rows[0] ?? inserted;
+      });
     });
 
     return NextResponse.json(comment);

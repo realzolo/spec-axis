@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import crypto from 'crypto';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
-import { createAdminClient } from '@/lib/supabase/server';
+import { query, queryOne } from '@/lib/db';
 import { getOrgMemberRole } from '@/services/orgs';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 
@@ -31,16 +31,10 @@ export async function GET(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const db = createAdminClient();
-  const { data, error } = await db
-    .from('org_invites')
-    .select('*')
-    .eq('org_id', orgId)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    return NextResponse.json({ error: 'Failed to fetch invites' }, { status: 500 });
-  }
+  const data = await query<Record<string, any>>(
+    `select * from org_invites where org_id = $1 order by created_at desc`,
+    [orgId]
+  );
 
   return NextResponse.json(data || []);
 }
@@ -76,21 +70,15 @@ export async function POST(
   const token = generateToken();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  const db = createAdminClient();
-  const { data: invite, error } = await db
-    .from('org_invites')
-    .insert({
-      org_id: orgId,
-      email,
-      role: inviteRole,
-      token,
-      expires_at: expiresAt,
-      created_by: user.id,
-    })
-    .select()
-    .single();
+  const invite = await queryOne<Record<string, any>>(
+    `insert into org_invites
+      (org_id, email, role, token, expires_at, created_by, created_at)
+     values ($1,$2,$3,$4,$5,$6,now())
+     returning *`,
+    [orgId, email, inviteRole, token, expiresAt, user.id]
+  );
 
-  if (error || !invite) {
+  if (!invite) {
     return NextResponse.json({ error: 'Failed to create invite' }, { status: 500 });
   }
 

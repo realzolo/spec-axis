@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { exec, query, queryOne } from '@/lib/db';
 import { requireUser, unauthorized } from '@/services/auth';
 import { getOrgMemberRole } from '@/services/orgs';
 
@@ -24,33 +24,16 @@ export async function GET(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const db = createAdminClient();
-  const { data, error } = await db
-    .from('org_members')
-    .select('user_id, role, status, created_at')
-    .eq('org_id', orgId)
-    .order('created_at', { ascending: true });
-
-  if (error) {
-    return NextResponse.json({ error: 'Failed to load members' }, { status: 500 });
-  }
-
-  const members = await Promise.all(
-    (data || []).map(async (member) => {
-      let email: string | null = null;
-      try {
-        const { data: userData } = await db.auth.admin.getUserById(member.user_id);
-        email = userData?.user?.email ?? null;
-      } catch {}
-
-      return {
-        ...member,
-        email,
-      };
-    }),
+  const members = await query<Record<string, any>>(
+    `select m.user_id, m.role, m.status, m.created_at, u.email
+     from org_members m
+     left join auth_users u on u.id = m.user_id
+     where m.org_id = $1
+     order by m.created_at asc`,
+    [orgId]
   );
 
-  return NextResponse.json(members);
+  return NextResponse.json(members ?? []);
 }
 
 export async function PATCH(
@@ -78,15 +61,12 @@ export async function PATCH(
     return NextResponse.json({ error: 'Only owners can assign owner role' }, { status: 403 });
   }
 
-  const db = createAdminClient();
-  const { data: target, error } = await db
-    .from('org_members')
-    .select('role')
-    .eq('org_id', orgId)
-    .eq('user_id', userId)
-    .maybeSingle();
+  const target = await queryOne<{ role: OrgRole }>(
+    `select role from org_members where org_id = $1 and user_id = $2`,
+    [orgId, userId]
+  );
 
-  if (error || !target) {
+  if (!target) {
     return NextResponse.json({ error: 'Member not found' }, { status: 404 });
   }
 
@@ -98,15 +78,21 @@ export async function PATCH(
     return NextResponse.json({ error: 'Cannot change your own owner role' }, { status: 400 });
   }
 
-  const { data: updated, error: updateError } = await db
-    .from('org_members')
-    .update({ role: nextRole })
-    .eq('org_id', orgId)
-    .eq('user_id', userId)
-    .select()
-    .single();
+  await exec(
+    `update org_members set role = $1, updated_at = now()
+     where org_id = $2 and user_id = $3`,
+    [nextRole, orgId, userId]
+  );
 
-  if (updateError || !updated) {
+  const updated = await queryOne<Record<string, any>>(
+    `select m.user_id, m.role, m.status, m.created_at, u.email
+     from org_members m
+     left join auth_users u on u.id = m.user_id
+     where m.org_id = $1 and m.user_id = $2`,
+    [orgId, userId]
+  );
+
+  if (!updated) {
     return NextResponse.json({ error: 'Failed to update member' }, { status: 500 });
   }
 

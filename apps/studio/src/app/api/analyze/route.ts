@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { getProjectById, getRulesBySetId, createReport, updateReport } from '@/services/db';
 import { shouldUseIncrementalAnalysis } from '@/services/incremental';
 import { buildReportCommits } from '@/services/analyzeTask';
-import { createClient } from '@/lib/supabase/server';
+import { query } from '@/lib/db';
 import { enqueueAnalyze } from '@/services/runnerClient';
 import { logger } from '@/services/logger';
 import { analyzeRequestSchema } from '@/services/validation';
@@ -66,14 +66,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Check whether to use incremental analysis
-    const supabase = await createClient();
-    const { data: recentReports } = await supabase
-      .from('reports')
-      .select('*')
-      .eq('project_id', projectId)
-      .eq('status', 'done')
-      .order('created_at', { ascending: false })
-      .limit(1);
+    const recentReports = await query(
+      `select *
+       from analysis_reports
+       where project_id = $1 and status = 'done'
+       order by created_at desc
+       limit 1`,
+      [projectId]
+    );
 
     const useIncremental =
       !forceFullAnalysis &&

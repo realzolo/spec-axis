@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { exec, query } from '@/lib/db';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { getActiveOrgId, getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES, requireProjectAccess } from '@/services/orgs';
@@ -17,18 +17,13 @@ export async function POST(request: NextRequest) {
   const user = await requireUser();
   if (!user) return unauthorized();
 
-  const supabase = createAdminClient();
   const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
   const role = await getOrgMemberRole(orgId, user.id);
   if (!isRoleAllowed(role, ORG_ADMIN_ROLES)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { error } = await supabase.rpc('auto_adjust_rule_weights', { p_org_id: orgId });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  await exec(`select auto_adjust_rule_weights($1)`, [orgId]);
 
   return NextResponse.json({ success: true, message: 'Rule weights adjusted' });
 }
@@ -44,34 +39,28 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const projectId = searchParams.get('projectId');
 
-  const supabase = createAdminClient();
   const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
 
-  let query = supabase
-    .from('learned_patterns')
-    .select('*, projects!inner(org_id)')
-    .eq('is_enabled', true)
-    .eq('projects.org_id', orgId)
-    .order('confidence_score', { ascending: false });
+  let sql = `
+    select lp.*
+    from quality_learned_patterns lp
+    join code_projects p on p.id = lp.project_id
+    where lp.is_enabled = true and p.org_id = $1
+  `;
+  const params: any[] = [orgId];
 
   if (projectId) {
     const project = await requireProjectAccess(projectId, user.id);
     if (!project.org_id || project.org_id !== orgId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    query = query.eq('project_id', projectId);
+    params.push(projectId);
+    sql += ` and lp.project_id = $${params.length}`;
   }
 
-  const { data, error } = await query;
+  sql += ` order by lp.confidence_score desc`;
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  const data = await query<Record<string, any>>(sql, params);
 
-  const cleaned = (data || []).map((row: Record<string, unknown>) => {
-    const { projects, ...rest } = row;
-    return rest;
-  });
-
-  return NextResponse.json(cleaned);
+  return NextResponse.json(data ?? []);
 }

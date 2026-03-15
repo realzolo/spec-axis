@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-import { createAdminClient } from '@/lib/supabase/server';
+import { query, queryOne } from '@/lib/db';
 import { codebaseService } from '@/services/CodebaseService';
 import { projectIdSchema } from '@/services/validation';
 import { formatErrorResponse } from '@/services/retry';
@@ -30,37 +30,35 @@ export async function POST(request: NextRequest) {
     const projectIdParam = searchParams.get('project_id');
     const orgIdParam = searchParams.get('org_id');
 
-    const supabase = createAdminClient();
     let projects: Array<{ id: string; org_id: string | null; repo: string | null }> = [];
 
     if (projectIdParam) {
       const projectId = projectIdSchema.parse(projectIdParam);
-      const { data, error } = await supabase
-        .from('projects')
-        .select('id, org_id, repo')
-        .eq('id', projectId)
-        .single();
-      if (error || !data) {
+      const data = await queryOne<{ id: string; org_id: string | null; repo: string | null }>(
+        `select id, org_id, repo
+         from code_projects
+         where id = $1`,
+        [projectId]
+      );
+      if (!data) {
         return NextResponse.json({ error: 'Project not found' }, { status: 404 });
       }
-      projects = [data as { id: string; org_id: string | null; repo: string | null }];
+      projects = [data];
     } else {
-      let query = supabase
-        .from('projects')
-        .select('id, org_id, repo')
-        .not('org_id', 'is', null);
+      let sql = `select id, org_id, repo
+                 from code_projects
+                 where org_id is not null`;
+      const params: any[] = [];
 
       if (orgIdParam) {
-        query = query.eq('org_id', orgIdParam);
+        params.push(orgIdParam);
+        sql += ` and org_id = $${params.length}`;
       }
 
-      const { data, error } = await query
-        .order('created_at', { ascending: false })
-        .limit(limit);
-      if (error) {
-        throw new Error(error.message);
-      }
-      projects = (data || []) as Array<{ id: string; org_id: string | null; repo: string | null }>;
+      params.push(limit);
+      sql += ` order by created_at desc limit $${params.length}`;
+
+      projects = await query<{ id: string; org_id: string | null; repo: string | null }>(sql, params);
     }
 
     let synced = 0;

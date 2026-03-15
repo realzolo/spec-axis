@@ -1,6 +1,5 @@
 /**
- * Custom encryption for sensitive data (alternative to Supabase Vault)
- * Use this if Vault extension is not available in your Supabase instance
+ * AES-256-GCM encryption for sensitive data stored in PostgreSQL.
  */
 
 import crypto from 'crypto';

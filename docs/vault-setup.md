@@ -1,92 +1,35 @@
-# Enabling Supabase Vault
+# Encryption Setup
 
-## Prerequisites
+This project stores integration secrets encrypted in PostgreSQL using AES-256-GCM. There is no external vault dependency.
 
-- Supabase project (Pro plan or higher recommended)
-- Database access via SQL Editor
+## Required Environment Variable
 
-## Steps to Enable Vault
+- `ENCRYPTION_KEY` (required): 32-byte hex key (64 hex characters)
 
-### 1. Enable the Vault Extension
+Generate a key:
 
-Run the following SQL in your Supabase SQL Editor:
-
-```sql
--- Enable the vault extension
-CREATE EXTENSION IF NOT EXISTS supabase_vault WITH SCHEMA vault;
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-### 2. Verify Installation
+or:
 
-Check if the vault functions are available:
-
-```sql
--- List vault functions
-SELECT routine_name
-FROM information_schema.routines
-WHERE routine_schema = 'vault'
-AND routine_type = 'FUNCTION';
+```bash
+openssl rand -hex 32
 ```
 
-You should see functions like:
-- `create_secret`
-- `read_secret`
-- `update_secret`
-- `delete_secret`
+## How It Works
 
-### 3. Grant Permissions
+- Secrets are encrypted in `apps/studio/src/lib/encryption.ts`.
+- Encrypted values are stored in `org_integrations.vault_secret_name`.
+- Decryption happens at runtime via `apps/studio/src/lib/vault.ts`.
 
-Ensure the service role has access to vault functions:
+## Key Rotation
 
-```sql
--- Grant usage on vault schema
-GRANT USAGE ON SCHEMA vault TO service_role;
+Key rotation is not automated in v1. Plan a maintenance window to:
 
--- Grant execute on vault functions
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA vault TO service_role;
-```
+1. Read and decrypt all existing secrets with the current key.
+2. Set the new `ENCRYPTION_KEY`.
+3. Re-encrypt and update the stored secrets.
 
-### 4. Test Vault
-
-Test creating and reading a secret:
-
-```sql
--- Create a test secret
-SELECT vault.create_secret('test_secret_name', 'test_secret_value');
-
--- Read the secret
-SELECT decrypted_secret
-FROM vault.decrypted_secrets
-WHERE name = 'test_secret_name';
-
--- Clean up
-SELECT vault.delete_secret('test_secret_name');
-```
-
-## Troubleshooting
-
-### Error: "extension supabase_vault does not exist"
-
-**Solution**: Vault extension may not be available in your Supabase version. Options:
-1. Upgrade to a newer Supabase version
-2. Use the alternative encryption method (see below)
-
-### Error: "permission denied for schema vault"
-
-**Solution**: Run the grant permissions SQL above.
-
-### Error: "Could not find the function"
-
-**Solution**:
-1. Verify extension is installed: `SELECT * FROM pg_extension WHERE extname = 'supabase_vault';`
-2. Check if functions exist in vault schema
-3. Restart your application to clear any cached connections
-
-## Alternative: Custom Encryption
-
-If Vault is not available, you can use custom encryption instead. See [custom-encryption-setup.md](./custom-encryption-setup.md) for details.
-
-## References
-
-- [Supabase Vault Documentation](https://supabase.com/docs/guides/database/vault)
-- [PostgreSQL Extensions](https://supabase.com/docs/guides/database/extensions)
+If the key does not match existing records, decryption will fail.

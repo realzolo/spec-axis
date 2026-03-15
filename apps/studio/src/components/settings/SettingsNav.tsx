@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Plug, Users } from 'lucide-react';
+import { Plug, Shield, Users } from 'lucide-react';
 import { stripOrgPrefix, withOrgPrefix } from '@/lib/orgPath';
 
 const items = [
   { href: '/settings/organizations', label: 'Organizations', icon: Users },
   { href: '/settings/integrations', label: 'Integrations', icon: Plug },
+  { href: '/settings/security', label: 'Security', icon: Shield },
 ];
 
 export default function SettingsNav() {

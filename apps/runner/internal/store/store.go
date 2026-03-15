@@ -90,7 +90,7 @@ func (s *Store) GetProject(ctx context.Context, projectID string) (*Project, err
 	row := s.pool.QueryRow(
 		ctx,
 		`select id, repo, ignore_patterns, quality_threshold, webhook_url, org_id, vcs_integration_id, ai_integration_id
-		 from projects where id=$1`,
+		 from code_projects where id=$1`,
 		projectID,
 	)
 
@@ -133,7 +133,7 @@ func (s *Store) GetReport(ctx context.Context, reportID string) (*Report, error)
 	row := s.pool.QueryRow(
 		ctx,
 		`select id, project_id, org_id, ruleset_snapshot, commits
-		 from reports where id=$1`,
+		 from analysis_reports where id=$1`,
 		reportID,
 	)
 
@@ -154,7 +154,7 @@ func (s *Store) GetReport(ctx context.Context, reportID string) (*Report, error)
 func (s *Store) UpdateReportStatus(ctx context.Context, reportID string, status string, errorMessage *string) error {
 	_, err := s.pool.Exec(
 		ctx,
-		`update reports set status=$2, error_message=$3 where id=$1`,
+		`update analysis_reports set status=$2, error_message=$3 where id=$1`,
 		reportID,
 		status,
 		errorMessage,
@@ -169,7 +169,7 @@ func (s *Store) MarkReportFailed(ctx context.Context, reportID string, message s
 func (s *Store) UpdateReportAnalysis(ctx context.Context, reportID string, update ReportAnalysisUpdate) error {
 	_, err := s.pool.Exec(
 		ctx,
-		`update reports set
+		`update analysis_reports set
 			status=$2,
 			score=$3,
 			category_scores=$4,
@@ -216,7 +216,7 @@ func (s *Store) UpdateReportAnalysis(ctx context.Context, reportID string, updat
 func (s *Store) UpdateProjectLastAnalyzedAt(ctx context.Context, projectID string) error {
 	_, err := s.pool.Exec(
 		ctx,
-		`update projects set last_analyzed_at=$2 where id=$1`,
+		`update code_projects set last_analyzed_at=$2 where id=$1`,
 		projectID,
 		time.Now().UTC(),
 	)
@@ -224,7 +224,7 @@ func (s *Store) UpdateProjectLastAnalyzedAt(ctx context.Context, projectID strin
 }
 
 func (s *Store) ReplaceReportIssues(ctx context.Context, reportID string, issues []domain.ReviewIssue) error {
-	_, err := s.pool.Exec(ctx, `delete from report_issues where report_id=$1`, reportID)
+	_, err := s.pool.Exec(ctx, `delete from analysis_issues where report_id=$1`, reportID)
 	if err != nil {
 		return err
 	}
@@ -258,7 +258,7 @@ func (s *Store) ReplaceReportIssues(ctx context.Context, reportID string, issues
 		}
 
 		batch.Queue(
-			`insert into report_issues
+			`insert into analysis_issues
 			(report_id, file, line, severity, category, rule, message, suggestion, code_snippet, fix_patch, priority, impact_scope, estimated_effort, status, updated_at)
 			values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
 			reportID,
@@ -295,7 +295,7 @@ func (s *Store) GetIntegrationByID(ctx context.Context, integrationID string) (*
 	row := s.pool.QueryRow(
 		ctx,
 		`select id, org_id, type, provider, config, vault_secret_name, is_default
-		 from user_integrations where id=$1`,
+		 from org_integrations where id=$1`,
 		integrationID,
 	)
 
@@ -319,7 +319,7 @@ func (s *Store) GetDefaultIntegration(ctx context.Context, orgID string, integra
 	row := s.pool.QueryRow(
 		ctx,
 		`select id, org_id, type, provider, config, vault_secret_name, is_default
-		 from user_integrations
+		 from org_integrations
 		 where org_id=$1 and type=$2 and is_default=true
 		 limit 1`,
 		orgID,

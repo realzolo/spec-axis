@@ -1,6 +1,6 @@
 # spec-axis
 
-An AI-powered code review + CI/CD pipeline platform built with Next.js 16 + React 19 + TypeScript. It integrates GitHub/GitLab repository management, commit-based analysis, configurable AI models (Claude, GPT-4, etc.), custom rule sets, quality scoring, and a drag-and-drop pipeline DAG builder. The UI follows a Supabase Dashboard-style white theme using HeroUI v3 (beta) and Tailwind CSS v4. The backend runs analysis and pipeline jobs in a Go runner via a Redis-backed queue and streams updates via SSE (NATS optional). The repo is a monorepo with `apps/studio` (Next.js console) and `apps/runner` (Go runner).
+An AI-powered code review + CI/CD pipeline platform built with Next.js 16 + React 19 + TypeScript. It integrates GitHub/GitLab repository management, commit-based analysis, configurable AI models (Claude, GPT-4, etc.), custom rule sets, quality scoring, and a drag-and-drop pipeline DAG builder. The UI follows a modern dashboard style using HeroUI v3 (beta) and Tailwind CSS v4. The backend runs analysis and pipeline jobs in a Go runner via a Redis-backed queue and streams updates via SSE (NATS optional). The repo is a monorepo with `apps/studio` (Next.js console) and `apps/runner` (Go runner).
 
 ## ✨ Features
 
@@ -12,7 +12,7 @@ An AI-powered code review + CI/CD pipeline platform built with Next.js 16 + Reac
 - **Pipeline DAG Builder**: Drag-and-drop jobs, stages, and shell steps
 - **Local Logs & Artifacts**: Run logs and artifacts stored on the runner node
 - **Multi-Tenant**: Complete user isolation with secure integration storage
-- **Modern UI**: Supabase Dashboard-style interface with HeroUI v3 components
+- **Modern UI**: Dashboard-style interface with HeroUI v3 components
 
 ## 🚀 Quick Start
 
@@ -20,7 +20,7 @@ An AI-powered code review + CI/CD pipeline platform built with Next.js 16 + Reac
 
 - Node.js 18+
 - pnpm
-- Supabase project
+- PostgreSQL 14+
 - Go 1.22 (runner)
 - golang-migrate (DB migrations)
 - Redis (queue)
@@ -40,11 +40,9 @@ pnpm install
 cp apps/studio/.env.example apps/studio/.env
 ```
 
-Edit `apps/studio/.env` and add your Supabase credentials:
+Edit `apps/studio/.env` and add your database + runner settings:
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+DATABASE_URL=postgres://...
 ENCRYPTION_KEY=<generated-key>  # See encryption setup below
 RUNNER_BASE_URL=http://localhost:8200
 RUNNER_TOKEN=your_runner_token
@@ -76,24 +74,14 @@ PIPELINE_LOG_RETENTION_DAYS=30
 PIPELINE_ARTIFACT_RETENTION_DAYS=30
 ```
 
-5. **Run database migrations**:
+5. **Initialize database schema**:
 
-Core schema (Supabase SQL editor, run in order):
-```sql
--- Run these in sequence from supabase/migrations/
-001_initial_schema.sql
-002_enhanced_analysis.sql
-003_learning_engine.sql
-004_task_queue_and_monitoring.sql
-005_fix_snapshot_severity.sql
-006_user_integrations.sql
-```
-
-Pipeline schema (golang-migrate):
+Run the unified init script (core + pipeline tables):
 ```bash
-cd apps/runner
-migrate -path ./migrations -database "$DATABASE_URL" up
+psql "$DATABASE_URL" -f docs/db/init.sql
 ```
+
+For future upgrades, use migrations (golang-migrate) against the same database.
 
 6. **Start development server**:
 ```bash
@@ -112,8 +100,7 @@ go run ./cmd/runner
 
 ### Getting Started
 - **[Quick Setup Guide](./docs/quick-setup-guide.md)** - 5-minute setup walkthrough
-- **[Vault Setup](./docs/vault-setup.md)** - Enable Supabase Vault (optional)
-- **[Custom Encryption](./docs/custom-encryption-setup.md)** - AES-256-GCM encryption setup
+- **[Encryption Setup](./docs/custom-encryption-setup.md)** - AES-256-GCM encryption setup
 
 ### System Documentation
 - **[Integration System](./docs/integration-system-implementation.md)** - Complete integration architecture
@@ -127,10 +114,8 @@ go run ./cmd/runner
 
 ### Required
 ```bash
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+# Database
+DATABASE_URL=postgres://...
 
 # Encryption (for secure token storage)
 ENCRYPTION_KEY=<64-hex-characters>
@@ -180,12 +165,12 @@ API Layer (/api/integrations)
     ↓
 Service Layer (apps/studio/src/services/integrations/)
     ↓
-Database (user_integrations table + Encrypted secrets)
+Database (org_integrations table + Encrypted secrets)
 ```
 
 **Configuration Priority**:
 ```
-Project-specific integration > User default integration > Error (must configure)
+Project-specific integration > Org default integration > Error (must configure)
 ```
 
 **Supported Providers**:
@@ -196,14 +181,14 @@ Project-specific integration > User default integration > Error (must configure)
 
 - **Studio** provides a drag-and-drop DAG builder for stages, jobs, and shell steps.
 - **Runner** executes pipeline runs via Redis queue with job-level concurrency.
-- **Events** are appended to `run_events` for polling/streaming.
+- **Events** are appended to `pipeline_run_events` for polling/streaming.
 - **Logs & artifacts** are stored locally under `RUNNER_DATA_DIR`.
 
 ### Security
 
 - **AES-256-GCM Encryption**: All tokens and API keys encrypted at rest
-- **Supabase Vault**: Optional secure secret storage (Pro plan)
-- **Row-Level Security**: Multi-tenant data isolation
+- **Encrypted Secrets**: Stored in Postgres and decrypted server-side only
+- **App-Level Enforcement**: Multi-tenant isolation enforced in API layer
 - **No Client Exposure**: Sensitive data never sent to browser
 
 See [Integration System Implementation](./docs/integration-system-implementation.md) for complete architecture details.
@@ -227,7 +212,7 @@ cd apps/runner && go run ./cmd/runner   # Runner service
 - `GET /api/commits` - Fetch commits from VCS provider
 
 ### Integration Management
-- `GET /api/integrations` - List user integrations
+- `GET /api/integrations` - List org integrations
 - `POST /api/integrations` - Create new integration
 - `PUT /api/integrations/:id` - Update integration
 - `DELETE /api/integrations/:id` - Delete integration
@@ -250,7 +235,7 @@ spec-axis/
 ├── packages/
 │   └── contracts/             # Shared API/contracts (future)
 ├── docs/                     # Documentation
-├── supabase/migrations/      # Database migrations
+│   └── db/                   # Database schema + init SQL
 ├── CLAUDE.md                 # Development guide
 └── README.md                 # This file
 ```
@@ -279,7 +264,7 @@ See [Quick Setup Guide](./docs/quick-setup-guide.md#production-deployment) for d
 - [ ] VCS integrations (GitHub, GitLab)
 - [ ] AI integrations (Anthropic, OpenAI)
 - [ ] First-time onboarding flow
-- [ ] Project-level vs user-level integration priority
+- [ ] Project-level vs org-level integration priority
 - [ ] Multi-tenant data isolation
 - [ ] Task queue execution
 - [ ] SSE report updates
@@ -291,8 +276,8 @@ See [Quick Setup Guide](./docs/quick-setup-guide.md#production-deployment) for d
 **Error: "ENCRYPTION_KEY environment variable is not set"**
 - Solution: Add `ENCRYPTION_KEY` to `apps/studio/.env` and restart server
 
-**Error: "relation user_integrations does not exist"**
-- Solution: Run database migration `006_user_integrations.sql`
+**Error: "relation org_integrations does not exist"**
+- Solution: Initialize the schema with `psql "$DATABASE_URL" -f docs/db/init.sql`
 
 **Onboarding modal doesn't appear**
 - Solution: Clear browser cache or try incognito mode
@@ -303,7 +288,6 @@ For more issues, see [Quick Setup Guide](./docs/quick-setup-guide.md#troubleshoo
 
 - [HeroUI v3 Documentation](https://heroui.com/docs) (beta)
 - [Next.js 16 Documentation](https://nextjs.org/docs)
-- [Supabase Documentation](https://supabase.com/docs)
 - [Tailwind CSS v4 Documentation](https://tailwindcss.com/docs)
 
 ## 🤝 Contributing

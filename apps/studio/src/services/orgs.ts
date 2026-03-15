@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
-import { createAdminClient } from '@/lib/supabase/server';
+import { query, queryOne, exec } from '@/lib/db';
 import { logger } from '@/services/logger';
 
 export type OrgRole = 'owner' | 'admin' | 'reviewer' | 'member';
@@ -24,44 +24,37 @@ function personalOrgName(email?: string | null) {
 }
 
 export async function ensurePersonalOrg(userId: string, email?: string | null): Promise<Organization> {
-  const db = createAdminClient();
+  const existing = await queryOne<Organization>(
+    `select * from organizations
+     where owner_id = $1 and is_personal = true`,
+    [userId]
+  );
 
-  const { data: existing } = await db
-    .from('organizations')
-    .select('*')
-    .eq('owner_id', userId)
-    .eq('is_personal', true)
-    .maybeSingle();
-
-  if (existing) return existing as Organization;
+  if (existing) return existing;
 
   const slug = `personal-${userId}`;
   const name = personalOrgName(email);
 
-  const { data: created, error } = await db
-    .from('organizations')
-    .insert({
-      name,
-      slug,
-      is_personal: true,
-      owner_id: userId,
-    })
-    .select()
-    .single();
+  const created = await queryOne<Organization>(
+    `insert into organizations (name, slug, is_personal, owner_id, created_at, updated_at)
+     values ($1,$2,true,$3,now(),now())
+     returning *`,
+    [name, slug, userId]
+  );
 
-  if (error || !created) {
-    logger.error('Failed to create personal org', error ?? undefined);
+  if (!created) {
+    logger.error('Failed to create personal org');
     throw new Error('Failed to create personal org');
   }
 
-  await db.from('org_members').insert({
-    org_id: created.id,
-    user_id: userId,
-    role: 'owner',
-    status: 'active',
-  });
+  await exec(
+    `insert into org_members (org_id, user_id, role, status, created_at, updated_at)
+     values ($1,$2,'owner','active',now(),now())
+     on conflict (org_id, user_id) do nothing`,
+    [created.id, userId]
+  );
 
-  return created as Organization;
+  return created;
 }
 
 export async function getDefaultOrgId(userId: string, email?: string | null): Promise<string> {
@@ -86,50 +79,33 @@ export async function getActiveOrgId(
 }
 
 export async function getUserOrgs(userId: string): Promise<Organization[]> {
-  const db = createAdminClient();
-  const { data, error } = await db
-    .from('org_members')
-    .select('organizations(*)')
-    .eq('user_id', userId)
-    .eq('status', 'active');
-
-  if (error) {
-    throw error;
-  }
-
-  const orgs = (data || [])
-    .map((row) => (row as Record<string, any>).organizations)
-    .filter(Boolean) as Organization[];
-
-  return orgs;
+  return query<Organization>(
+    `select o.*
+     from org_members m
+     join organizations o on o.id = m.org_id
+     where m.user_id = $1 and m.status = 'active'`,
+    [userId]
+  );
 }
 
 export async function isOrgMember(orgId: string, userId: string): Promise<boolean> {
-  const db = createAdminClient();
-  const { data, error } = await db
-    .from('org_members')
-    .select('org_id')
-    .eq('org_id', orgId)
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .maybeSingle();
-
-  if (error) return false;
-  return !!data;
+  const row = await queryOne(
+    `select org_id
+     from org_members
+     where org_id = $1 and user_id = $2 and status = 'active'`,
+    [orgId, userId]
+  );
+  return !!row;
 }
 
 export async function getOrgMemberRole(orgId: string, userId: string): Promise<OrgRole | null> {
-  const db = createAdminClient();
-  const { data, error } = await db
-    .from('org_members')
-    .select('role')
-    .eq('org_id', orgId)
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .maybeSingle();
-
-  if (error || !data) return null;
-  return (data as { role: OrgRole }).role ?? null;
+  const row = await queryOne<{ role: OrgRole }>(
+    `select role
+     from org_members
+     where org_id = $1 and user_id = $2 and status = 'active'`,
+    [orgId, userId]
+  );
+  return row?.role ?? null;
 }
 
 export function isRoleAllowed(role: OrgRole | null, allowed: OrgRole[]): boolean {
@@ -144,43 +120,39 @@ export async function requireOrgAccess(orgId: string, userId: string): Promise<v
 }
 
 export async function requireProjectAccess(projectId: string, userId: string) {
-  const db = createAdminClient();
-  const { data, error } = await db
-    .from('projects')
-    .select('*')
-    .eq('id', projectId)
-    .single();
+  const project = await queryOne<Record<string, any>>(
+    `select * from code_projects where id = $1`,
+    [projectId]
+  );
 
-  if (error || !data) {
+  if (!project) {
     throw new Error('Project not found');
   }
 
-  if (!data.org_id) {
+  if (!project.org_id) {
     throw new Error('Forbidden');
   }
 
-  await requireOrgAccess(data.org_id, userId);
+  await requireOrgAccess(project.org_id, userId);
 
-  return data as Record<string, any> & { org_id: string };
+  return project as Record<string, any> & { org_id: string };
 }
 
 export async function requireReportAccess(reportId: string, userId: string) {
-  const db = createAdminClient();
-  const { data, error } = await db
-    .from('reports')
-    .select('*')
-    .eq('id', reportId)
-    .single();
+  const report = await queryOne<Record<string, any>>(
+    `select * from analysis_reports where id = $1`,
+    [reportId]
+  );
 
-  if (error || !data) {
+  if (!report) {
     throw new Error('Report not found');
   }
 
-  if (!data.org_id) {
+  if (!report.org_id) {
     throw new Error('Forbidden');
   }
 
-  await requireOrgAccess(data.org_id, userId);
+  await requireOrgAccess(report.org_id, userId);
 
-  return data as Record<string, any> & { org_id: string };
+  return report as Record<string, any> & { org_id: string };
 }

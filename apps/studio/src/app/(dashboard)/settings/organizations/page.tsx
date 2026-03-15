@@ -25,7 +25,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import SettingsNav from '@/components/settings/SettingsNav';
-import { createClient } from '@/lib/supabase/client';
 import { replaceOrgInPath } from '@/lib/orgPath';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -91,10 +90,10 @@ export default function OrganizationsPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setCurrentUserId(data.user?.id ?? null);
-    });
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setCurrentUserId(data?.user?.id ?? null))
+      .catch(() => setCurrentUserId(null));
   }, []);
 
   useEffect(() => {

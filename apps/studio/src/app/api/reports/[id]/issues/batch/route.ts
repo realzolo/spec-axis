@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { exec } from '@/lib/db';
 import { logger } from '@/services/logger';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
@@ -43,7 +43,6 @@ export async function POST(
 
     const result = await withRetry(async () => {
       await requireReportAccess(reportId, user.id);
-      const supabase = createAdminClient();
 
       switch (action) {
         case 'update_status': {
@@ -51,15 +50,12 @@ export async function POST(
             throw new Error('Status is required');
           }
 
-          const { error } = await supabase
-            .from('report_issues')
-            .update({ status, updated_at: new Date().toISOString() })
-            .eq('report_id', reportId)
-            .in('id', issueIds);
-
-          if (error) {
-            throw new Error(error.message);
-          }
+          await exec(
+            `update analysis_issues
+             set status = $1, updated_at = now()
+             where report_id = $2 and id = any($3::uuid[])`,
+            [status, reportId, issueIds]
+          );
 
           return { action, affected: issueIds.length };
         }
@@ -69,29 +65,22 @@ export async function POST(
             throw new Error('Assignee is required');
           }
 
-          const { error } = await supabase
-            .from('report_issues')
-            .update({ assigned_to, updated_at: new Date().toISOString() })
-            .eq('report_id', reportId)
-            .in('id', issueIds);
-
-          if (error) {
-            throw new Error(error.message);
-          }
+          await exec(
+            `update analysis_issues
+             set assigned_to = $1, updated_at = now()
+             where report_id = $2 and id = any($3::uuid[])`,
+            [assigned_to, reportId, issueIds]
+          );
 
           return { action, affected: issueIds.length };
         }
 
         case 'delete': {
-          const { error } = await supabase
-            .from('report_issues')
-            .delete()
-            .eq('report_id', reportId)
-            .in('id', issueIds);
-
-          if (error) {
-            throw new Error(error.message);
-          }
+          await exec(
+            `delete from analysis_issues
+             where report_id = $1 and id = any($2::uuid[])`,
+            [reportId, issueIds]
+          );
 
           return { action, affected: issueIds.length };
         }

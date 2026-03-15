@@ -1,4 +1,3 @@
-import { createAdminClient } from '@/lib/supabase/server';
 import { analyzeCode } from './claude';
 import { analyzeIncremental } from './incremental';
 import { getCommitsDiff, getCommitsBySha } from './github';
@@ -6,6 +5,7 @@ import { updateReport, getProjectById } from './db';
 import { measurePerformance, performanceMonitor } from './performance';
 import { syncReportIssues } from './issues';
 import { logger } from './logger';
+import { exec } from '@/lib/db';
 
 type AnalyzePayload = {
   reportId: string;
@@ -82,11 +82,7 @@ export async function runAnalyzeTask(projectId: string, payload: AnalyzePayload)
 
     await postAnalysisHooks(projectId, reportId, analysis.score, project.quality_threshold, project.webhook_url);
 
-    const db = createAdminClient();
-    await db
-      .from('projects')
-      .update({ last_analyzed_at: new Date().toISOString() })
-      .eq('id', projectId);
+    await exec(`update code_projects set last_analyzed_at = now() where id = $1`, [projectId]);
 
     await performanceMonitor.saveMetrics(reportId);
   } finally {

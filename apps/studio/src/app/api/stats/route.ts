@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { query } from '@/lib/db';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { getActiveOrgId } from '@/services/orgs';
@@ -16,15 +16,16 @@ export async function GET(request: NextRequest) {
   const user = await requireUser();
   if (!user) return unauthorized();
 
-  const supabase = await createClient();
   const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
 
   // Get all reports
-  const { data: reports } = await supabase
-    .from('reports')
-    .select('*')
-    .eq('org_id', orgId)
-    .order('created_at', { ascending: false });
+  const reports = await query<Record<string, any>>(
+    `select status, score, issues, created_at
+     from analysis_reports
+     where org_id = $1
+     order by created_at desc`,
+    [orgId]
+  );
 
   if (!reports || reports.length === 0) {
     return NextResponse.json({

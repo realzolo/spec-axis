@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { query } from '@/lib/db';
 import { logger } from '@/services/logger';
 import { projectIdSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
@@ -57,19 +57,15 @@ export async function GET(
     // Fetch project stats with retry
     const stats = await withRetry(async () => {
       await requireProjectAccess(projectId, user.id);
-      const supabase = createAdminClient();
+      const reports = await query<Report>(
+        `select id, status, score, issues, created_at
+         from analysis_reports
+         where project_id = $1
+         order by created_at desc`,
+        [projectId]
+      );
 
-      const { data: reports, error } = await supabase
-        .from('reports')
-        .select('id, status, score, issues, created_at')
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      return calculateStats(reports as Report[]);
+      return calculateStats(reports);
     });
 
     logger.info(`Stats calculated: ${projectId}`);

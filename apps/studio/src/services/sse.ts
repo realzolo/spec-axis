@@ -5,7 +5,7 @@
 
 import { NextResponse } from 'next/server';
 import { connect, type NatsConnection, StringCodec } from 'nats';
-import { createClient } from '@/lib/supabase/server';
+import { queryOne } from '@/lib/db';
 import { logger } from './logger';
 
 interface SSEClient {
@@ -17,6 +17,8 @@ const clients = new Map<string, SSEClient[]>();
 const natsUrl = process.env.NATS_URL;
 let natsConnPromise: Promise<NatsConnection | null> | null = null;
 let natsSubscribed = false;
+const pollers = new Map<string, NodeJS.Timeout>();
+const lastSnapshots = new Map<string, { status: string | null; score: number | null }>();
 
 async function getNatsConnection() {
   if (!natsUrl) return null;
@@ -157,34 +159,48 @@ export async function watchReportStatus(reportId: string) {
   if (process.env.NATS_URL) {
     return null;
   }
-  const supabase = await createClient();
 
-  const subscription = supabase
-    .channel(`report:${reportId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'reports',
-        filter: `id=eq.${reportId}`,
-      },
-      (payload: Record<string, unknown>) => {
-        const report = (payload.new as Record<string, unknown>) || {};
-        broadcastUpdate(reportId, {
-          type: 'status_update',
-          status: report.status,
-          score: report.score,
-          progress: report.progress,
-          timestamp: new Date().toISOString(),
-        });
+  if (pollers.has(reportId)) {
+    return null;
+  }
 
-        logger.info(`Report status updated: ${reportId} -> ${report.status}`);
-      }
-    )
-    .subscribe();
+  const poll = async () => {
+    if (!clients.has(reportId)) {
+      stopPolling(reportId);
+      return;
+    }
 
-  return subscription;
+    const row = await queryOne<{ status: string | null; score: number | null }>(
+      `select status, score from analysis_reports where id = $1`,
+      [reportId]
+    );
+
+    if (!row) return;
+
+    const previous = lastSnapshots.get(reportId);
+    if (!previous || previous.status !== row.status || previous.score !== row.score) {
+      lastSnapshots.set(reportId, { status: row.status, score: row.score });
+      broadcastUpdate(reportId, {
+        type: 'status_update',
+        status: row.status,
+        score: row.score,
+        timestamp: new Date().toISOString(),
+      });
+      logger.info(`Report status updated: ${reportId} -> ${row.status}`);
+    }
+
+    if (row.status === 'done' || row.status === 'failed') {
+      stopPolling(reportId);
+    }
+  };
+
+  await poll();
+  const interval = setInterval(() => {
+    void poll();
+  }, 2000);
+  pollers.set(reportId, interval);
+
+  return null;
 }
 
 /**
@@ -201,4 +217,13 @@ export function cleanupSSEConnections() {
     });
   });
   clients.clear();
+}
+
+function stopPolling(reportId: string) {
+  const interval = pollers.get(reportId);
+  if (interval) {
+    clearInterval(interval);
+  }
+  pollers.delete(reportId);
+  lastSnapshots.delete(reportId);
 }

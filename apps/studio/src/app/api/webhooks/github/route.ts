@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import crypto from 'crypto';
-import { createAdminClient } from '@/lib/supabase/server';
+import { exec, queryOne } from '@/lib/db';
 import { getProjectById, listProjectsByRepo, getRulesBySetId, createReport, updateReport } from '@/services/db';
 import { buildReportCommits } from '@/services/analyzeTask';
 import { enqueueAnalyze } from '@/services/runnerClient';
@@ -160,39 +160,45 @@ export async function POST(request: NextRequest) {
       commits,
     });
 
-    const db = createAdminClient();
-    const { data: prRow, error: prError } = await db
-      .from('pull_requests')
-      .upsert(
-        {
-          project_id: project.id,
-          provider: 'github',
-          repo_full_name: repoFullName,
-          number: pr.number,
-          title: pr.title,
-          author: pr.user?.login,
-          url: pr.html_url,
-          base_sha: baseSha,
-          head_sha: headSha,
-          status: pr.state === 'closed' ? (pr.merged ? 'merged' : 'closed') : 'open',
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'provider,repo_full_name,number' }
-      )
-      .select()
-      .single();
+    const prStatus = pr.state === 'closed' ? (pr.merged ? 'merged' : 'closed') : 'open';
+    const prRow = await queryOne<Record<string, any>>(
+      `insert into pull_requests
+        (project_id, provider, repo_full_name, number, title, author, url, base_sha, head_sha, status, created_at, updated_at)
+       values ($1,'github',$2,$3,$4,$5,$6,$7,$8,$9,now(),now())
+       on conflict (provider, repo_full_name, number)
+       do update set
+         project_id = excluded.project_id,
+         title = excluded.title,
+         author = excluded.author,
+         url = excluded.url,
+         base_sha = excluded.base_sha,
+         head_sha = excluded.head_sha,
+         status = excluded.status,
+         updated_at = now()
+       returning *`,
+      [
+        project.id,
+        repoFullName,
+        pr.number,
+        pr.title,
+        pr.user?.login,
+        pr.html_url,
+        baseSha,
+        headSha,
+        prStatus,
+      ]
+    );
 
-    if (prError || !prRow) {
+    if (!prRow) {
       return NextResponse.json({ error: 'Failed to upsert pull request' }, { status: 500 });
     }
 
-    await db.from('review_runs').insert({
-      pull_request_id: prRow.id,
-      project_id: project.id,
-      report_id: report.id,
-      trigger: 'webhook',
-      status: 'queued',
-    });
+    await exec(
+      `insert into review_runs
+        (pull_request_id, project_id, report_id, trigger, status, created_at)
+       values ($1,$2,$3,'webhook','queued',now())`,
+      [prRow.id, project.id, report.id]
+    );
 
     try {
       await enqueueAnalyze({

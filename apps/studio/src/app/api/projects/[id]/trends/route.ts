@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { query } from '@/lib/db';
 import { logger } from '@/services/logger';
 import { projectIdSchema, dateRangeSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
@@ -47,19 +47,13 @@ export async function GET(
     // Query trend data with retry
     const data = await withRetry(async () => {
       await requireProjectAccess(projectId, user.id);
-      const supabase = createAdminClient();
-      const { data, error } = await supabase
-        .from('quality_snapshots')
-        .select('*')
-        .eq('project_id', projectId)
-        .gte('snapshot_date', startDateStr)
-        .order('snapshot_date', { ascending: true });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      return data ?? [];
+      return query<Record<string, any>>(
+        `select *
+         from analysis_quality_snapshots
+         where project_id = $1 and snapshot_date >= $2
+         order by snapshot_date asc`,
+        [projectId, startDateStr]
+      );
     });
 
     logger.info(`Trends fetched: ${projectId} (${data.length} snapshots)`);

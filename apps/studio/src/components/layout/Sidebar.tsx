@@ -28,7 +28,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { createClient } from '@/lib/supabase/client';
 import ThemeToggle from '@/components/theme/ThemeToggle';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import type { Locale } from '@/i18n/config';
@@ -176,8 +175,7 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
   }
 
   async function handleSignOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/login');
     router.refresh();
   }

@@ -1,4 +1,4 @@
-import { createAdminClient } from '@/lib/supabase/server';
+import { exec } from '@/lib/db';
 
 type IssueInput = {
   file: string;
@@ -18,37 +18,62 @@ type IssueInput = {
 const INSERT_CHUNK_SIZE = 200;
 
 export async function syncReportIssues(reportId: string, issues: IssueInput[]) {
-  const db = createAdminClient();
-
-  await db.from('report_issues').delete().eq('report_id', reportId);
+  await exec(`delete from analysis_issues where report_id = $1`, [reportId]);
 
   if (!issues || issues.length === 0) {
     return;
   }
 
-  const records = issues.map((i) => ({
-    report_id: reportId,
-    file: i.file,
-    line: i.line ?? null,
-    severity: i.severity,
-    category: i.category,
-    rule: i.rule,
-    message: i.message,
-    suggestion: i.suggestion ?? null,
-    code_snippet: i.codeSnippet ?? null,
-    fix_patch: i.fixPatch ?? null,
-    priority: i.priority ?? null,
-    impact_scope: i.impactScope ?? null,
-    estimated_effort: i.estimatedEffort ?? null,
-    status: 'open',
-    updated_at: new Date().toISOString(),
-  }));
+  const columns = [
+    'report_id',
+    'file',
+    'line',
+    'severity',
+    'category',
+    'rule',
+    'message',
+    'suggestion',
+    'code_snippet',
+    'fix_patch',
+    'priority',
+    'impact_scope',
+    'estimated_effort',
+    'status',
+    'updated_at',
+  ];
+  const paramsPerRow = columns.length;
 
-  for (let i = 0; i < records.length; i += INSERT_CHUNK_SIZE) {
-    const chunk = records.slice(i, i + INSERT_CHUNK_SIZE);
-    const { error } = await db.from('report_issues').insert(chunk);
-    if (error) {
-      throw error;
-    }
+  for (let i = 0; i < issues.length; i += INSERT_CHUNK_SIZE) {
+    const chunk = issues.slice(i, i + INSERT_CHUNK_SIZE);
+    const updatedAt = new Date();
+    const values: any[] = [];
+    const placeholders = chunk.map((issue, rowIndex) => {
+      const base = rowIndex * paramsPerRow;
+      values.push(
+        reportId,
+        issue.file,
+        issue.line ?? null,
+        issue.severity,
+        issue.category,
+        issue.rule,
+        issue.message,
+        issue.suggestion ?? null,
+        issue.codeSnippet ?? null,
+        issue.fixPatch ?? null,
+        issue.priority ?? null,
+        issue.impactScope ?? null,
+        issue.estimatedEffort ?? null,
+        'open',
+        updatedAt
+      );
+      const indices = Array.from({ length: paramsPerRow }, (_, idx) => `$${base + idx + 1}`);
+      return `(${indices.join(', ')})`;
+    });
+
+    await exec(
+      `insert into analysis_issues (${columns.join(', ')})
+       values ${placeholders.join(', ')}`,
+      values
+    );
   }
 }

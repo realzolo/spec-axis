@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { queryOne } from '@/lib/db';
 import { logger } from '@/services/logger';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
@@ -44,19 +44,24 @@ export async function GET(
 
     const data = await withRetry(async () => {
       await requireReportAccess(reportId, user.id);
-      const supabase = createAdminClient();
-      const { data, error } = await supabase
-        .from('report_issues')
-        .select('*, issue_comments(*)')
-        .eq('id', issueId)
-        .eq('report_id', reportId)
-        .single();
+      const row = await queryOne<Record<string, any>>(
+        `select i.*,
+                coalesce(
+                  jsonb_agg(c.* order by c.created_at) filter (where c.id is not null),
+                  '[]'::jsonb
+                ) as issue_comments
+         from analysis_issues i
+         left join analysis_issue_comments c on c.issue_id = i.id
+         where i.id = $1 and i.report_id = $2
+         group by i.id`,
+        [issueId, reportId]
+      );
 
-      if (error) {
-        throw new Error(error.message);
+      if (!row) {
+        throw new Error('Issue not found');
       }
 
-      return data;
+      return row;
     });
 
     logger.info(`Issue fetched: ${issueId}`);
@@ -93,26 +98,29 @@ export async function PATCH(
 
     const data = await withRetry(async () => {
       await requireReportAccess(reportId, user.id);
-      const supabase = createAdminClient();
 
       const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (status) updateData.status = status;
       if (notes !== undefined) updateData.notes = notes;
       if (assigned_to !== undefined) updateData.assigned_to = assigned_to;
 
-      const { data, error } = await supabase
-        .from('report_issues')
-        .update(updateData)
-        .eq('id', issueId)
-        .eq('report_id', reportId)
-        .select()
-        .single();
+      const fields = Object.keys(updateData);
+      const assignments = fields.map((field, idx) => `${field} = $${idx + 3}`);
+      const values = fields.map((field) => updateData[field]);
 
-      if (error) {
-        throw new Error(error.message);
+      const updated = await queryOne<Record<string, any>>(
+        `update analysis_issues
+         set ${assignments.join(', ')}
+         where id = $1 and report_id = $2
+         returning *`,
+        [issueId, reportId, ...values]
+      );
+
+      if (!updated) {
+        throw new Error('Issue not found');
       }
 
-      return data;
+      return updated;
     });
 
     // Audit log
@@ -159,18 +167,19 @@ export async function POST(
 
     const data = await withRetry(async () => {
       await requireReportAccess(reportId, user.id);
-      const supabase = createAdminClient();
-      const { data, error } = await supabase
-        .from('issue_comments')
-        .insert({ issue_id: issueId, author, content })
-        .select()
-        .single();
+      const created = await queryOne<Record<string, any>>(
+        `insert into analysis_issue_comments
+          (issue_id, author_id, author, content, created_at)
+         values ($1,$2,$3,$4,now())
+         returning *`,
+        [issueId, user.id, author, content]
+      );
 
-      if (error) {
-        throw new Error(error.message);
+      if (!created) {
+        throw new Error('Failed to create comment');
       }
 
-      return data;
+      return created;
     });
 
     // Audit log

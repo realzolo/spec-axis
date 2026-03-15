@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { queryOne } from '@/lib/db';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { requireReportAccess } from '@/services/orgs';
@@ -26,17 +26,27 @@ export async function GET(
   const format = searchParams.get('format') || 'json';
 
   await requireReportAccess(id, user.id);
-  const supabase = createAdminClient();
+  const reportRow = await queryOne<Record<string, any>>(
+    `select r.*, p.name as project_name, p.repo as project_repo
+     from analysis_reports r
+     join code_projects p on p.id = r.project_id
+     where r.id = $1`,
+    [id]
+  );
 
-  const { data: report, error } = await supabase
-    .from('reports')
-    .select('*, projects(*)')
-    .eq('id', id)
-    .single();
-
-  if (error || !report) {
+  if (!reportRow) {
     return NextResponse.json({ error: 'Report not found' }, { status: 404 });
   }
+
+  const report = {
+    ...reportRow,
+    projects: {
+      name: reportRow.project_name,
+      repo: reportRow.project_repo,
+    },
+  };
+  delete (report as Record<string, unknown>).project_name;
+  delete (report as Record<string, unknown>).project_repo;
 
   if (format === 'markdown') {
     const markdown = generateMarkdown(report);

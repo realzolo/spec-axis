@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireUser, unauthorized } from '@/services/auth';
 import {
   getOrgIntegrations,
   createIntegration,
@@ -16,14 +16,8 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const user = await requireUser();
+    if (!user) return unauthorized();
 
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') as 'vcs' | 'ai' | null;
@@ -61,14 +55,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const user = await requireUser();
+    if (!user) return unauthorized();
 
     const body = await request.json();
     const { type, provider, name, config, secret, isDefault } = body;

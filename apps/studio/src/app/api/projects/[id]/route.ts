@@ -8,7 +8,7 @@ import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES, requireProjectAccess } from '@/services/orgs';
-import { createAdminClient } from '@/lib/supabase/server';
+import { queryOne } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,14 +74,14 @@ export async function PUT(
     }
 
     if (ruleset_id !== undefined && ruleset_id !== null) {
-      const supabase = createAdminClient();
-      const { data: ruleSet, error: ruleSetError } = await supabase
-        .from('rule_sets')
-        .select('id, is_global, org_id')
-        .eq('id', ruleset_id)
-        .single();
+      const ruleSet = await queryOne<{ id: string; is_global: boolean; org_id: string | null }>(
+        `select id, is_global, org_id
+         from quality_rule_sets
+         where id = $1`,
+        [ruleset_id]
+      );
 
-      if (ruleSetError || !ruleSet) {
+      if (!ruleSet) {
         return NextResponse.json({ error: 'Rule set not found' }, { status: 400 });
       }
 

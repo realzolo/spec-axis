@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
-import { createAdminClient } from '@/lib/supabase/server';
+import { exec, queryOne } from '@/lib/db';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { ORG_COOKIE } from '@/services/orgs';
 
@@ -21,15 +21,12 @@ export async function POST(
   if (!user) return unauthorized();
 
   const { token } = await params;
-  const db = createAdminClient();
+  const invite = await queryOne<Record<string, any>>(
+    `select * from org_invites where token = $1`,
+    [token]
+  );
 
-  const { data: invite, error } = await db
-    .from('org_invites')
-    .select('*')
-    .eq('token', token)
-    .maybeSingle();
-
-  if (error || !invite) {
+  if (!invite) {
     return NextResponse.json({ error: 'Invite not found' }, { status: 404 });
   }
 
@@ -47,17 +44,17 @@ export async function POST(
     return NextResponse.json({ error: 'Invite expired' }, { status: 410 });
   }
 
-  await db.from('org_members').upsert({
-    org_id: invite.org_id,
-    user_id: user.id,
-    role: invite.role,
-    status: 'active',
-  });
+  await exec(
+    `insert into org_members (org_id, user_id, role, status, created_at, updated_at)
+     values ($1,$2,$3,'active',now(),now())
+     on conflict (org_id, user_id) do update set role = excluded.role, status = 'active', updated_at = now()`,
+    [invite.org_id, user.id, invite.role]
+  );
 
-  await db
-    .from('org_invites')
-    .update({ accepted_at: new Date().toISOString() })
-    .eq('id', invite.id);
+  await exec(
+    `update org_invites set accepted_at = now() where id = $1`,
+    [invite.id]
+  );
 
   const clientInfo = extractClientInfo(request);
   await auditLogger.log({

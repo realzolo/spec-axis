@@ -3,7 +3,7 @@
  * Tracks important actions for traceability and compliance
  */
 
-import { createAdminClient } from '@/lib/supabase/server';
+import { exec, query } from '@/lib/db';
 import { logger } from './logger';
 
 export type AuditAction =
@@ -34,25 +34,23 @@ class AuditLogger {
    */
   async log(entry: AuditLogEntry) {
     try {
-      const db = createAdminClient();
+      await exec(
+        `insert into audit_logs (action, entity_type, entity_id, user_id, changes, ip_address, user_agent, created_at)
+         values ($1,$2,$3,$4,$5,$6,$7,now())`,
+        [
+          entry.action,
+          entry.entityType,
+          entry.entityId ?? null,
+          entry.userId ?? null,
+          entry.changes ? JSON.stringify(entry.changes) : null,
+          entry.ipAddress ?? null,
+          entry.userAgent ?? null,
+        ]
+      );
 
-      const { error } = await db.from('audit_logs').insert({
-        action: entry.action,
-        entity_type: entry.entityType,
-        entity_id: entry.entityId,
-        user_id: entry.userId,
-        changes: entry.changes,
-        ip_address: entry.ipAddress || undefined,
-        user_agent: entry.userAgent || undefined,
-      });
-
-      if (error) {
-        logger.warn('Failed to log audit entry', error);
-      } else {
-        logger.debug(
-          `Audit logged: ${entry.action} ${entry.entityType}${entry.entityId ? ` (${entry.entityId})` : ''}`
-        );
-      }
+      logger.debug(
+        `Audit logged: ${entry.action} ${entry.entityType}${entry.entityId ? ` (${entry.entityId})` : ''}`
+      );
     } catch (err) {
       logger.error('Failed to log audit entry', err instanceof Error ? err : undefined);
     }
@@ -67,26 +65,27 @@ class AuditLogger {
     limit: number = 100
   ) {
     try {
-      const db = createAdminClient();
-
-      let query = db.from('audit_logs').select('*').order('created_at', { ascending: false });
-
+      const params: any[] = [];
+      const where: string[] = [];
       if (entityType) {
-        query = query.eq('entity_type', entityType);
+        params.push(entityType);
+        where.push(`entity_type = $${params.length}`);
       }
-
       if (entityId) {
-        query = query.eq('entity_id', entityId);
+        params.push(entityId);
+        where.push(`entity_id = $${params.length}`);
       }
 
-      const { data, error } = await query.limit(limit);
+      const rows = await query(
+        `select *
+         from audit_logs
+         ${where.length ? `where ${where.join(' and ')}` : ''}
+         order by created_at desc
+         limit ${limit}`,
+        params
+      );
 
-      if (error) {
-        logger.warn('Failed to fetch audit logs', error);
-        return [];
-      }
-
-      return data || [];
+      return rows || [];
     } catch (err) {
       logger.error('Failed to fetch audit logs', err instanceof Error ? err : undefined);
       return [];
@@ -98,21 +97,15 @@ class AuditLogger {
    */
   async getUserActivity(userId: string, limit: number = 50) {
     try {
-      const db = createAdminClient();
-
-      const { data, error } = await db
-        .from('audit_logs')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(limit);
-
-      if (error) {
-        logger.warn(`Failed to fetch activity for user ${userId}`, error);
-        return [];
-      }
-
-      return data || [];
+      const rows = await query(
+        `select *
+         from audit_logs
+         where user_id = $1
+         order by created_at desc
+         limit ${limit}`,
+        [userId]
+      );
+      return rows || [];
     } catch (err) {
       logger.error('Failed to fetch user activity', err instanceof Error ? err : undefined);
       return [];
@@ -124,20 +117,15 @@ class AuditLogger {
    */
   async cleanup() {
     try {
-      const db = createAdminClient();
       const ninetyDaysAgo = new Date();
       ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-      const { error } = await db
-        .from('audit_logs')
-        .delete()
-        .lt('created_at', ninetyDaysAgo.toISOString());
+      await exec(
+        `delete from audit_logs where created_at < $1`,
+        [ninetyDaysAgo.toISOString()]
+      );
 
-      if (error) {
-        logger.warn('Failed to cleanup audit logs', error);
-      } else {
-        logger.info('Audit logs cleaned up');
-      }
+      logger.info('Audit logs cleaned up');
     } catch (err) {
       logger.error('Failed to cleanup audit logs', err instanceof Error ? err : undefined);
     }

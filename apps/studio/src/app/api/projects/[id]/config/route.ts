@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { exec, queryOne } from '@/lib/db';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES, requireProjectAccess } from '@/services/orgs';
@@ -24,16 +24,15 @@ export async function GET(
 
   const { id } = await params;
   await requireProjectAccess(id, user.id);
-  const supabase = createAdminClient();
+  const data = await queryOne<Record<string, any>>(
+    `select ignore_patterns, quality_threshold, auto_analyze, webhook_url
+     from code_projects
+     where id = $1`,
+    [id]
+  );
 
-  const { data, error } = await supabase
-    .from('projects')
-    .select('ignore_patterns, quality_threshold, auto_analyze, webhook_url')
-    .eq('id', id)
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
 
   return NextResponse.json(data);
@@ -63,24 +62,35 @@ export async function PATCH(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
   }
-  const supabase = createAdminClient();
-
   const updateData: Record<string, unknown> = {};
   if (ignorePatterns !== undefined) updateData.ignore_patterns = ignorePatterns;
   if (qualityThreshold !== undefined) updateData.quality_threshold = qualityThreshold;
   if (autoAnalyze !== undefined) updateData.auto_analyze = autoAnalyze;
   if (webhookUrl !== undefined) updateData.webhook_url = webhookUrl;
 
-  const { data, error } = await supabase
-    .from('projects')
-    .update(updateData)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  const fields = Object.keys(updateData);
+  if (fields.length === 0) {
+    const existing = await queryOne<Record<string, any>>(
+      `select * from code_projects where id = $1`,
+      [id]
+    );
+    return NextResponse.json(existing);
   }
+
+  const assignments = fields.map((field, idx) => `${field} = $${idx + 2}`);
+  const values = fields.map((field) => updateData[field]);
+
+  await exec(
+    `update code_projects
+     set ${assignments.join(', ')}, updated_at = now()
+     where id = $1`,
+    [id, ...values]
+  );
+
+  const data = await queryOne<Record<string, any>>(
+    `select * from code_projects where id = $1`,
+    [id]
+  );
 
   return NextResponse.json(data);
 }

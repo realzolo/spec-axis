@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
-import { createAdminClient } from '@/lib/supabase/server';
+import { exec, queryOne } from '@/lib/db';
 import { ensurePersonalOrg, getUserOrgs } from '@/services/orgs';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 
@@ -43,31 +43,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 });
   }
 
-  const db = createAdminClient();
   const baseSlug = slugify(body?.slug || name) || `org-${user.id.slice(0, 8)}`;
   const slug = `${baseSlug}-${Date.now().toString(36)}`;
 
-  const { data: org, error } = await db
-    .from('organizations')
-    .insert({
-      name,
-      slug,
-      is_personal: false,
-      owner_id: user.id,
-    })
-    .select()
-    .single();
+  const org = await queryOne<Record<string, any>>(
+    `insert into organizations
+      (name, slug, is_personal, owner_id, created_at, updated_at)
+     values ($1,$2,false,$3,now(),now())
+     returning *`,
+    [name, slug, user.id]
+  );
 
-  if (error || !org) {
+  if (!org) {
     return NextResponse.json({ error: 'Failed to create org' }, { status: 500 });
   }
 
-  await db.from('org_members').insert({
-    org_id: org.id,
-    user_id: user.id,
-    role: 'owner',
-    status: 'active',
-  });
+  await exec(
+    `insert into org_members (org_id, user_id, role, status, created_at, updated_at)
+     values ($1,$2,'owner','active',now(),now())
+     on conflict (org_id, user_id) do nothing`,
+    [org.id, user.id]
+  );
 
   const clientInfo = extractClientInfo(request);
   await auditLogger.log({

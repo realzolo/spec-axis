@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { createClient } from '@/lib/supabase/client';
 import type { Dictionary } from '@/i18n';
 
 type SavedFilter = {
@@ -36,10 +35,12 @@ export default function SavedFilters({ userId, currentFilter, onApplyFilter, dic
       setResolvedUserId(userId);
       return;
     }
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setResolvedUserId(data.user?.id ?? null);
-    });
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        setResolvedUserId(data?.user?.id ?? null);
+      })
+      .catch(() => setResolvedUserId(null));
   }, [userId]);
 
   useEffect(() => {

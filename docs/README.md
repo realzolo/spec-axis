@@ -1,6 +1,6 @@
 # Integration System Documentation
 
-This directory contains documentation for the User Integration System implementation.
+This directory contains documentation for the Integration System implementation.
 
 ## Documents
 
@@ -8,7 +8,7 @@ This directory contains documentation for the User Integration System implementa
 5-minute guide to get the integration system up and running:
 - Generate encryption key
 - Update environment variables
-- Run database migration
+- Initialize database schema
 - Test the setup
 
 ### [Integration System Implementation](./integration-system-implementation.md)
@@ -37,8 +37,8 @@ Complete API documentation for integration endpoints:
 - Error handling
 - Security considerations
 
-### [Custom Encryption Setup](./custom-encryption-setup.md)
-Detailed guide for the custom encryption system:
+### [Encryption Setup](./custom-encryption-setup.md)
+Detailed guide for the encryption system:
 - How encryption works
 - Security features
 - Key management
@@ -48,8 +48,8 @@ Detailed guide for the custom encryption system:
 ## Quick Links
 
 - **Main Documentation**: [CLAUDE.md](../CLAUDE.md) - Project guide and technical specifications
-- **Database Migration**: [006_user_integrations.sql](../supabase/migrations/006_user_integrations.sql)
-- **Integration Service**: [src/services/integrations/](../src/services/integrations/)
+- **Database Init Script**: [init.sql](./db/init.sql)
+- **Integration Service**: [apps/studio/src/services/integrations/](../apps/studio/src/services/integrations/)
 
 ## Overview
 
@@ -59,8 +59,8 @@ The Integration System allows users to configure VCS (Version Control System) an
 
 - **Multi-Provider Support**: GitHub, GitLab, Anthropic, OpenAI, and more
 - **Secure Storage**: Sensitive data encrypted using AES-256-GCM
-- **Multi-Tenant**: Complete isolation between users
-- **Flexible Configuration**: Project-level and user-level defaults
+- **Multi-Tenant**: Complete isolation between organizations
+- **Flexible Configuration**: Project-level and org-level defaults
 - **First-Time Onboarding**: Guided setup for new users
 
 ### Architecture
@@ -72,13 +72,13 @@ API Layer (/api/integrations)
     ↓
 Service Layer (src/services/integrations)
     ↓
-Database (user_integrations table + Encrypted secrets)
+Database (org_integrations table + Encrypted secrets)
 ```
 
 ### Configuration Priority
 
 ```
-Project-specific integration > User default integration > Error (must configure)
+Project-specific integration > Org default integration > Error (must configure)
 ```
 
 ## Getting Started

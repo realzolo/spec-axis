@@ -1152,7 +1152,7 @@ func (s *Store) AppendRunEvent(ctx context.Context, runID string, eventType stri
 	raw, _ := json.Marshal(payload)
 	_, err := s.pool.Exec(
 		ctx,
-		`insert into run_events (run_id, type, payload, occurred_at) values ($1,$2,$3,now())`,
+		`insert into pipeline_run_events (run_id, type, payload, occurred_at) values ($1,$2,$3,now())`,
 		runID,
 		eventType,
 		raw,
@@ -1167,7 +1167,7 @@ func (s *Store) ListRunEvents(ctx context.Context, runID string, afterSeq int64,
 	rows, err := s.pool.Query(
 		ctx,
 		`select id, run_id, seq, type, payload, occurred_at
-		 from run_events
+		 from pipeline_run_events
 		 where run_id=$1 and seq>$2
 		 order by seq asc
 		 limit $3`,

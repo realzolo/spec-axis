@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { exec } from '@/lib/db';
 import { requireUser, unauthorized } from '@/services/auth';
 import { getOrgMemberRole } from '@/services/orgs';
 
@@ -17,16 +17,10 @@ export async function DELETE(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const db = createAdminClient();
-  const { error } = await db
-    .from('org_invites')
-    .delete()
-    .eq('id', inviteId)
-    .eq('org_id', orgId);
-
-  if (error) {
-    return NextResponse.json({ error: 'Failed to delete invite' }, { status: 500 });
-  }
+  await exec(
+    `delete from org_invites where id = $1 and org_id = $2`,
+    [inviteId, orgId]
+  );
 
   return NextResponse.json({ success: true });
 }

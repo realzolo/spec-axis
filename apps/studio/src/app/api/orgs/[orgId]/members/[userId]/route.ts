@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { exec, queryOne } from '@/lib/db';
 import { requireUser, unauthorized } from '@/services/auth';
 import { getOrgMemberRole } from '@/services/orgs';
 
@@ -21,15 +21,12 @@ export async function DELETE(
     return NextResponse.json({ error: 'Cannot remove yourself' }, { status: 400 });
   }
 
-  const db = createAdminClient();
-  const { data: target, error } = await db
-    .from('org_members')
-    .select('role')
-    .eq('org_id', orgId)
-    .eq('user_id', userId)
-    .maybeSingle();
+  const target = await queryOne<{ role: string }>(
+    `select role from org_members where org_id = $1 and user_id = $2`,
+    [orgId, userId]
+  );
 
-  if (error || !target) {
+  if (!target) {
     return NextResponse.json({ error: 'Member not found' }, { status: 404 });
   }
 
@@ -37,15 +34,10 @@ export async function DELETE(
     return NextResponse.json({ error: 'Only owners can remove other owners' }, { status: 403 });
   }
 
-  const { error: deleteError } = await db
-    .from('org_members')
-    .delete()
-    .eq('org_id', orgId)
-    .eq('user_id', userId);
-
-  if (deleteError) {
-    return NextResponse.json({ error: 'Failed to remove member' }, { status: 500 });
-  }
+  await exec(
+    `delete from org_members where org_id = $1 and user_id = $2`,
+    [orgId, userId]
+  );
 
   return NextResponse.json({ success: true });
 }

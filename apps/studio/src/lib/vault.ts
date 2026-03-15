@@ -8,7 +8,7 @@ import { encrypt, decrypt } from './encryption';
 /**
  * Store a secret (encrypt it)
  *
- * @param name - Unique name for the secret (not used, for API compatibility)
+ * @param name - Unique name for the secret (not used)
  * @param secret - The secret value to store
  * @returns The encrypted value
  */
@@ -53,7 +53,6 @@ export async function deleteSecret(encrypted: string): Promise<void> {
 
 /**
  * Generate a unique identifier for a user integration
- * This is used as a placeholder for compatibility with Vault-based code
  *
  * @param userId - The user ID
  * @param type - Integration type (vcs or ai)

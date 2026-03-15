@@ -4,9 +4,8 @@ This guide will help you set up the integration system in 5 minutes.
 
 ## Prerequisites
 
-- Supabase project
+- PostgreSQL 14+
 - Node.js environment
-- Access to Supabase SQL Editor
 
 ## Step 1: Generate Encryption Key (1 minute)
 
@@ -29,26 +28,22 @@ Copy the output (64 hex characters).
 Add to your `.env` file:
 
 ```bash
-# Existing Supabase variables
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+# Database connection
+DATABASE_URL=postgres://...
 
-# New: Encryption key
+# Encryption key
 ENCRYPTION_KEY=paste_your_generated_key_here
 ```
 
 **IMPORTANT**: Keep this key secret and back it up!
 
-## Step 3: Run Database Migration (2 minutes)
+## Step 3: Initialize Database Schema (2 minutes)
 
-1. Open Supabase Dashboard
-2. Go to SQL Editor
-3. Create a new query
-4. Copy and paste the contents of `supabase/migrations/006_user_integrations.sql`
-5. Click "Run"
+Run the unified init script:
 
-Wait for the migration to complete (should take ~10 seconds).
+```bash
+psql "$DATABASE_URL" -f docs/db/init.sql
+```
 
 ## Step 4: Restart Your Application (1 minute)
 
@@ -84,9 +79,9 @@ pnpm dev
 
 **Solution**: Make sure you added `ENCRYPTION_KEY` to your `.env` file and restarted the application.
 
-### Error: "relation user_integrations does not exist"
+### Error: "relation org_integrations does not exist"
 
-**Solution**: The database migration didn't run. Go back to Step 3.
+**Solution**: The schema is missing. Re-run Step 3.
 
 ### Error: "Failed to store secret"
 
@@ -135,7 +130,7 @@ If you encounter issues:
 2. Review the [API Reference](./api-reference.md)
 3. Check the [Custom Encryption Setup](./custom-encryption-setup.md) guide
 4. Look at browser console for error messages
-5. Check Supabase logs for database errors
+5. Check Postgres logs for database errors
 
 ## Production Deployment
 
@@ -143,7 +138,7 @@ Before deploying to production:
 
 1. Generate a new encryption key (don't reuse dev key)
 2. Set `ENCRYPTION_KEY` in your production environment
-3. Run database migration on production database
+3. Run the init script on the production database
 4. Test thoroughly in staging first
 5. Have a rollback plan ready
 

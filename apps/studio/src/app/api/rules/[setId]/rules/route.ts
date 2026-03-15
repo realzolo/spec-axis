@@ -5,7 +5,7 @@ import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { z } from 'zod';
 import { getActiveOrgId, getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES } from '@/services/orgs';
-import { createAdminClient } from '@/lib/supabase/server';
+import { queryOne } from '@/lib/db';
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 
@@ -60,14 +60,12 @@ export async function DELETE(request: NextRequest) {
 
   const { id } = await request.json();
 
-  const db = createAdminClient();
-  const { data: rule, error } = await db
-    .from('rules')
-    .select('ruleset_id')
-    .eq('id', id)
-    .single();
+  const rule = await queryOne<{ ruleset_id: string }>(
+    `select ruleset_id from quality_rules where id = $1`,
+    [id]
+  );
 
-  if (error || !rule) {
+  if (!rule) {
     return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
   }
 

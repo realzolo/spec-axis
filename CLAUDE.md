@@ -28,15 +28,15 @@ const dict = await getDictionary(locale);
 
 AI code review + CI/CD platform: Next.js 16 + React 19 + TypeScript + HeroUI v3 (beta) + Tailwind CSS v4.
 Multi-GitHub project management, commit selection, Claude AI analysis, configurable rule sets, quality report scoring, and pipeline DAG builder.
-Backend: Go runner executes analysis jobs and pipeline runs via Redis queue; status updates can be published via NATS.
+Backend: PostgreSQL for core data, Go runner executes analysis jobs and pipeline runs via Redis queue; status updates can be published via NATS.
 Monorepo layout: `apps/studio` (Next.js), `apps/runner` (Go runner), `packages/*` (shared contracts).
 Unless stated otherwise, paths in this guide are relative to `apps/studio`.
 
 ## Organization Model & Routing
 
-Supabase-style multi-tenant org system (Vercel-like UI). Each user has a **personal org** on signup.
+Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on signup.
 
-**Org-scoped assets:** projects, reports, rule_sets, rules, integrations, rule learning stats.
+**Org-scoped assets:** projects, reports, rule sets, rules, integrations, rule learning stats.
 
 **Roles:** `owner | admin | reviewer | member`
 - `owner/admin`: manage org assets (create/update/delete projects, rules, integrations, config)
@@ -68,7 +68,7 @@ Supabase-style multi-tenant org system (Vercel-like UI). Each user has a **perso
 | Radix UI Primitives | ^2.1.4 | `@radix-ui/react-primitive` (Radix Select/Popper dependency) |
 | CodeMirror | 6.x | Read-only codebase editor preview |
 | React Flow (XYFlow) | ^12.7 | Pipeline DAG builder |
-| Supabase | `@supabase/ssr ^0.9` | Database + auth |
+| PostgreSQL | 14+ | Primary database (self-managed) |
 | Octokit | `^5.0.5` | GitHub API |
 | Anthropic SDK | `^0.78` | Claude AI, supports `ANTHROPIC_BASE_URL` |
 | Go | 1.22 | Runner service |
@@ -178,7 +178,7 @@ Avoid custom font sizes unless a new token is added.
 
 - **Middleware**: file is `apps/studio/middleware.ts` (Next.js middleware). It handles `/o/:orgId` rewrites and org redirects.
 - `apps/studio/src/proxy.ts` is legacy and currently unused.
-- **Dynamic pages**: all dashboard pages with Supabase must have `export const dynamic = 'force-dynamic'`
+- **Dynamic pages**: any dashboard page that depends on auth/session or database reads must use `export const dynamic = 'force-dynamic'`
 - **Vercel timeout**: analyze route configured for 300s in `vercel.json`
 
 ## Directory Structure
@@ -189,6 +189,8 @@ apps/
     src/
       app/
         (auth)/login/           # Login (no Sidebar)
+        (auth)/verify/          # Email verification
+        (auth)/reset/           # Password reset
         (auth)/invite/[token]/  # Invite accept
         auth/callback/          # OAuth callback
         (dashboard)/            # Protected pages + Sidebar
@@ -202,6 +204,7 @@ apps/
           rules/                # RulesClient
             [id]/               # RuleSetDetailClient
           settings/integrations/
+          settings/security/
         api/
           analyze/              # POST → enqueue runner task
           pipelines/            # CRUD + runs (proxy to runner)
@@ -235,9 +238,8 @@ packages/
 ## Environment Variables
 
 ```
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
+DATABASE_URL=               # Studio Postgres connection string
+ENCRYPTION_KEY=             # AES-256-GCM key for secrets
 RUNNER_BASE_URL=            # Runner base URL (e.g. http://localhost:8200)
 RUNNER_TOKEN=               # Shared token for runner auth
 NATS_URL=                   # Optional, report status events
@@ -264,8 +266,8 @@ Environment files live under `apps/studio` (e.g. `apps/studio/.env`).
 **VCS and AI integrations** are configured via web UI at **Settings > Integrations** — NOT via env vars.
 - VCS: GitHub, GitLab, Generic Git
 - AI: Any OpenAI-compatible API (Claude, GPT-4, DeepSeek, etc.)
-- Non-sensitive config → `user_integrations` table; secrets → Supabase Vault
-- Priority: project-specific > user default (no env var fallback)
+- Non-sensitive config → `org_integrations` table; secrets → encrypted in `vault_secret_name`
+- Priority: project-specific > org default (no env var fallback)
 
 ## Common Commands
 
@@ -274,6 +276,7 @@ pnpm dev     # Console dev server (port 8109)
 pnpm build   # Console production build (TypeScript check)
 pnpm start   # Console production server
 pnpm lint    # Console ESLint
+psql "$DATABASE_URL" -f docs/db/init.sql   # Initialize schema (fresh DB)
 cd apps/runner && go run ./cmd/runner   # Runner service
 cd apps/runner && migrate -path ./migrations -database "$DATABASE_URL" up   # DB migrations (golang-migrate)
 ```
@@ -287,7 +290,7 @@ If new install warnings appear, approve the dependency and update the allowlist.
 ## AI Analysis Flow
 
 1. `POST /api/analyze` → returns `{ reportId }` immediately, enqueues runner task
-2. Runner: fetch diff by commit SHA → AI analysis → sync `report_issues` → update status
+2. Runner: fetch diff by commit SHA → AI analysis → sync `analysis_issues` → update status
 3. Frontend: SSE on `/api/reports/[id]/stream` (NATS-backed if configured), fallback to polling every 2.5s
 
 ## Pipeline Engine (CI/CD)
@@ -296,7 +299,7 @@ If new install warnings appear, approve the dependency and update the allowlist.
 - **Pipeline config** is versioned in `pipeline_versions` and linked from `pipelines.current_version_id`.
 - **Execution model**: jobs form a DAG via `needs`; steps run sequentially inside a job.
 - **Runner** executes **shell** steps only (for now) with per-step timeouts, retries, and status events.
-- **Events** are appended to `run_events` for UI polling and audit.
+- **Events** are appended to `pipeline_run_events` for UI polling and audit.
 - **Logs** and **artifacts** are stored locally under `RUNNER_DATA_DIR`:
   - `logs/{run_id}/{job_key}/{step_key}.log`
   - `artifacts/{run_id}/{job_key}/{step_key}/...`
@@ -342,10 +345,11 @@ toast.success('...'); toast.error('...'); toast.warning('...');
 ## Runtime Contracts
 
 - All API routes require login; runner endpoints accept `X-Runner-Token`
-- `report_issues.status`: `open | fixed | ignored | false_positive | planned`
+- Auth uses the `session` HTTP-only cookie; email verification is required before login
+- `analysis_issues.status`: `open | fixed | ignored | false_positive | planned`
 - `/api/projects/[id]/trends` returns array directly (no `data` wrapper)
 - Rules learning endpoints are admin-only (org-scoped)
-- Public pages accessible without login: `/`, `/login`, `/auth/*`, `/invite/*`, `/terms`, `/privacy`
+- Public pages accessible without login: `/`, `/login`, `/verify`, `/reset`, `/auth/*`, `/invite/*`, `/terms`, `/privacy`
 - Dashboard routes must be accessed via `/o/:orgId/...` (middleware rewrites internally)
 
 ## FAQ

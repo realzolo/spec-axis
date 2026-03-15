@@ -89,12 +89,12 @@ create table if not exists pipeline_steps (
   unique (job_id, step_key)
 );
 
-create sequence if not exists run_events_seq;
+create sequence if not exists pipeline_run_events_seq;
 
-create table if not exists run_events (
+create table if not exists pipeline_run_events (
   id uuid primary key default gen_random_uuid(),
   run_id uuid not null references pipeline_runs(id) on delete cascade,
-  seq bigint not null default nextval('run_events_seq'),
+  seq bigint not null default nextval('pipeline_run_events_seq'),
   type text not null,
   payload jsonb not null,
   occurred_at timestamptz not null default now()
@@ -119,5 +119,5 @@ create index if not exists pipeline_runs_pipeline_idx on pipeline_runs (pipeline
 create index if not exists pipeline_runs_org_project_idx on pipeline_runs (org_id, project_id, created_at desc);
 create index if not exists pipeline_jobs_run_idx on pipeline_jobs (run_id);
 create index if not exists pipeline_steps_job_idx on pipeline_steps (job_id);
-create index if not exists run_events_run_idx on run_events (run_id, seq);
+create index if not exists pipeline_run_events_run_idx on pipeline_run_events (run_id, seq);
 create index if not exists pipeline_artifacts_run_idx on pipeline_artifacts (run_id);

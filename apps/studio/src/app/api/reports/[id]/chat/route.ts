@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/server';
+import { exec, query, queryOne } from '@/lib/db';
 import Anthropic from '@anthropic-ai/sdk';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
@@ -32,41 +32,47 @@ export async function POST(
   }
 
   await requireReportAccess(reportId, user.id);
-  const supabase = createAdminClient();
 
   // Get report details
-  const { data: report } = await supabase
-    .from('reports')
-    .select('*, projects(*)')
-    .eq('id', reportId)
-    .single();
+  const reportRow = await queryOne<Record<string, any>>(
+    `select r.*, p.name as project_name, p.repo as project_repo
+     from analysis_reports r
+     join code_projects p on p.id = r.project_id
+     where r.id = $1`,
+    [reportId]
+  );
 
-  if (!report) {
+  if (!reportRow) {
     return NextResponse.json({ error: 'Report not found' }, { status: 404 });
   }
+
+  const report = {
+    ...reportRow,
+    projects: {
+      name: reportRow.project_name,
+      repo: reportRow.project_repo,
+    },
+  };
+  delete (report as Record<string, unknown>).project_name;
+  delete (report as Record<string, unknown>).project_repo;
 
   // Get or create conversation
   let conversation;
   if (conversationId) {
-    const { data } = await supabase
-      .from('ai_conversations')
-      .select('*')
-      .eq('id', conversationId)
-      .single();
-    conversation = data;
+    conversation = await queryOne<Record<string, any>>(
+      `select * from analysis_conversations where id = $1`,
+      [conversationId]
+    );
   }
 
   if (!conversation) {
-    const { data } = await supabase
-      .from('ai_conversations')
-      .insert({
-        report_id: reportId,
-        issue_id: isUuid(issueId) ? issueId : null,
-        messages: []
-      })
-      .select()
-      .single();
-    conversation = data;
+    conversation = await queryOne<Record<string, any>>(
+      `insert into analysis_conversations
+        (report_id, issue_id, messages, created_at, updated_at)
+       values ($1,$2,'[]'::jsonb,now(),now())
+       returning *`,
+      [reportId, isUuid(issueId) ? issueId : null]
+    );
   }
 
   const messages = conversation?.messages || [];
@@ -91,12 +97,10 @@ ${report.summary}
   if (issueId) {
     let issue: Record<string, unknown> | null = null;
     if (isUuid(issueId)) {
-      const { data } = await supabase
-        .from('report_issues')
-        .select('*')
-        .eq('id', issueId)
-        .single();
-      issue = data || null;
+      issue = await queryOne<Record<string, any>>(
+        `select * from analysis_issues where id = $1`,
+        [issueId]
+      );
     }
 
     if (!issue && report.issues) {
@@ -149,13 +153,12 @@ Suggestion: ${issue.suggestion ?? 'None'}
     { role: 'assistant', content: assistantMessage, timestamp: new Date().toISOString() }
   ];
 
-  await supabase
-    .from('ai_conversations')
-    .update({
-      messages: updatedMessages,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', conversation.id);
+  await exec(
+    `update analysis_conversations
+     set messages = $2, updated_at = now()
+     where id = $1`,
+    [conversation.id, JSON.stringify(updatedMessages)]
+  );
 
   return NextResponse.json({
     conversationId: conversation.id,
@@ -180,34 +183,28 @@ export async function GET(
   const { searchParams } = new URL(request.url);
   const conversationId = searchParams.get('conversationId');
 
-  const supabase = createAdminClient();
-
   await requireReportAccess(reportId, user.id);
 
   if (conversationId) {
-    const { data, error } = await supabase
-      .from('ai_conversations')
-      .select('*')
-      .eq('id', conversationId)
-      .single();
+    const data = await queryOne<Record<string, any>>(
+      `select * from analysis_conversations where id = $1`,
+      [conversationId]
+    );
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!data) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
 
     return NextResponse.json(data);
   }
 
   // Get all conversations for this report
-  const { data, error } = await supabase
-    .from('ai_conversations')
-    .select('*')
-    .eq('report_id', reportId)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  const data = await query<Record<string, any>>(
+    `select * from analysis_conversations
+     where report_id = $1
+     order by created_at desc`,
+    [reportId]
+  );
 
   return NextResponse.json(data ?? []);
 }

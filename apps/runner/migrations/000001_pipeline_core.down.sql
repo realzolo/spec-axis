@@ -1,6 +1,6 @@
 drop table if exists pipeline_artifacts;
-drop table if exists run_events;
-drop sequence if exists run_events_seq;
+drop table if exists pipeline_run_events;
+drop sequence if exists pipeline_run_events_seq;
 drop table if exists pipeline_steps;
 drop table if exists pipeline_jobs;
 drop table if exists pipeline_runs;

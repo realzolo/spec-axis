@@ -10,7 +10,7 @@ All API endpoints are relative to your application's base URL.
 
 ## Authentication
 
-All endpoints require authentication. Include the Supabase session token in your requests.
+All endpoints require authentication. Use the `session` HTTP-only cookie issued by `/api/auth/login` (browser requests include it automatically).
 
 ## Endpoints
 
@@ -321,8 +321,8 @@ if (result.success) {
 
 ## Security Considerations
 
-1. **Sensitive Data**: Tokens and API keys are stored in Supabase Vault and never returned in API responses
-2. **RLS Policies**: Row-level security ensures users can only access their own integrations
+1. **Sensitive Data**: Tokens and API keys are encrypted with AES-256-GCM and stored in `org_integrations.vault_secret_name`
+2. **Tenant Isolation**: Org scoping is enforced in the API/service layer for all queries and mutations
 3. **HTTPS Only**: All API requests must use HTTPS in production
 4. **Token Validation**: Always test connections after creating/updating integrations
 

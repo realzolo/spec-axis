@@ -2,7 +2,7 @@
  * Integration management service
  */
 
-import { createAdminClient } from '@/lib/supabase/server';
+import { query, queryOne, exec } from '@/lib/db';
 import { storeSecret, updateSecret, deleteSecret } from '@/lib/vault';
 import type { Integration, IntegrationType, Provider } from './types';
 
@@ -28,36 +28,30 @@ export interface UpdateIntegrationInput {
  * Create a new integration
  */
 export async function createIntegration(input: CreateIntegrationInput): Promise<Integration> {
-  const supabase = createAdminClient();
-
-  // Encrypt the secret
   const encryptedSecret = await storeSecret('', input.secret);
 
-  try {
-    // Insert integration
-    const { data, error } = await supabase
-      .from('user_integrations')
-      .insert({
-        user_id: input.userId,
-        org_id: input.orgId,
-        type: input.type,
-        provider: input.provider,
-        name: input.name,
-        config: input.config,
-        vault_secret_name: encryptedSecret,
-        is_default: input.isDefault || false,
-      })
-      .select()
-      .single();
+  const row = await queryOne<Integration>(
+    `insert into org_integrations
+      (user_id, org_id, type, provider, name, config, vault_secret_name, is_default, created_at, updated_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,now(),now())
+     returning *`,
+    [
+      input.userId,
+      input.orgId,
+      input.type,
+      input.provider,
+      input.name,
+      JSON.stringify(input.config ?? {}),
+      encryptedSecret,
+      input.isDefault ?? false,
+    ]
+  );
 
-    if (error) {
-      throw new Error(`Failed to create integration: ${error.message}`);
-    }
-
-    return data as Integration;
-  } catch (error) {
-    throw error;
+  if (!row) {
+    throw new Error('Failed to create integration');
   }
+
+  return row as Integration;
 }
 
 /**
@@ -68,98 +62,80 @@ export async function updateIntegration(
   orgId: string,
   input: UpdateIntegrationInput
 ): Promise<Integration> {
-  const supabase = createAdminClient();
+  const existing = await queryOne<Integration>(
+    `select * from org_integrations where id = $1 and org_id = $2`,
+    [integrationId, orgId]
+  );
 
-  // Get existing integration
-  const { data: existing, error: getError } = await supabase
-    .from('user_integrations')
-    .select('*')
-    .eq('id', integrationId)
-    .eq('org_id', orgId)
-    .single();
-
-  if (getError || !existing) {
+  if (!existing) {
     throw new Error('Integration not found');
   }
 
-  // Update integration
-  const updateData: any = {};
+  const updateData: Record<string, any> = {};
   if (input.name !== undefined) updateData.name = input.name;
-  if (input.config !== undefined) updateData.config = input.config;
+  if (input.config !== undefined) updateData.config = JSON.stringify(input.config);
   if (input.isDefault !== undefined) updateData.is_default = input.isDefault;
-  updateData.updated_at = new Date().toISOString();
 
-  // Update secret if provided
   if (input.secret) {
-    const newEncryptedSecret = await updateSecret(existing.vault_secret_name, input.secret);
-    updateData.vault_secret_name = newEncryptedSecret;
+    updateData.vault_secret_name = await updateSecret(existing.vault_secret_name, input.secret);
   }
 
-  const { data, error } = await supabase
-    .from('user_integrations')
-    .update(updateData)
-    .eq('id', integrationId)
-    .eq('org_id', orgId)
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to update integration: ${error.message}`);
+  const fields = Object.keys(updateData);
+  if (fields.length === 0) {
+    return existing as Integration;
   }
 
-  return data as Integration;
+  const assignments = fields.map((key, idx) => `${key} = $${idx + 3}`);
+  const values = fields.map((key) => updateData[key]);
+
+  const updated = await queryOne<Integration>(
+    `update org_integrations
+     set ${assignments.join(', ')}, updated_at = now()
+     where id = $1 and org_id = $2
+     returning *`,
+    [integrationId, orgId, ...values]
+  );
+
+  if (!updated) {
+    throw new Error('Failed to update integration');
+  }
+
+  return updated as Integration;
 }
 
 /**
  * Delete an integration
  */
 export async function deleteIntegration(integrationId: string, orgId: string): Promise<void> {
-  const supabase = createAdminClient();
+  const integration = await queryOne<Integration>(
+    `select * from org_integrations where id = $1 and org_id = $2`,
+    [integrationId, orgId]
+  );
 
-  // Get integration
-  const { data: integration, error: getError } = await supabase
-    .from('user_integrations')
-    .select('*')
-    .eq('id', integrationId)
-    .eq('org_id', orgId)
-    .single();
-
-  if (getError || !integration) {
+  if (!integration) {
     throw new Error('Integration not found');
   }
 
-  // Check if integration is used by any projects
-  const { data: projects, error: projectsError } = await supabase
-    .from('projects')
-    .select('id')
-    .or(`vcs_integration_id.eq.${integrationId},ai_integration_id.eq.${integrationId}`)
-    .limit(1);
+  const projects = await query(
+    `select id from code_projects
+     where vcs_integration_id = $1 or ai_integration_id = $1
+     limit 1`,
+    [integrationId]
+  );
 
-  if (projectsError) {
-    throw new Error('Failed to check integration usage');
-  }
-
-  if (projects && projects.length > 0) {
+  if (projects.length > 0) {
     throw new Error('Cannot delete integration: it is being used by one or more projects');
   }
 
-  // Delete integration
-  const { error: deleteError } = await supabase
-    .from('user_integrations')
-    .delete()
-    .eq('id', integrationId)
-    .eq('org_id', orgId);
+  await exec(
+    `delete from org_integrations where id = $1 and org_id = $2`,
+    [integrationId, orgId]
+  );
 
-  if (deleteError) {
-    throw new Error(`Failed to delete integration: ${deleteError.message}`);
-  }
-
-  // Delete secret from vault
   try {
     await deleteSecret(integration.vault_secret_name);
   } catch (error) {
     console.error('Failed to delete secret from vault:', error);
-    // Don't throw - integration is already deleted
   }
 }
 
@@ -170,28 +146,17 @@ export async function setDefaultIntegration(
   integrationId: string,
   orgId: string
 ): Promise<void> {
-  const supabase = createAdminClient();
+  const integration = await queryOne<Integration>(
+    `select * from org_integrations where id = $1 and org_id = $2`,
+    [integrationId, orgId]
+  );
 
-  // Get integration
-  const { data: integration, error: getError } = await supabase
-    .from('user_integrations')
-    .select('*')
-    .eq('id', integrationId)
-    .eq('org_id', orgId)
-    .single();
-
-  if (getError || !integration) {
+  if (!integration) {
     throw new Error('Integration not found');
   }
 
-  // Update integration (trigger will handle unsetting other defaults)
-  const { error } = await supabase
-    .from('user_integrations')
-    .update({ is_default: true })
-    .eq('id', integrationId)
-    .eq('org_id', orgId);
-
-  if (error) {
-    throw new Error(`Failed to set default integration: ${error.message}`);
-  }
+  await exec(
+    `update org_integrations set is_default = true where id = $1 and org_id = $2`,
+    [integrationId, orgId]
+  );
 }
