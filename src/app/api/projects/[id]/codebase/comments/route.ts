@@ -18,7 +18,12 @@ const createCommentSchema = z.object({
   ref: z.string().min(1),
   path: z.string().min(1),
   line: z.number().int().positive(),
+  line_end: z.number().int().positive().optional(),
+  selection_text: z.string().max(2000).optional(),
   body: z.string().min(1).max(5000),
+}).refine((data) => !data.line_end || data.line_end >= data.line, {
+  message: 'line_end must be >= line',
+  path: ['line_end'],
 });
 
 // List comments for a file (optionally filter by line)
@@ -109,6 +114,10 @@ export async function POST(
 
     const comment = await withRetry(async () => {
       const supabase = createAdminClient();
+      const selectionText = validated.selection_text?.trim();
+      const lineEnd = validated.line_end && validated.line_end >= validated.line
+        ? validated.line_end
+        : null;
       const { data, error } = await supabase
         .from('codebase_comments')
         .insert({
@@ -118,6 +127,8 @@ export async function POST(
           ref: validated.ref,
           path: validated.path,
           line: validated.line,
+          line_end: lineEnd,
+          selection_text: selectionText || null,
           author_id: user.id,
           author_email: user.email ?? 'unknown',
           body: validated.body,

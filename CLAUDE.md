@@ -258,7 +258,7 @@ If new install warnings appear, approve the dependency and update the allowlist.
 `CodebaseService` manages per-project local Git mirrors and per-job workspaces for AI analysis and pipeline tasks.
 Mirrors are cache-only (not a source of truth) and are synced on demand or on a schedule; workspaces are isolated and must be cleaned after each job.
 Codebase browsing uses the same mirror cache and enforces a max preview size for files.
-Line-level comments for code browsing are stored in `codebase_comments` and scoped by org, project, repo, ref, and path.
+Line-level comments for code browsing are stored in `codebase_comments` and scoped by org, project, repo, ref, and path. Optional line ranges (`line_end`) and selection text (`selection_text`) capture multi-line or partial-text comments.
 Automatic mirror sync can be triggered by:
 - GitHub `push` webhooks (forces mirror fetch for matching projects).
 - Scheduled POST to `/api/codebase/sync` (uses `x-task-token` if `TASK_RUNNER_TOKEN` is set). Supports `limit`, `force`, `project_id`, and `org_id`.
