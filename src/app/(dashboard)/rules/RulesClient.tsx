@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Shield, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,14 +12,42 @@ import type { Dictionary } from '@/i18n';
 
 type RuleSet = { id: string; name: string; description?: string; is_global: boolean; rules?: unknown[] };
 
-export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets: RuleSet[]; dict: Dictionary }) {
+export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets?: RuleSet[]; dict: Dictionary }) {
   const router = useRouter();
-  const [ruleSets, setRuleSets] = useState<RuleSet[]>(initialRuleSets);
+  const [ruleSets, setRuleSets] = useState<RuleSet[]>(initialRuleSets ?? []);
+  const [loading, setLoading] = useState(!initialRuleSets);
+  const [loadError, setLoadError] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
 
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (initialRuleSets) return;
+    let active = true;
+    async function load() {
+      setLoading(true);
+      setLoadError(false);
+      try {
+        const res = await fetch('/api/rules/sets');
+        if (!res.ok) throw new Error('rulesets_fetch_failed');
+        const data = await res.json();
+        if (!active) return;
+        setRuleSets(Array.isArray(data) ? data : []);
+      } catch {
+        if (!active) return;
+        setLoadError(true);
+      } finally {
+        if (!active) return;
+        setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      active = false;
+    };
+  }, [initialRuleSets]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -36,6 +64,25 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
     setName(''); setDescription('');
     const updated = await fetch('/api/rules/sets').then(r => r.json());
     setRuleSets(updated);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        <div className="text-sm text-muted-foreground">{dict.common.loading}</div>
+      </div>
+    );
+  }
+
+  if (loadError && ruleSets.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        <div className="text-sm text-muted-foreground">{dict.common.error}</div>
+        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+          {dict.common.refresh}
+        </Button>
+      </div>
+    );
   }
 
   return (

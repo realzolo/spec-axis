@@ -17,8 +17,10 @@ type Project = {
   description?: string; default_branch: string; ruleset_id?: string;
 };
 
-export default function ProjectsClient({ initialProjects, dict }: { initialProjects: Project[]; dict: Dictionary }) {
-  const [projects, setProjects] = useState<Project[]>(initialProjects);
+export default function ProjectsClient({ initialProjects, dict }: { initialProjects?: Project[]; dict: Dictionary }) {
+  const [projects, setProjects] = useState<Project[]>(initialProjects ?? []);
+  const [loading, setLoading] = useState(!initialProjects);
+  const [loadError, setLoadError] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const searchParams = useSearchParams();
   const search = searchParams.get('q') ?? '';
@@ -52,6 +54,51 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
     window.addEventListener('open-add-project', handleOpen);
     return () => window.removeEventListener('open-add-project', handleOpen);
   }, []);
+
+  useEffect(() => {
+    if (initialProjects) return;
+    let active = true;
+    async function load() {
+      setLoading(true);
+      setLoadError(false);
+      try {
+        const res = await fetch('/api/projects');
+        if (!res.ok) throw new Error('projects_fetch_failed');
+        const data = await res.json();
+        if (!active) return;
+        setProjects(Array.isArray(data) ? data : []);
+      } catch {
+        if (!active) return;
+        setLoadError(true);
+      } finally {
+        if (!active) return;
+        setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      active = false;
+    };
+  }, [initialProjects]);
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        <div className="text-sm text-muted-foreground">{dict.common.loading}</div>
+      </div>
+    );
+  }
+
+  if (loadError && projects.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        <div className="text-sm text-muted-foreground">{dict.common.error}</div>
+        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+          {dict.common.refresh}
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-auto">

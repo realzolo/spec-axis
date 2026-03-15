@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, Trash2, Pencil, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -29,9 +29,20 @@ const CAT_COLOR: Record<string, 'accent' | 'danger' | 'success' | 'warning' | 'd
 
 const EMPTY_RULE = { category: 'style', name: '', prompt: '', weight: 20, severity: 'warning' as const, is_enabled: true };
 
-export default function RuleSetDetailClient({ initialRuleSet, dict }: { initialRuleSet: RuleSet; dict: Dictionary }) {
+export default function RuleSetDetailClient({
+  ruleSetId,
+  initialRuleSet,
+  dict,
+}: {
+  ruleSetId: string;
+  initialRuleSet?: RuleSet;
+  dict: Dictionary;
+}) {
   const router = useRouter();
-  const [rules, setRules] = useState<Rule[]>(initialRuleSet.rules ?? []);
+  const [ruleSet, setRuleSet] = useState<RuleSet | null>(initialRuleSet ?? null);
+  const [rules, setRules] = useState<Rule[]>(initialRuleSet?.rules ?? []);
+  const [loading, setLoading] = useState(!initialRuleSet);
+  const [loadError, setLoadError] = useState(false);
   const [editRule, setEditRule] = useState<Rule | null>(null);
   const [saving, setSaving] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -50,6 +61,33 @@ export default function RuleSetDetailClient({ initialRuleSet, dict }: { initialR
   ];
 
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (initialRuleSet) return;
+    let active = true;
+    async function load() {
+      setLoading(true);
+      setLoadError(false);
+      try {
+        const res = await fetch(`/api/rules/${ruleSetId}`);
+        if (!res.ok) throw new Error('ruleset_fetch_failed');
+        const data = (await res.json()) as RuleSet;
+        if (!active) return;
+        setRuleSet(data);
+        setRules(data.rules ?? []);
+      } catch {
+        if (!active) return;
+        setLoadError(true);
+      } finally {
+        if (!active) return;
+        setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      active = false;
+    };
+  }, [initialRuleSet, ruleSetId]);
 
   function openAdd() {
     setEditRule(null);
@@ -70,7 +108,7 @@ export default function RuleSetDetailClient({ initialRuleSet, dict }: { initialR
     const payload = editRule
       ? { id: editRule.id, category: fCategory, severity: fSeverity, name: fName, prompt: fPrompt, weight: fWeight }
       : { category: fCategory, severity: fSeverity, name: fName, prompt: fPrompt, weight: fWeight };
-    const res = await fetch(`/api/rules/${initialRuleSet.id}/rules`, {
+    const res = await fetch(`/api/rules/${ruleSetId}/rules`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
     });
     const data = await res.json();
@@ -78,13 +116,14 @@ export default function RuleSetDetailClient({ initialRuleSet, dict }: { initialR
     if (!res.ok) { toast.error(data.error ?? dict.rules.saving); return; }
     toast.success(editRule ? dict.rules.ruleUpdated : dict.rules.ruleCreated);
     setDialogOpen(false); setEditRule(null);
-    const fresh = await fetch(`/api/rules/${initialRuleSet.id}`).then(r => r.json());
+    const fresh = await fetch(`/api/rules/${ruleSetId}`).then(r => r.json());
+    setRuleSet(fresh);
     setRules(fresh.rules ?? []);
   }
 
   async function handleToggle(rule: Rule) {
     setTogglingId(rule.id);
-    const res = await fetch(`/api/rules/${initialRuleSet.id}/rules`, {
+    const res = await fetch(`/api/rules/${ruleSetId}/rules`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: rule.id, is_enabled: !rule.is_enabled }),
     });
@@ -94,7 +133,7 @@ export default function RuleSetDetailClient({ initialRuleSet, dict }: { initialR
   }
 
   async function handleDelete(ruleId: string) {
-    const res = await fetch(`/api/rules/${initialRuleSet.id}/rules`, {
+    const res = await fetch(`/api/rules/${ruleSetId}/rules`, {
       method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ruleId }),
     });
     if (!res.ok) { toast.error(dict.reports.deleteFailed); return; }
@@ -109,6 +148,25 @@ export default function RuleSetDetailClient({ initialRuleSet, dict }: { initialR
 
   const enabledCount = rules.filter(r => r.is_enabled).length;
 
+  if (loading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        <div className="text-sm text-muted-foreground">{dict.common.loading}</div>
+      </div>
+    );
+  }
+
+  if (!ruleSet || loadError) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        <div className="text-sm text-muted-foreground">{dict.common.error}</div>
+        <Button variant="outline" size="sm" onClick={() => router.push('/rules')}>
+          {dict.common.back}
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -120,10 +178,10 @@ export default function RuleSetDetailClient({ initialRuleSet, dict }: { initialR
           <Shield className="size-4 text-muted-foreground shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-base font-semibold">{initialRuleSet.name}</span>
-              {initialRuleSet.is_global && <Badge size="sm" variant="accent">{dict.rules.global}</Badge>}
+              <span className="text-base font-semibold">{ruleSet.name}</span>
+              {ruleSet.is_global && <Badge size="sm" variant="accent">{dict.rules.global}</Badge>}
             </div>
-            {initialRuleSet.description && <div className="text-xs text-muted-foreground mt-0.5">{initialRuleSet.description}</div>}
+            {ruleSet.description && <div className="text-xs text-muted-foreground mt-0.5">{ruleSet.description}</div>}
           </div>
           <span className="text-sm text-muted-foreground">
             <span className="text-success font-semibold">{enabledCount}</span>/{rules.length} {dict.rules.enabled}

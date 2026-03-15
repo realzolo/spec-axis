@@ -3,10 +3,18 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Code2, FolderOpen, FileText, Shield, Settings, LogOut, Search } from 'lucide-react';
+import { Check, ChevronDown, Code2, FolderOpen, FileText, Shield, Settings, LogOut, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { createClient } from '@/lib/supabase/client';
 import ThemeToggle from '@/components/theme/ThemeToggle';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
@@ -18,10 +26,19 @@ interface SidebarProps {
   dict: Dictionary;
 }
 
+interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  is_personal: boolean;
+}
+
 export default function Sidebar({ locale, dict }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [orgs, setOrgs] = useState<Organization[]>([]);
+  const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
 
   const navItems = [
     { href: '/projects', label: dict.nav.projects, icon: FolderOpen, countKey: 'projects' as const },
@@ -33,11 +50,52 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
   const activeHref = navItems.find(item => pathname.startsWith(item.href))?.href ?? '/projects';
 
   useEffect(() => {
+    let alive = true;
+
+    async function loadOrgs() {
+      try {
+        const [orgRes, activeRes] = await Promise.all([
+          fetch('/api/orgs'),
+          fetch('/api/orgs/active'),
+        ]);
+        const orgData = orgRes.ok ? await orgRes.json() : [];
+        const activeData = activeRes.ok ? await activeRes.json() : null;
+
+        if (!alive) return;
+        setOrgs(Array.isArray(orgData) ? orgData : []);
+        setActiveOrgId(activeData?.orgId ?? orgData?.[0]?.id ?? null);
+      } catch {}
+    }
+
+    loadOrgs();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeOrgId) return;
     Promise.all([
       fetch('/api/projects').then(r => r.json()).then((d: unknown[]) => ({ projects: Array.isArray(d) ? d.length : 0 })).catch(() => ({ projects: 0 })),
       fetch('/api/reports').then(r => r.json()).then((d: unknown[]) => ({ reports: Array.isArray(d) ? d.length : 0 })).catch(() => ({ reports: 0 })),
     ]).then(([p, r]) => setCounts({ ...p, ...r }));
-  }, []);
+  }, [activeOrgId]);
+
+  const activeOrg = orgs.find((org) => org.id === activeOrgId) ?? orgs[0];
+
+  async function setActiveOrg(orgId: string) {
+    if (orgId === activeOrgId) return;
+    try {
+      const res = await fetch('/api/orgs/active', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId }),
+      });
+      if (!res.ok) throw new Error('Failed to switch org');
+      setActiveOrgId(orgId);
+      router.refresh();
+    } catch {}
+  }
 
   async function handleSignOut() {
     const supabase = createClient();
@@ -53,8 +111,41 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
           <Code2 className="text-foreground size-4" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold leading-none">{dict.nav.workspaceDefault}</div>
-          <div className="text-[11px] text-muted-foreground mt-1">{dict.nav.planDefault}</div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-2 text-left w-full">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold leading-none truncate">
+                    {activeOrg?.name ?? dict.nav.workspaceDefault}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground mt-1 truncate">
+                    {activeOrg?.is_personal ? 'Personal' : activeOrg?.slug ?? dict.nav.planDefault}
+                  </div>
+                </div>
+                <ChevronDown className="size-4 text-muted-foreground shrink-0" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuLabel>Organizations</DropdownMenuLabel>
+              {orgs.length === 0 && (
+                <DropdownMenuItem disabled>No organizations</DropdownMenuItem>
+              )}
+              {orgs.map((org) => (
+                <DropdownMenuItem
+                  key={org.id}
+                  onClick={() => setActiveOrg(org.id)}
+                  className="gap-2"
+                >
+                  <span className="flex-1 truncate">{org.name}</span>
+                  {org.id === activeOrg?.id && <Check className="size-3.5 text-muted-foreground" />}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push('/settings/organizations')}>
+                Manage organizations
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

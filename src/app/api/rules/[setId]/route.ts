@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { getRuleSetById } from '@/services/db';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
-import { getDefaultOrgId } from '@/services/orgs';
+import { getActiveOrgId } from '@/services/orgs';
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   if (!data.is_global) {
-    const orgId = await getDefaultOrgId(user.id, user.email ?? undefined);
+    const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
     if (data.org_id && data.org_id !== orgId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

@@ -4,7 +4,7 @@ import { upsertRule, deleteRule, getRuleSetById } from '@/services/db';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { z } from 'zod';
-import { getDefaultOrgId } from '@/services/orgs';
+import { getActiveOrgId } from '@/services/orgs';
 import { createAdminClient } from '@/lib/supabase/server';
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Rule set not found' }, { status: 404 });
   }
   if (!ruleSet.is_global) {
-    const orgId = await getDefaultOrgId(user.id, user.email ?? undefined);
+    const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
     if (ruleSet.org_id && ruleSet.org_id !== orgId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -70,7 +70,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   if (!ruleSet.is_global) {
-    const orgId = await getDefaultOrgId(user.id, user.email ?? undefined);
+    const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
     if (ruleSet.org_id && ruleSet.org_id !== orgId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

@@ -10,6 +10,7 @@ import AddVCSIntegrationModal from '@/components/settings/AddVCSIntegrationModal
 import AddAIIntegrationModal from '@/components/settings/AddAIIntegrationModal';
 import EditVCSIntegrationModal from '@/components/settings/EditVCSIntegrationModal';
 import EditAIIntegrationModal from '@/components/settings/EditAIIntegrationModal';
+import SettingsNav from '@/components/settings/SettingsNav';
 
 interface Integration {
   id: string;
@@ -193,75 +194,81 @@ export default function IntegrationsPage() {
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="max-w-4xl space-y-6 px-6 py-6">
-        <div>
-          <h1 className="text-lg font-semibold">Integrations</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Manage your code repository and AI model integrations
-          </p>
-        </div>
+      <div className="max-w-5xl px-6 py-6">
+        <div className="grid gap-8 lg:grid-cols-[220px_1fr]">
+          <SettingsNav />
 
-        <div className="space-y-8">
-          {/* VCS Integrations */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-base font-semibold">Code Repositories</h2>
-                <p className="text-sm text-muted-foreground">
-                  Connect to GitHub, GitLab, or other Git services
-                </p>
-              </div>
-              <Button size="sm" onClick={() => setShowVCSModal(true)} className="gap-1.5">
-                <Plus className="size-4" />
-                Add Repository
-              </Button>
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-lg font-semibold">Integrations</h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Manage your code repository and AI model integrations
+              </p>
             </div>
 
-            {vcsIntegrations.length === 0 ? (
-              <Card>
-                <CardContent className="p-6">
-                  <p className="text-sm text-muted-foreground text-center">
-                    No repository integrations configured. Add one to get started.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-2">
-                {vcsIntegrations.map((integration) =>
-                  renderIntegrationCard(integration, 'vcs')
+            <div className="space-y-8">
+              {/* VCS Integrations */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-base font-semibold">Code Repositories</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Connect to GitHub, GitLab, or other Git services
+                    </p>
+                  </div>
+                  <Button size="sm" onClick={() => setShowVCSModal(true)} className="gap-1.5">
+                    <Plus className="size-4" />
+                    Add Repository
+                  </Button>
+                </div>
+
+                {vcsIntegrations.length === 0 ? (
+                  <Card>
+                    <CardContent className="p-6">
+                      <p className="text-sm text-muted-foreground text-center">
+                        No repository integrations configured. Add one to get started.
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-2">
+                    {vcsIntegrations.map((integration) =>
+                      renderIntegrationCard(integration, 'vcs')
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
 
-          {/* AI Integrations */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
+              {/* AI Integrations */}
               <div>
-                <h2 className="text-base font-semibold">AI Models</h2>
-                <p className="text-sm text-muted-foreground">
-                  Connect to Claude, GPT-4, or other AI services
-                </p>
-              </div>
-              <Button size="sm" onClick={() => setShowAIModal(true)} className="gap-1.5">
-                <Plus className="size-4" />
-                Add AI Model
-              </Button>
-            </div>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-base font-semibold">AI Models</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Connect to Claude, GPT-4, or other AI services
+                    </p>
+                  </div>
+                  <Button size="sm" onClick={() => setShowAIModal(true)} className="gap-1.5">
+                    <Plus className="size-4" />
+                    Add AI Model
+                  </Button>
+                </div>
 
-            {aiIntegrations.length === 0 ? (
-              <Card>
-                <CardContent className="p-6">
-                  <p className="text-sm text-muted-foreground text-center">
-                    No AI integrations configured. Add one to enable code analysis.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-2">
-                {aiIntegrations.map((integration) => renderIntegrationCard(integration, 'ai'))}
+                {aiIntegrations.length === 0 ? (
+                  <Card>
+                    <CardContent className="p-6">
+                      <p className="text-sm text-muted-foreground text-center">
+                        No AI integrations configured. Add one to enable code analysis.
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-2">
+                    {aiIntegrations.map((integration) => renderIntegrationCard(integration, 'ai'))}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </div>
       </div>

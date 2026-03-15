@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FileText, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,7 @@ type Report = {
   projects?: { name: string; repo: string } | { name: string; repo: string }[];
 };
 
-export default function ReportsClient({ initialReports, dict }: { initialReports: Report[]; dict: Dictionary }) {
+export default function ReportsClient({ initialReports, dict }: { initialReports?: Report[]; dict: Dictionary }) {
   const STATUS_CHIP: Record<string, { variant: 'muted' | 'accent' | 'success' | 'danger' | 'warning'; label: string }> = {
     pending:   { variant: 'muted', label: dict.reports.status.pending },
     analyzing: { variant: 'accent',  label: dict.reports.status.analyzing },
@@ -54,10 +54,38 @@ export default function ReportsClient({ initialReports, dict }: { initialReports
   ];
 
   const router = useRouter();
-  const [reports, setReports] = useState<Report[]>(initialReports);
+  const [reports, setReports] = useState<Report[]>(initialReports ?? []);
+  const [loading, setLoading] = useState(!initialReports);
+  const [loadError, setLoadError] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [projectFilter, setProjectFilter] = useState('all');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialReports) return;
+    let active = true;
+    async function load() {
+      setLoading(true);
+      setLoadError(false);
+      try {
+        const res = await fetch('/api/reports');
+        if (!res.ok) throw new Error('reports_fetch_failed');
+        const data = await res.json();
+        if (!active) return;
+        setReports(Array.isArray(data) ? data : []);
+      } catch {
+        if (!active) return;
+        setLoadError(true);
+      } finally {
+        if (!active) return;
+        setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      active = false;
+    };
+  }, [initialReports]);
 
   const projectNames = useMemo(() => {
     return [...new Set(reports.map(r => {
@@ -93,6 +121,26 @@ export default function ReportsClient({ initialReports, dict }: { initialReports
     { id: 'all', label: dict.reports.allProjects },
     ...projectNames.map(name => ({ id: name, label: name })),
   ], [projectNames, dict]);
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        <Spinner size="lg" />
+        <div className="text-sm text-muted-foreground">{dict.common.loading}</div>
+      </div>
+    );
+  }
+
+  if (loadError && reports.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        <div className="text-sm text-muted-foreground">{dict.common.error}</div>
+        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+          {dict.common.refresh}
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-auto">

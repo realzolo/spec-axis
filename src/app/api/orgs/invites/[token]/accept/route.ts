@@ -4,6 +4,7 @@ import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { createAdminClient } from '@/lib/supabase/server';
 import { auditLogger, extractClientInfo } from '@/services/audit';
+import { ORG_COOKIE } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,5 +63,11 @@ export async function POST(
     ...clientInfo,
   });
 
-  return NextResponse.json({ success: true });
+  const response = NextResponse.json({ success: true });
+  response.cookies.set(ORG_COOKIE, invite.org_id, {
+    path: '/',
+    maxAge: 60 * 60 * 24 * 30,
+    sameSite: 'lax',
+  });
+  return response;
 }

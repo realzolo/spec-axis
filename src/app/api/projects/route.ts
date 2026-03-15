@@ -11,7 +11,7 @@ import { requireUser, unauthorized } from '@/services/auth';
 import { createAdminClient } from '@/lib/supabase/server';
 import { createVCSClient } from '@/services/integrations';
 import { readSecret } from '@/lib/vault';
-import { getDefaultOrgId } from '@/services/orgs';
+import { getActiveOrgId } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   if (!user) return unauthorized();
 
   try {
-    const orgId = await getDefaultOrgId(user.id, user.email ?? undefined);
+    const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
     const data = await withRetry(() => getProjects(orgId));
     logger.info(`Projects fetched: ${data.length} projects`);
     return NextResponse.json(data);
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = createProjectSchema.parse(body);
     const { name, repo, description, default_branch, ruleset_id } = validated;
-    const orgId = await getDefaultOrgId(user.id, user.email ?? undefined);
+    const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
 
     logger.setContext({ repo });
 

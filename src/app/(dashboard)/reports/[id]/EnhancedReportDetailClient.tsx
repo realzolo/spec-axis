@@ -94,9 +94,19 @@ function formatDate(d: string, dict: Dictionary) {
   return new Date(d).toLocaleDateString();
 }
 
-export default function EnhancedReportDetailClient({ initialReport, dict }: { initialReport: Report; dict: Dictionary }) {
+export default function EnhancedReportDetailClient({
+  reportId,
+  initialReport,
+  dict,
+}: {
+  reportId: string;
+  initialReport?: Report;
+  dict: Dictionary;
+}) {
   const router = useRouter();
-  const [report, setReport] = useState<Report>(initialReport);
+  const [report, setReport] = useState<Report | null>(initialReport ?? null);
+  const [loading, setLoading] = useState(!initialReport);
+  const [loadError, setLoadError] = useState(false);
   const [sevFilter, setSevFilter] = useState('all');
   const [catFilter, setCatFilter] = useState('all');
   const [retrying, setRetrying] = useState(false);
@@ -105,19 +115,46 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
   const [chatIssueId, setChatIssueId] = useState<string | undefined>();
   const [trendsOpen, setTrendsOpen] = useState(false);
 
-  const pollReport = useCallback(async () => {
-    const res = await fetch(`/api/reports/${report.id}`);
+  const pollReport = useCallback(async (id: string) => {
+    const res = await fetch(`/api/reports/${id}`);
     const data = await res.json();
     setReport(data);
-  }, [report.id]);
+  }, []);
 
   useEffect(() => {
+    if (initialReport) return;
+    let active = true;
+    async function load() {
+      setLoading(true);
+      setLoadError(false);
+      try {
+        const res = await fetch(`/api/reports/${reportId}`);
+        if (!res.ok) throw new Error('report_fetch_failed');
+        const data = await res.json();
+        if (!active) return;
+        setReport(data);
+      } catch {
+        if (!active) return;
+        setLoadError(true);
+      } finally {
+        if (!active) return;
+        setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      active = false;
+    };
+  }, [initialReport, reportId]);
+
+  useEffect(() => {
+    if (!report) return;
     if (report.status !== 'pending' && report.status !== 'analyzing') return;
 
     let polling: ReturnType<typeof setInterval> | null = null;
     const startPolling = () => {
       if (polling) return;
-      polling = setInterval(pollReport, 2500);
+      polling = setInterval(() => pollReport(report.id), 2500);
     };
 
     let es: EventSource | null = null;
@@ -127,18 +164,18 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
         if (!event.data) return;
         try {
           const payload = JSON.parse(event.data);
-          if (payload?.type === 'status_update') {
-            setReport((prev) => ({
-              ...prev,
-              status: payload.status ?? prev.status,
-              score: payload.score ?? prev.score,
-            }));
-            if (payload.status === 'done' || payload.status === 'failed') {
-              pollReport();
-              es?.close();
+            if (payload?.type === 'status_update') {
+              setReport((prev) => ({
+                ...(prev ?? report),
+                status: payload.status ?? prev?.status ?? report.status,
+                score: payload.score ?? prev?.score ?? report.score,
+              }));
+              if (payload.status === 'done' || payload.status === 'failed') {
+                pollReport(report.id);
+                es?.close();
+              }
             }
-          }
-        } catch {
+          } catch {
           // ignore parse errors
         }
       };
@@ -154,7 +191,27 @@ export default function EnhancedReportDetailClient({ initialReport, dict }: { in
       if (es) es.close();
       if (polling) clearInterval(polling);
     };
-  }, [report.id, report.status, pollReport]);
+  }, [report, pollReport]);
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        <Spinner size="lg" />
+        <div className="text-sm text-muted-foreground">{dict.common.loading}</div>
+      </div>
+    );
+  }
+
+  if (!report || loadError) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        <div className="text-sm text-muted-foreground">{dict.common.error}</div>
+        <Button variant="outline" size="sm" onClick={() => router.push('/reports')}>
+          {dict.common.back}
+        </Button>
+      </div>
+    );
+  }
 
   async function handleRetry() {
     const commitShas = report.commits.map(c => c.sha);

@@ -1,8 +1,11 @@
+import type { NextRequest } from 'next/server';
+import { cookies } from 'next/headers';
 import { createAdminClient } from '@/lib/supabase/server';
 import { logger } from '@/services/logger';
 
 export type OrgRole = 'owner' | 'admin' | 'reviewer' | 'member';
 export type OrgStatus = 'active' | 'invited' | 'suspended';
+export const ORG_COOKIE = 'org_id';
 
 export interface Organization {
   id: string;
@@ -63,6 +66,22 @@ export async function ensurePersonalOrg(userId: string, email?: string | null): 
 export async function getDefaultOrgId(userId: string, email?: string | null): Promise<string> {
   const org = await ensurePersonalOrg(userId, email);
   return org.id;
+}
+
+export async function getActiveOrgId(
+  userId: string,
+  email?: string | null,
+  request?: NextRequest,
+): Promise<string> {
+  const cookieStore = request ? request.cookies : await cookies();
+  const orgId = cookieStore.get(ORG_COOKIE)?.value;
+
+  if (orgId) {
+    const member = await isOrgMember(orgId, userId);
+    if (member) return orgId;
+  }
+
+  return getDefaultOrgId(userId, email);
 }
 
 export async function getUserOrgs(userId: string): Promise<Organization[]> {
