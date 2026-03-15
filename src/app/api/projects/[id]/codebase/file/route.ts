@@ -34,18 +34,23 @@ export async function GET(
     const project = await withRetry(() => requireProjectAccess(projectId, user.id));
     const ref = request.nextUrl.searchParams.get('ref') || project.default_branch;
     const path = request.nextUrl.searchParams.get('path') || '';
+    const syncPolicy = resolveSyncPolicy(request.nextUrl.searchParams.get('sync'));
 
     if (!path) {
       return NextResponse.json({ error: 'path is required' }, { status: 400 });
     }
 
     const result = await withRetry(() =>
-      codebaseService.readFile({
-        orgId: project.org_id,
-        projectId,
-        repo: project.repo,
-        ref,
-      }, path)
+      codebaseService.readFile(
+        {
+          orgId: project.org_id,
+          projectId,
+          repo: project.repo,
+          ref,
+        },
+        path,
+        { syncPolicy }
+      )
     );
 
     return NextResponse.json(result);
@@ -56,4 +61,12 @@ export async function GET(
   } finally {
     logger.clearContext();
   }
+}
+
+function resolveSyncPolicy(value: string | null): 'auto' | 'force' | 'never' {
+  if (!value) return 'auto';
+  const normalized = value.trim().toLowerCase();
+  if (['0', 'false', 'no', 'off', 'never'].includes(normalized)) return 'never';
+  if (['1', 'true', 'yes', 'force'].includes(normalized)) return 'force';
+  return 'auto';
 }

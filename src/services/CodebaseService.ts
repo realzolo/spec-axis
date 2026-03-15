@@ -69,7 +69,10 @@ export type CodebaseServiceOptions = {
 
 type EnsureMirrorOptions = {
   forceSync?: boolean;
+  syncPolicy?: SyncPolicy;
 };
+
+type SyncPolicy = 'auto' | 'force' | 'never';
 
 type RunGitOptions = {
   cwd?: string;
@@ -138,9 +141,7 @@ export class CodebaseService {
     assertNonEmpty(ref.projectId, 'projectId');
     assertNonEmpty(ref.repo, 'repo');
 
-    const { integration, token, provider } = await this.resolveIntegration(ref.projectId);
-    const remoteUrl = this.buildRemoteUrl(ref.repo, integration, provider);
-    const redactedUrl = redactUrl(remoteUrl);
+    const syncPolicy = options.syncPolicy ?? (options.forceSync ? 'force' : 'auto');
 
     const paths = this.getMirrorPaths(ref.orgId, ref.projectId, ref.repo);
     await fs.mkdir(paths.basePath, { recursive: true });
@@ -148,9 +149,12 @@ export class CodebaseService {
     const release = await this.acquireLock(paths.lockPath);
     try {
       const isRepo = await this.isGitRepo(paths.mirrorPath);
-      const auth = this.buildAuthArgs(provider, token, remoteUrl);
 
       if (!isRepo) {
+        const { integration, token, provider } = await this.resolveIntegration(ref.projectId);
+        const remoteUrl = this.buildRemoteUrl(ref.repo, integration, provider);
+        const redactedUrl = redactUrl(remoteUrl);
+        const auth = this.buildAuthArgs(provider, token, remoteUrl);
         await this.removeDir(paths.mirrorPath);
         logger.info(`Cloning mirror for ${ref.repo}`);
         await withRetry(() =>
@@ -169,11 +173,30 @@ export class CodebaseService {
         return { mirrorPath: paths.mirrorPath, lastSyncAt: now, synced: true, remoteUrl: redactedUrl };
       }
 
+      const meta = await this.readJson<MirrorMeta>(paths.metaPath);
+      if (syncPolicy === 'never' && meta?.remoteUrl) {
+        return {
+          mirrorPath: paths.mirrorPath,
+          lastSyncAt: meta?.lastSyncAt ?? null,
+          synced: false,
+          remoteUrl: redactUrl(meta.remoteUrl),
+        };
+      }
+
+      const { integration, token, provider } = await this.resolveIntegration(ref.projectId);
+      const remoteUrl = this.buildRemoteUrl(ref.repo, integration, provider);
+      const redactedUrl = redactUrl(remoteUrl);
+      const auth = this.buildAuthArgs(provider, token, remoteUrl);
+
       await this.ensureRemoteUrl(paths.mirrorPath, remoteUrl, auth);
 
-      const meta = await this.readJson<MirrorMeta>(paths.metaPath);
       const lastSyncAt = meta?.lastSyncAt ?? null;
-      const shouldSync = options.forceSync || !lastSyncAt || isStale(lastSyncAt, this.syncIntervalMs);
+      const shouldSync =
+        syncPolicy === 'force'
+          ? true
+          : syncPolicy === 'never'
+            ? false
+            : !lastSyncAt || isStale(lastSyncAt, this.syncIntervalMs);
 
       if (shouldSync) {
         logger.info(`Syncing mirror for ${ref.repo}`);
@@ -302,9 +325,10 @@ export class CodebaseService {
 
   async listTree(
     ref: CodebaseRef,
-    treePath: string = ''
+    treePath: string = '',
+    options: EnsureMirrorOptions = {}
   ): Promise<{ ref: string; path: string; entries: TreeEntry[] }> {
-    const mirror = await this.ensureMirror(ref);
+    const mirror = await this.ensureMirror(ref, options);
     const targetRef = await this.resolveRef(mirror.mirrorPath, ref.ref);
     const safePath = normalizeRepoFilePath(treePath);
     const treeRef = safePath ? `${targetRef}:${safePath}` : targetRef;
@@ -317,9 +341,10 @@ export class CodebaseService {
 
   async readFile(
     ref: CodebaseRef,
-    filePath: string
+    filePath: string,
+    options: EnsureMirrorOptions = {}
   ): Promise<ReadFileResult> {
-    const mirror = await this.ensureMirror(ref);
+    const mirror = await this.ensureMirror(ref, options);
     const targetRef = await this.resolveRef(mirror.mirrorPath, ref.ref);
     const safePath = normalizeRepoFilePath(filePath);
     if (!safePath) {

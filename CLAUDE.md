@@ -64,6 +64,7 @@ Supabase-style multi-tenant org system (Vercel-like UI). Each user has a **perso
 | Tailwind CSS | v4.2.1 | `@import "@heroui/styles"` in globals.css |
 | Geist Font | 1.7.x | Geist Sans/Mono via `geist` package |
 | Radix UI Primitives | ^2.1.4 | `@radix-ui/react-primitive` (Radix Select/Popper dependency) |
+| CodeMirror | 6.x | Read-only codebase editor preview |
 | Supabase | `@supabase/ssr ^0.9` | Database + auth |
 | Octokit | `^5.0.5` | GitHub API |
 | Anthropic SDK | `^0.78` | Claude AI, supports `ANTHROPIC_BASE_URL` |
@@ -259,9 +260,11 @@ If new install warnings appear, approve the dependency and update the allowlist.
 Mirrors are cache-only (not a source of truth) and are synced on demand or on a schedule; workspaces are isolated and must be cleaned after each job.
 Codebase browsing uses the same mirror cache and enforces a max preview size for files.
 Line-level comments for code browsing are stored in `codebase_comments` and scoped by org, project, repo, ref, and path. Optional line ranges (`line_end`) and selection text (`selection_text`) capture multi-line or partial-text comments.
+Codebase tree/file endpoints accept `sync=0` to skip mirror fetch for faster browsing (manual sync still available).
 Automatic mirror sync can be triggered by:
 - GitHub `push` webhooks (forces mirror fetch for matching projects).
 - Scheduled POST to `/api/codebase/sync` (uses `x-task-token` if `TASK_RUNNER_TOKEN` is set). Supports `limit`, `force`, `project_id`, and `org_id`.
+- Project creation triggers an initial mirror sync in the background.
 
 Local cache directories `/.codebase/` and `/.pnpm-store/` are not committed to Git.
 

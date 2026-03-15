@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { createVCSClient } from '@/services/integrations';
 import { readSecret } from '@/lib/vault';
 import { getActiveOrgId, getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES } from '@/services/orgs';
+import { codebaseService } from '@/services/CodebaseService';
 
 export const dynamic = 'force-dynamic';
 
@@ -140,6 +141,8 @@ export async function POST(request: NextRequest) {
     // Update project with correct branch if needed
     const project = tempProject;
 
+    enqueueInitialCodebaseSync(project);
+
     // Audit log
     const clientInfo = extractClientInfo(request);
     await auditLogger.log({
@@ -159,4 +162,23 @@ export async function POST(request: NextRequest) {
   } finally {
     logger.clearContext();
   }
+}
+
+function enqueueInitialCodebaseSync(project: { id: string; org_id: string | null; repo: string | null; default_branch: string }) {
+  if (!project.org_id || !project.repo) return;
+  setTimeout(() => {
+    codebaseService
+      .ensureMirror(
+        {
+          orgId: project.org_id as string,
+          projectId: project.id,
+          repo: project.repo as string,
+          ref: project.default_branch,
+        },
+        { syncPolicy: 'force' }
+      )
+      .catch((err) => {
+        logger.warn('Initial codebase sync failed', err instanceof Error ? err : undefined);
+      });
+  }, 0);
 }

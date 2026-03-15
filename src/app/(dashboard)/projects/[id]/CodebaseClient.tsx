@@ -1,18 +1,20 @@
 'use client';
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import type { EditorView } from '@codemirror/view';
 import {
   Copy,
   FileText,
   Folder,
   FolderUp,
   Image as ImageIcon,
-  MessageSquarePlus,
   Plus,
   RefreshCcw,
   Search,
   Send,
   Type as TypeIcon,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -21,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import CodeEditor, { type CodeLineClickPayload, type CodeSelectionPayload } from '@/components/codebase/CodeEditor';
 import { cn } from '@/lib/utils';
 
 type Project = {
@@ -71,6 +74,7 @@ type DraftSelection = {
 
 const COMPOSER_WIDTH = 360;
 const COMPOSER_PADDING = 12;
+const COMPOSER_EST_HEIGHT = 280;
 const MAX_SELECTION_TEXT = 1200;
 
 export default function CodebaseClient({
@@ -111,6 +115,7 @@ export default function CodebaseClient({
   const draftRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
   const codeContainerRef = useRef<HTMLDivElement | null>(null);
+  const codeScrollerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!branches.length) return;
@@ -129,6 +134,7 @@ export default function CodebaseClient({
       try {
         const params = new URLSearchParams();
         params.set('ref', branch);
+        params.set('sync', '0');
         if (currentPath) params.set('path', currentPath);
         const res = await fetch(`/api/projects/${project.id}/codebase/tree?${params.toString()}`);
         if (!res.ok) throw new Error('tree_fetch_failed');
@@ -164,8 +170,7 @@ export default function CodebaseClient({
       const target = event.target as Node;
       if (composerRef.current?.contains(target)) return;
       if (codeContainerRef.current?.contains(target)) return;
-      setDraftSelection(null);
-      setDraftBody('');
+      closeComposer();
     };
     window.addEventListener('mousedown', handleMouseDown);
     return () => {
@@ -175,11 +180,10 @@ export default function CodebaseClient({
 
   useEffect(() => {
     if (!draftSelection) return;
-    const container = codeContainerRef.current;
+    const container = codeScrollerRef.current;
     if (!container) return;
     const handleScroll = () => {
-      setDraftSelection(null);
-      setDraftBody('');
+      closeComposer();
     };
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
@@ -188,9 +192,7 @@ export default function CodebaseClient({
   }, [draftSelection]);
 
   useEffect(() => {
-    setDraftSelection(null);
-    setDraftBody('');
-    setCommentError(null);
+    closeComposer();
   }, [filePath, branch]);
 
   const breadcrumbs = useMemo(() => {
@@ -242,6 +244,7 @@ export default function CodebaseClient({
     try {
       const params = new URLSearchParams();
       params.set('ref', branch);
+      params.set('sync', '0');
       params.set('path', path);
       const res = await fetch(`/api/projects/${project.id}/codebase/file?${params.toString()}`);
       if (!res.ok) throw new Error('file_fetch_failed');
@@ -300,15 +303,6 @@ export default function CodebaseClient({
     return fileData.content.split('\n');
   }, [fileData]);
 
-  const commentsByLine = useMemo(() => {
-    const map = new Map<number, CodebaseComment[]>();
-    for (const comment of comments) {
-      if (!map.has(comment.line)) map.set(comment.line, []);
-      map.get(comment.line)!.push(comment);
-    }
-    return map;
-  }, [comments]);
-
   const handleSubmitComment = async () => {
     if (!filePath || !draftSelection || !draftBody.trim()) return;
     setCommentSaving(true);
@@ -328,8 +322,7 @@ export default function CodebaseClient({
         }),
       });
       if (!res.ok) throw new Error('comment_create_failed');
-      setDraftBody('');
-      setDraftSelection(null);
+      closeComposer();
       await loadComments(filePath);
     } catch (err) {
       setCommentError(err instanceof Error ? err.message : 'comment_create_failed');
@@ -371,56 +364,48 @@ export default function CodebaseClient({
     }
   };
 
-  const openComposer = (lineStart: number, lineEnd: number, text: string, rect: DOMRect) => {
-    const container = codeContainerRef.current;
-    if (!container) return;
-    const containerRect = container.getBoundingClientRect();
-    const rawX = rect.left - containerRect.left;
-    const rawY = rect.bottom - containerRect.top + 8;
-    const maxX = Math.max(COMPOSER_PADDING, containerRect.width - COMPOSER_WIDTH - COMPOSER_PADDING);
-    const anchorX = clamp(rawX, COMPOSER_PADDING, maxX);
-    const anchorY = Math.max(COMPOSER_PADDING, rawY);
+  const openComposer = (lineStart: number, lineEnd: number, text: string, clientX: number, clientY: number) => {
+    if (typeof window === 'undefined') return;
+    const maxX = Math.max(COMPOSER_PADDING, window.innerWidth - COMPOSER_WIDTH - COMPOSER_PADDING);
+    const maxY = Math.max(COMPOSER_PADDING, window.innerHeight - COMPOSER_EST_HEIGHT - COMPOSER_PADDING);
+    const anchorX = clamp(clientX, COMPOSER_PADDING, maxX);
+    const anchorY = clamp(clientY + 8, COMPOSER_PADDING, maxY);
+    const selectionText = normalizeSelectionText(text);
     setDraftSelection({
       lineStart,
       lineEnd,
-      text,
+      text: selectionText,
       anchor: { x: anchorX, y: anchorY },
     });
     setDraftBody('');
     setCommentError(null);
   };
 
-  const handleLineClick = (lineNo: number, rect: DOMRect, shiftKey: boolean) => {
-    let lineStart = lineNo;
-    let lineEnd = lineNo;
-    if (shiftKey && lastLineClicked) {
-      lineStart = Math.min(lastLineClicked, lineNo);
-      lineEnd = Math.max(lastLineClicked, lineNo);
+  const handleLineClick = (payload: CodeLineClickPayload) => {
+    let lineStart = payload.line;
+    let lineEnd = payload.line;
+    if (payload.shiftKey && lastLineClicked) {
+      lineStart = Math.min(lastLineClicked, payload.line);
+      lineEnd = Math.max(lastLineClicked, payload.line);
     }
-    setLastLineClicked(lineNo);
-    openComposer(lineStart, lineEnd, '', rect);
+    setLastLineClicked(payload.line);
+    openComposer(lineStart, lineEnd, '', payload.clientX, payload.clientY);
   };
 
-  const handleTextSelection = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (composerRef.current?.contains(event.target as Node)) return;
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
-    const range = selection.getRangeAt(0);
-    if (!codeContainerRef.current?.contains(range.commonAncestorContainer)) return;
-    const anchorLineEl = findLineElement(selection.anchorNode);
-    const focusLineEl = findLineElement(selection.focusNode);
-    if (!anchorLineEl || !focusLineEl) return;
-    const anchorLine = Number(anchorLineEl.dataset.line);
-    const focusLine = Number(focusLineEl.dataset.line);
-    if (!Number.isFinite(anchorLine) || !Number.isFinite(focusLine)) return;
-    const text = selection.toString().trim();
+  const handleSelection = (payload: CodeSelectionPayload) => {
+    const text = payload.text.trim();
     if (!text) return;
-    const [lineStart, lineEnd] = anchorLine <= focusLine
-      ? [anchorLine, focusLine]
-      : [focusLine, anchorLine];
-    const rect = range.getBoundingClientRect();
-    openComposer(lineStart, lineEnd, text, rect);
-    selection.removeAllRanges();
+    openComposer(payload.lineStart, payload.lineEnd, text, payload.clientX, payload.clientY);
+  };
+
+  const handleEditorReady = (view: EditorView) => {
+    codeScrollerRef.current = view.scrollDOM;
+  };
+
+  const closeComposer = () => {
+    setDraftSelection(null);
+    setDraftBody('');
+    setCommentError(null);
   };
 
   const shouldRenderFile = filePath && fileData && !fileData.isBinary && !fileData.truncated;
@@ -634,9 +619,8 @@ export default function CodebaseClient({
 
           <div className="flex-1 overflow-hidden">
             <div
-              className="h-full overflow-auto relative"
+              className="h-full overflow-hidden relative"
               ref={codeContainerRef}
-              onMouseUp={handleTextSelection}
             >
               {fileLoading && (
                 <div className="px-6 py-6 text-xs text-muted-foreground">{dict.common.loading}</div>
@@ -654,89 +638,16 @@ export default function CodebaseClient({
                 <div className="px-6 py-6 text-xs text-muted-foreground">{dict.projects.codebaseBinaryFile}</div>
               )}
 
-              {!fileLoading && !fileError && shouldRenderFile && (
-                <div className="divide-y divide-border">
-                  {lines.map((line, index) => {
-                    const lineNo = index + 1;
-                    const lineComments = commentsByLine.get(lineNo) || [];
-                    const rangeActive = draftSelection
-                      ? lineNo >= draftSelection.lineStart && lineNo <= draftSelection.lineEnd
-                      : false;
-                    const hasComments = lineComments.length > 0;
-                    return (
-                      <div key={lineNo} className="border-b border-border last:border-b-0" data-line={lineNo}>
-                        <div
-                          className={cn(
-                            'group grid grid-cols-[60px_minmax(0,1fr)_60px] gap-2 px-3 py-1.5 text-xs font-mono',
-                            (hasComments || rangeActive) && 'bg-muted/30'
-                          )}
-                        >
-                          <button
-                            type="button"
-                            onClick={(event) => handleLineClick(lineNo, event.currentTarget.getBoundingClientRect(), event.shiftKey)}
-                            className="text-right text-[11px] text-muted-foreground hover:text-foreground"
-                            aria-label={`${dict.projects.codebaseAddComment} ${lineNo}`}
-                          >
-                            {lineNo}
-                          </button>
-                          <pre className="whitespace-pre overflow-auto leading-relaxed text-xs" data-line={lineNo}>
-                            {line || ' '}
-                          </pre>
-                          <div className="flex items-center justify-end gap-2 text-[10px] text-muted-foreground">
-                            {hasComments && (
-                              <span className="px-2 py-0.5 rounded-full bg-muted/60">
-                                {lineComments.length}
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={(event) => handleLineClick(lineNo, event.currentTarget.getBoundingClientRect(), event.shiftKey)}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity"
-                              aria-label={`${dict.projects.codebaseAddComment} ${lineNo}`}
-                            >
-                              <MessageSquarePlus className="size-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                        {hasComments && (
-                          <div className="border-t border-border bg-background/80">
-                            {lineComments.map((comment) => {
-                              const lineEnd = comment.line_end && comment.line_end !== comment.line
-                                ? `${comment.line}-${comment.line_end}`
-                                : `${comment.line}`;
-                              return (
-                                <div
-                                  key={comment.id}
-                                  className="flex gap-3 px-4 py-3 border-b border-border last:border-b-0"
-                                >
-                                  <div className="size-7 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium text-muted-foreground">
-                                    {initialsFromEmail(comment.author_email)}
-                                  </div>
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 text-xs">
-                                      <span className="font-medium text-foreground">{comment.author_email}</span>
-                                      <span className="text-muted-foreground">{formatDate(comment.created_at)}</span>
-                                      <span className="text-muted-foreground">
-                                        {dict.projects.codebaseLine} {lineEnd}
-                                      </span>
-                                    </div>
-                                    {comment.selection_text && (
-                                      <pre className="mt-2 rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground whitespace-pre-wrap">
-                                        {comment.selection_text}
-                                      </pre>
-                                    )}
-                                    <div className="mt-2 text-xs whitespace-pre-wrap text-foreground">
-                                      {comment.body}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+              {!fileLoading && !fileError && shouldRenderFile && fileData && (
+                <div className="h-full">
+                  <CodeEditor
+                    value={fileData.content}
+                    language={filePath ?? ''}
+                    onSelection={handleSelection}
+                    onLineClick={handleLineClick}
+                    onReady={handleEditorReady}
+                    className="h-full"
+                  />
                 </div>
               )}
 
@@ -744,21 +655,22 @@ export default function CodebaseClient({
                 <div className="px-6 py-6 text-xs text-muted-foreground">{dict.projects.codebaseSelectFile}</div>
               )}
 
-              {draftSelection && (
+              {draftSelection && typeof document !== 'undefined' && createPortal(
                 <div
                   ref={composerRef}
-                  className="absolute z-20"
+                  className="fixed z-50"
                   style={{ left: draftSelection.anchor.x, top: draftSelection.anchor.y, width: COMPOSER_WIDTH }}
                 >
-                  <div className="rounded-2xl border border-border bg-background/95 shadow-xl backdrop-blur">
-                    {draftSelection.text && (
-                      <div className="px-4 pt-3 text-[11px] text-muted-foreground">
-                        <div className="rounded-md bg-muted/40 px-3 py-2 whitespace-pre-wrap">
-                          {draftSelection.text}
-                        </div>
-                      </div>
-                    )}
-                    <div className="px-4 py-3">
+                  <div className="relative rounded-2xl border border-border bg-background/95 shadow-xl backdrop-blur">
+                    <button
+                      type="button"
+                      className="absolute right-2 top-2 rounded-full p-1 text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                      onClick={closeComposer}
+                      aria-label={dict.common.close}
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                    <div className="px-4 py-3 pt-5">
                       <Textarea
                         ref={draftRef}
                         value={draftBody}
@@ -771,8 +683,7 @@ export default function CodebaseClient({
                             void handleSubmitComment();
                           }
                           if (event.key === 'Escape') {
-                            setDraftSelection(null);
-                            setDraftBody('');
+                            closeComposer();
                           }
                         }}
                       />
@@ -805,10 +716,7 @@ export default function CodebaseClient({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        setDraftSelection(null);
-                        setDraftBody('');
-                      }}
+                      onClick={closeComposer}
                     >
                       {dict.common.cancel}
                     </Button>
@@ -819,18 +727,64 @@ export default function CodebaseClient({
                   {commentError && (
                     <div className="mt-2 text-xs text-danger">{dict.common.error}</div>
                   )}
-                </div>
+                </div>,
+                document.body
               )}
             </div>
           </div>
 
           {filePath && (
-            <div className="px-6 py-3 border-t border-border text-xs text-muted-foreground flex items-center justify-between">
-              <span>
-                {dict.projects.codebaseCommentsCount.replace('{{count}}', String(comments.length))}
-              </span>
-              {commentsLoading && <span>{dict.common.loading}</span>}
-              {!commentsLoading && commentError && <span className="text-danger">{dict.common.error}</span>}
+            <div className="border-t border-border bg-background/60">
+              <div className="px-6 py-3 text-xs text-muted-foreground flex items-center justify-between">
+                <span>
+                  {dict.projects.codebaseCommentsCount.replace('{{count}}', String(comments.length))}
+                </span>
+                {commentsLoading && <span>{dict.common.loading}</span>}
+                {!commentsLoading && commentError && <span className="text-danger">{dict.common.error}</span>}
+              </div>
+
+              {!commentsLoading && !commentError && comments.length === 0 && (
+                <div className="px-6 pb-6 text-xs text-muted-foreground">
+                  {dict.projects.codebaseNoComments}
+                </div>
+              )}
+
+              {comments.length > 0 && (
+                <div className="divide-y divide-border">
+                  {comments.map((comment) => {
+                    const lineEnd = comment.line_end && comment.line_end !== comment.line
+                      ? `${comment.line}-${comment.line_end}`
+                      : `${comment.line}`;
+                    return (
+                      <div
+                        key={comment.id}
+                        className="flex gap-3 px-6 py-4"
+                      >
+                        <div className="size-7 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium text-muted-foreground">
+                          {initialsFromEmail(comment.author_email)}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="font-medium text-foreground">{comment.author_email}</span>
+                            <span className="text-muted-foreground">{formatDate(comment.created_at)}</span>
+                            <span className="text-muted-foreground">
+                              {dict.projects.codebaseLine} {lineEnd}
+                            </span>
+                          </div>
+                          {comment.selection_text && (
+                            <pre className="mt-2 rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground whitespace-pre-wrap">
+                              {comment.selection_text}
+                            </pre>
+                          )}
+                          <div className="mt-2 text-xs whitespace-pre-wrap text-foreground">
+                            {comment.body}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -866,15 +820,6 @@ function clamp(value: number, min: number, max: number) {
   if (value < min) return min;
   if (value > max) return max;
   return value;
-}
-
-function findLineElement(node: Node | null): HTMLElement | null {
-  if (!node) return null;
-  if (node instanceof HTMLElement) {
-    return node.closest('[data-line]');
-  }
-  const parent = node.parentElement;
-  return parent ? parent.closest('[data-line]') : null;
 }
 
 function normalizeSelectionText(text: string) {
