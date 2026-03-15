@@ -1,20 +1,26 @@
-import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export function PageLoading({
   label = 'Loading...',
   className,
-  size = 'lg',
 }: {
   label?: string;
   className?: string;
-  size?: 'sm' | 'md' | 'lg';
 }) {
   return (
     <div className={cn('h-full w-full flex items-center justify-center', className)}>
-      <div className="flex flex-col items-center gap-3">
-        <Spinner size={size} />
-        {label ? <div className="text-sm text-muted-foreground">{label}</div> : null}
+      <div className="w-full max-w-lg px-6 py-10 space-y-4">
+        {label ? <div className="text-xs text-muted-foreground">{label}</div> : null}
+        <Skeleton className="h-6 w-40" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-5/6" />
+        <Skeleton className="h-4 w-4/6" />
+        <div className="grid grid-cols-3 gap-3 pt-2">
+          <Skeleton className="h-20" />
+          <Skeleton className="h-20" />
+          <Skeleton className="h-20" />
+        </div>
       </div>
     </div>
   );

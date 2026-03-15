@@ -9,7 +9,7 @@ import DashboardStats from '@/components/dashboard/DashboardStats';
 import type { Dictionary } from '@/i18n';
 
 type Project = {
-  id: string; name: string; repo: string; default_branch: string;
+  id: string; name: string; repo: string; default_branch: string; org_id: string;
 };
 
 export default function EnhancedProjectDetail({ project, branches, dict }: { project: Project; branches: string[]; dict: Dictionary }) {

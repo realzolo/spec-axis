@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getRepoBranches } from '@/services/github';
+import { codebaseService } from '@/services/CodebaseService';
 import { logger } from '@/services/logger';
 import { projectIdSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
@@ -31,9 +32,22 @@ export async function GET(
     logger.setContext({ projectId });
 
     const project = await withRetry(() => requireProjectAccess(projectId, user.id));
-    const branches = await withRetry(() =>
-      getRepoBranches(project.repo, projectId).catch(() => [project.default_branch])
-    );
+    const syncPolicy = resolveSyncPolicy(request.nextUrl.searchParams.get('sync'));
+    const branches = await withRetry(async () => {
+      try {
+        return await codebaseService.listBranches(
+          {
+            orgId: project.org_id,
+            projectId,
+            repo: project.repo,
+            ref: project.default_branch,
+          },
+          { syncPolicy }
+        );
+      } catch {
+        return await getRepoBranches(project.repo, projectId).catch(() => [project.default_branch]);
+      }
+    });
 
     const result = Array.isArray(branches) && branches.length ? branches : [project.default_branch];
     logger.info(`Branches fetched: ${projectId}`);
@@ -45,4 +59,12 @@ export async function GET(
   } finally {
     logger.clearContext();
   }
+}
+
+function resolveSyncPolicy(value: string | null): 'auto' | 'force' | 'never' {
+  if (!value) return 'auto';
+  const normalized = value.trim().toLowerCase();
+  if (['0', 'false', 'no', 'off', 'never'].includes(normalized)) return 'never';
+  if (['1', 'true', 'yes', 'force'].includes(normalized)) return 'force';
+  return 'auto';
 }

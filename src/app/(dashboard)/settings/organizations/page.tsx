@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { PageLoading } from '@/components/ui/page-loading';
 import {
   Dialog,
   DialogContent,
@@ -28,6 +27,7 @@ import {
 import SettingsNav from '@/components/settings/SettingsNav';
 import { createClient } from '@/lib/supabase/client';
 import { replaceOrgInPath } from '@/lib/orgPath';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type OrgRole = 'owner' | 'admin' | 'reviewer' | 'member';
 
@@ -311,7 +311,53 @@ export default function OrganizationsPage() {
   }
 
   if (loading) {
-    return <PageLoading />;
+    return (
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-5xl px-6 py-6">
+          <div className="grid gap-8 lg:grid-cols-[220px_1fr]">
+            <div className="space-y-3">
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-4 w-28" />
+            </div>
+            <div className="space-y-8">
+              <div className="flex items-start justify-between">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-3 w-64" />
+                </div>
+                <Skeleton className="h-8 w-40 rounded-md" />
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-16" />
+                </div>
+                <div className="border border-border rounded-lg overflow-hidden bg-card">
+                  <div className="hidden md:grid grid-cols-[1fr_140px_160px] px-4 py-2 gap-4">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className="h-3 w-12" />
+                    <Skeleton className="h-3 w-12 ml-auto" />
+                  </div>
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <div key={`org-skeleton-${index}`} className="flex flex-col gap-2 px-4 py-3 md:grid md:grid-cols-[1fr_140px_160px] md:items-center">
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-40" />
+                        <Skeleton className="h-3 w-28" />
+                      </div>
+                      <Skeleton className="h-5 w-16 rounded-full" />
+                      <div className="flex justify-end">
+                        <Skeleton className="h-6 w-20 rounded-full" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -453,7 +499,21 @@ export default function OrganizationsPage() {
                 </div>
                 <div className="divide-y divide-border">
                   {membersLoading ? (
-                    <div className="px-4 py-6 text-sm text-muted-foreground">Loading members...</div>
+                    <div className="px-4 py-4 space-y-3">
+                      {Array.from({ length: 3 }).map((_, index) => (
+                        <div key={`member-skeleton-${index}`} className="flex flex-col gap-2 md:grid md:grid-cols-[1fr_160px_120px_120px] md:items-center">
+                          <div className="space-y-2">
+                            <Skeleton className="h-4 w-40" />
+                            <Skeleton className="h-3 w-48" />
+                          </div>
+                          <Skeleton className="h-7 w-24 rounded-md" />
+                          <Skeleton className="h-5 w-16 rounded-full" />
+                          <div className="flex justify-end">
+                            <Skeleton className="h-7 w-20 rounded-md" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   ) : members.length === 0 ? (
                     <div className="px-4 py-6 text-sm text-muted-foreground">No members found.</div>
                   ) : (
@@ -583,7 +643,21 @@ export default function OrganizationsPage() {
                 </div>
                 <div className="divide-y divide-border">
                   {invitesLoading ? (
-                    <div className="px-4 py-6 text-sm text-muted-foreground">Loading invites...</div>
+                    <div className="px-4 py-4 space-y-3">
+                      {Array.from({ length: 2 }).map((_, index) => (
+                        <div key={`invite-skeleton-${index}`} className="flex flex-col gap-2 md:grid md:grid-cols-[1fr_120px_160px_120px] md:items-center">
+                          <div className="space-y-2">
+                            <Skeleton className="h-4 w-44" />
+                            <Skeleton className="h-3 w-24" />
+                          </div>
+                          <Skeleton className="h-5 w-16 rounded-full" />
+                          <Skeleton className="h-3 w-20" />
+                          <div className="flex justify-end">
+                            <Skeleton className="h-7 w-24 rounded-md" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   ) : invites.length === 0 ? (
                     <div className="px-4 py-6 text-sm text-muted-foreground">No active invites.</div>
                   ) : (

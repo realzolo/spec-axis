@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, Save, Loader2 } from 'lucide-react';
+import { Settings, Save } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type ProjectConfig = {
   ignore_patterns: string[];
@@ -73,8 +74,36 @@ export default function ProjectConfigPanel({ projectId, dict }: { projectId: str
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      <div className="space-y-6">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-5 w-5 rounded" />
+          <Skeleton className="h-5 w-40" />
+        </div>
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-3 w-2/3" />
+        </div>
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-9 w-40" />
+          <Skeleton className="h-3 w-2/3" />
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-3 w-52" />
+          </div>
+          <Skeleton className="h-6 w-10 rounded-full" />
+        </div>
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-3 w-2/3" />
+        </div>
+        <div className="flex justify-end">
+          <Skeleton className="h-9 w-32 rounded-md" />
+        </div>
       </div>
     );
   }
@@ -158,7 +187,7 @@ export default function ProjectConfigPanel({ projectId, dict }: { projectId: str
       {/* Save Button */}
       <div className="flex justify-end pt-4">
         <Button onClick={handleSave} disabled={saving} className="gap-2">
-          {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+          <Save className="size-4" />
           {saving ? dict.common.loading : dict.projects.saveConfig}
         </Button>
       </div>

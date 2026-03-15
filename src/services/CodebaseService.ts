@@ -100,12 +100,19 @@ type WorkspaceMeta = {
   createdAt: string;
 };
 
+type CacheEntry<T> = {
+  value: T;
+  expiresAt: number;
+};
+
 const DEFAULT_ROOT = path.resolve(process.cwd(), '.codebase');
 const DEFAULT_SYNC_INTERVAL_MS = 60_000;
 const DEFAULT_LOCK_TIMEOUT_MS = 120_000;
 const DEFAULT_LOCK_STALE_MS = 300_000;
 const DEFAULT_WORKSPACE_TTL_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_FILE_MAX_BYTES = 256 * 1024;
+const DEFAULT_CACHE_TTL_MS = 10_000;
+const DEFAULT_CACHE_MAX_ENTRIES = 500;
 
 export class CodebaseService {
   private rootDir: string;
@@ -117,6 +124,10 @@ export class CodebaseService {
   private workspaceTtlMs: number;
   private fileMaxBytes: number;
   private gitBin: string;
+  private cacheTtlMs: number;
+  private cacheMaxEntries: number;
+  private treeCache = new Map<string, CacheEntry<{ ref: string; path: string; entries: TreeEntry[] }>>();
+  private fileCache = new Map<string, CacheEntry<ReadFileResult>>();
 
   constructor(options: CodebaseServiceOptions = {}) {
     this.rootDir = path.resolve(
@@ -134,6 +145,8 @@ export class CodebaseService {
     this.workspaceTtlMs = readNumberEnv('CODEBASE_WORKSPACE_TTL_MS', options.workspaceTtlMs, DEFAULT_WORKSPACE_TTL_MS);
     this.fileMaxBytes = readNumberEnv('CODEBASE_FILE_MAX_BYTES', options.fileMaxBytes, DEFAULT_FILE_MAX_BYTES);
     this.gitBin = options.gitBin ?? process.env.CODEBASE_GIT_BIN ?? 'git';
+    this.cacheTtlMs = DEFAULT_CACHE_TTL_MS;
+    this.cacheMaxEntries = DEFAULT_CACHE_MAX_ENTRIES;
   }
 
   async ensureMirror(ref: CodebaseRef, options: EnsureMirrorOptions = {}): Promise<MirrorStatus> {
@@ -332,11 +345,19 @@ export class CodebaseService {
     const targetRef = await this.resolveRef(mirror.mirrorPath, ref.ref);
     const safePath = normalizeRepoFilePath(treePath);
     const treeRef = safePath ? `${targetRef}:${safePath}` : targetRef;
+    const cacheKey = `${mirror.mirrorPath}:${targetRef}:${safePath || '.'}:tree`;
+
+    if (options.syncPolicy !== 'force') {
+      const cached = this.getCache(this.treeCache, cacheKey);
+      if (cached) return cached;
+    }
 
     const result = await this.runGit(['--git-dir', mirror.mirrorPath, 'ls-tree', '-l', treeRef]);
     const entries = parseLsTree(result.stdout, safePath);
 
-    return { ref: targetRef, path: safePath, entries };
+    const payload = { ref: targetRef, path: safePath, entries };
+    this.setCache(this.treeCache, cacheKey, payload);
+    return payload;
   }
 
   async readFile(
@@ -350,10 +371,16 @@ export class CodebaseService {
     if (!safePath) {
       throw new Error('file path is required');
     }
+    const cacheKey = `${mirror.mirrorPath}:${targetRef}:${safePath}:file`;
+
+    if (options.syncPolicy !== 'force') {
+      const cached = this.getCache(this.fileCache, cacheKey);
+      if (cached) return cached;
+    }
 
     const size = await this.getBlobSize(mirror.mirrorPath, `${targetRef}:${safePath}`);
     if (size > this.fileMaxBytes) {
-      return {
+      const payload = {
         path: safePath,
         ref: targetRef,
         size,
@@ -361,13 +388,15 @@ export class CodebaseService {
         truncated: true,
         isBinary: false,
       };
+      this.setCache(this.fileCache, cacheKey, payload);
+      return payload;
     }
 
     const result = await this.runGit(['--git-dir', mirror.mirrorPath, 'show', `${targetRef}:${safePath}`]);
     const content = result.stdout;
     const isBinary = content.includes('\u0000');
 
-    return {
+    const payload = {
       path: safePath,
       ref: targetRef,
       size,
@@ -375,6 +404,21 @@ export class CodebaseService {
       truncated: false,
       isBinary,
     };
+    this.setCache(this.fileCache, cacheKey, payload);
+    return payload;
+  }
+
+  async listBranches(ref: CodebaseRef, options: EnsureMirrorOptions = {}): Promise<string[]> {
+    const mirror = await this.ensureMirror(ref, options);
+    const result = await this.runGit([
+      '--git-dir',
+      mirror.mirrorPath,
+      'for-each-ref',
+      '--format=%(refname:short)',
+      'refs/heads',
+    ]);
+    const branches = result.stdout.split('\n').map((line) => line.trim()).filter(Boolean);
+    return Array.from(new Set(branches)).sort((a, b) => a.localeCompare(b));
   }
 
   private async resolveIntegration(projectId: string): Promise<{
@@ -643,6 +687,25 @@ export class CodebaseService {
         reject(error);
       });
     });
+  }
+
+  private getCache<T>(cache: Map<string, CacheEntry<T>>, key: string): T | null {
+    const entry = cache.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+      cache.delete(key);
+      return null;
+    }
+    cache.delete(key);
+    cache.set(key, entry);
+    return entry.value;
+  }
+
+  private setCache<T>(cache: Map<string, CacheEntry<T>>, key: string, value: T) {
+    cache.set(key, { value, expiresAt: Date.now() + this.cacheTtlMs });
+    if (cache.size <= this.cacheMaxEntries) return;
+    const firstKey = cache.keys().next().value;
+    if (firstKey) cache.delete(firstKey);
   }
 }
 

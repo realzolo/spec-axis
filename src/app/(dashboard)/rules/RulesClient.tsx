@@ -7,11 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { PageLoading } from '@/components/ui/page-loading';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 import { withOrgPrefix } from '@/lib/orgPath';
 import { useOrgRole } from '@/lib/useOrgRole';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type RuleSet = { id: string; name: string; description?: string; is_global: boolean; rules?: unknown[] };
 
@@ -72,7 +72,36 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
   }
 
   if (loading) {
-    return <PageLoading label={dict.common.loading} />;
+    return (
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-[1200px] mx-auto w-full px-6 py-6 space-y-4">
+          <div className="flex items-end justify-between">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-56" />
+            </div>
+            <Skeleton className="h-8 w-32 rounded-md" />
+          </div>
+          <div className="border border-border rounded-lg overflow-hidden bg-card">
+            <div className="flex items-center px-4 py-2 border-b border-border bg-muted/60 gap-4">
+              <Skeleton className="h-3 w-8" />
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="h-3 w-16 ml-auto" />
+            </div>
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={`ruleset-skeleton-${index}`} className="flex items-center gap-4 px-4 py-3 border-b border-border last:border-0">
+                <Skeleton className="h-7 w-7 rounded-md" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-64" />
+                </div>
+                <Skeleton className="h-5 w-14" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (loadError && ruleSets.length === 0) {

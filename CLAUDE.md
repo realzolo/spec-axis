@@ -2,7 +2,7 @@
 
 ## General Rules
 
-- **Response language**: Always respond in English
+- **Documentation language**: All documentation files must be written in English.
 
 ## Internationalization (i18n)
 
@@ -260,6 +260,7 @@ If new install warnings appear, approve the dependency and update the allowlist.
 Mirrors are cache-only (not a source of truth) and are synced on demand or on a schedule; workspaces are isolated and must be cleaned after each job.
 Codebase browsing uses the same mirror cache and enforces a max preview size for files.
 Line-level comments for code browsing are stored in `codebase_comments` and scoped by org, project, repo, ref, and path. Optional line ranges (`line_end`) and selection text (`selection_text`) capture multi-line or partial-text comments.
+Comment assignees are stored in `codebase_comment_assignees` and attached to codebase comments.
 Codebase tree/file endpoints accept `sync=0` to skip mirror fetch for faster browsing (manual sync still available).
 Automatic mirror sync can be triggered by:
 - GitHub `push` webhooks (forces mirror fetch for matching projects).

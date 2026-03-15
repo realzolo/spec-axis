@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { BarChart3, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import type { Dictionary } from '@/i18n';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type DashboardStats = {
   totalReports: number;
@@ -34,11 +35,12 @@ export default function DashboardStats({ projectId, dict }: { projectId?: string
 
   if (loading) {
     return (
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-4">
         {[...Array(4)].map((_, i) => (
           <div key={i} className="space-y-2">
-            <div className="h-3 w-20 bg-muted rounded animate-pulse" />
-            <div className="h-4 w-12 bg-muted rounded animate-pulse" />
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-5 w-16" />
+            <Skeleton className="h-3 w-24" />
           </div>
         ))}
       </div>

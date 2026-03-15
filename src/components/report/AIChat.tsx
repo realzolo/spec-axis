@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, MessageCircle } from 'lucide-react';
+import { Send, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type Message = {
   role: 'user' | 'assistant';
@@ -84,8 +85,10 @@ export default function AIChat({ reportId, issueId, dict }: { reportId: string; 
         )}
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-muted rounded-lg px-4 py-2.5">
-              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+            <div className="bg-muted rounded-lg px-4 py-3 space-y-2 w-[240px]">
+              <Skeleton className="h-3 w-5/6" />
+              <Skeleton className="h-3 w-3/4" />
+              <Skeleton className="h-3 w-2/3" />
             </div>
           </div>
         )}
@@ -103,7 +106,7 @@ export default function AIChat({ reportId, issueId, dict }: { reportId: string; 
             className="flex-1"
           />
           <Button onClick={handleSend} disabled={!input.trim() || loading} size="icon">
-            {loading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+            <Send className="size-4" />
           </Button>
         </div>
       </div>

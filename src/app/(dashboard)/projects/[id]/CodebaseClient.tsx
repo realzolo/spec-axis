@@ -14,6 +14,7 @@ import {
   Search,
   Send,
   Type as TypeIcon,
+  Users,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -23,7 +24,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import CodeEditor, { type CodeLineClickPayload, type CodeSelectionPayload } from '@/components/codebase/CodeEditor';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
 type Project = {
@@ -31,6 +41,7 @@ type Project = {
   name: string;
   repo: string;
   default_branch: string;
+  org_id: string;
 };
 
 type TreeEntry = {
@@ -55,6 +66,18 @@ type FileResponse = {
   isBinary: boolean;
 };
 
+type OrgMember = {
+  user_id: string;
+  email: string | null;
+  role: string;
+  status?: string;
+};
+
+type CommentAssignee = {
+  user_id: string;
+  email: string | null;
+};
+
 type CodebaseComment = {
   id: string;
   line: number;
@@ -63,6 +86,7 @@ type CodebaseComment = {
   body: string;
   author_email: string;
   created_at: string;
+  assignees?: CommentAssignee[] | null;
 };
 
 type DraftSelection = {
@@ -105,6 +129,10 @@ export default function CodebaseClient({
   const [draftSelection, setDraftSelection] = useState<DraftSelection | null>(null);
   const [draftBody, setDraftBody] = useState('');
   const [commentSaving, setCommentSaving] = useState(false);
+  const [members, setMembers] = useState<OrgMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState(false);
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [lastLineClicked, setLastLineClicked] = useState<number | null>(null);
@@ -115,7 +143,7 @@ export default function CodebaseClient({
   const draftRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
   const codeContainerRef = useRef<HTMLDivElement | null>(null);
-  const codeScrollerRef = useRef<HTMLDivElement | null>(null);
+  const codeScrollerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!branches.length) return;
@@ -123,6 +151,33 @@ export default function CodebaseClient({
       setBranch(branches[0]);
     }
   }, [branches, branch]);
+
+  useEffect(() => {
+    if (!project.org_id) return;
+    let active = true;
+    setMembersLoading(true);
+    setMembersError(false);
+    fetch(`/api/orgs/${project.org_id}/members`)
+      .then((res) => {
+        if (!res.ok) throw new Error('members_fetch_failed');
+        return res.json();
+      })
+      .then((data: OrgMember[]) => {
+        if (!active) return;
+        setMembers(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setMembersError(true);
+      })
+      .finally(() => {
+        if (!active) return;
+        setMembersLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [project.org_id]);
 
   useEffect(() => {
     const requestId = ++treeRequestId.current;
@@ -200,6 +255,14 @@ export default function CodebaseClient({
     return currentPath.split('/').filter(Boolean);
   }, [currentPath]);
 
+  const activeMembers = useMemo(() => {
+    return members.filter((member) => member.email && member.status !== 'invited');
+  }, [members]);
+
+  const memberById = useMemo(() => {
+    return new Map(activeMembers.map((member) => [member.user_id, member]));
+  }, [activeMembers]);
+
   const filteredEntries = useMemo(() => {
     const query = deferredSearch.trim().toLowerCase();
     if (!query) return entries;
@@ -216,6 +279,7 @@ export default function CodebaseClient({
     setComments([]);
     setDraftSelection(null);
     setDraftBody('');
+    setAssigneeIds([]);
     setCommentError(null);
     setSearch('');
     setLastLineClicked(null);
@@ -229,6 +293,7 @@ export default function CodebaseClient({
       setFileError(null);
       setDraftSelection(null);
       setDraftBody('');
+      setAssigneeIds([]);
       setCommentError(null);
       return;
     }
@@ -254,6 +319,7 @@ export default function CodebaseClient({
       setComments([]);
       setDraftSelection(null);
       setDraftBody('');
+      setAssigneeIds([]);
       setCommentError(null);
     } catch (err) {
       if (fileRequestId.current !== requestId) return;
@@ -318,6 +384,7 @@ export default function CodebaseClient({
           line: draftSelection.lineStart,
           line_end: lineEnd,
           selection_text: selectionText || undefined,
+          assignees: assigneeIds.length ? assigneeIds : undefined,
           body: draftBody.trim(),
         }),
       });
@@ -364,6 +431,18 @@ export default function CodebaseClient({
     }
   };
 
+  const toggleAssignee = (userId: string) => {
+    setAssigneeIds((prev) => (
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    ));
+  };
+
+  const selectedAssignees = useMemo(() => {
+    return assigneeIds
+      .map((id) => memberById.get(id))
+      .filter((member): member is OrgMember => Boolean(member));
+  }, [assigneeIds, memberById]);
+
   const openComposer = (lineStart: number, lineEnd: number, text: string, clientX: number, clientY: number) => {
     if (typeof window === 'undefined') return;
     const maxX = Math.max(COMPOSER_PADDING, window.innerWidth - COMPOSER_WIDTH - COMPOSER_PADDING);
@@ -379,6 +458,7 @@ export default function CodebaseClient({
     });
     setDraftBody('');
     setCommentError(null);
+    setAssigneeIds([]);
   };
 
   const handleLineClick = (payload: CodeLineClickPayload) => {
@@ -406,6 +486,7 @@ export default function CodebaseClient({
     setDraftSelection(null);
     setDraftBody('');
     setCommentError(null);
+    setAssigneeIds([]);
   };
 
   const shouldRenderFile = filePath && fileData && !fileData.isBinary && !fileData.truncated;
@@ -549,7 +630,14 @@ export default function CodebaseClient({
           )}
 
           {treeLoading && (
-            <div className="px-4 py-6 text-xs text-muted-foreground">{dict.common.loading}</div>
+            <div className="px-4 py-4 space-y-2">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <div key={`tree-skeleton-${index}`} className="flex items-center gap-2">
+                  <Skeleton className="h-4 w-4 rounded" />
+                  <Skeleton className="h-3 w-full" />
+                </div>
+              ))}
+            </div>
           )}
 
           {!treeLoading && treeError && (
@@ -623,7 +711,11 @@ export default function CodebaseClient({
               ref={codeContainerRef}
             >
               {fileLoading && (
-                <div className="px-6 py-6 text-xs text-muted-foreground">{dict.common.loading}</div>
+                <div className="px-6 py-6 space-y-2">
+                  {Array.from({ length: 12 }).map((_, index) => (
+                    <Skeleton key={`file-skeleton-${index}`} className="h-3 w-full" />
+                  ))}
+                </div>
               )}
 
               {!fileLoading && fileError && (
@@ -670,7 +762,61 @@ export default function CodebaseClient({
                     >
                       <X className="size-3.5" />
                     </button>
-                    <div className="px-4 py-3 pt-5">
+                    <div className="px-4 pt-5 pb-2 flex items-center gap-2">
+                      <Users className="size-3.5 text-muted-foreground" />
+                      <span className="text-[11px] text-muted-foreground">{dict.projects.codebaseAssignees}</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]">
+                            {dict.projects.codebaseAssignPeople}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="w-60 max-h-60 overflow-auto">
+                          <DropdownMenuLabel>{dict.projects.codebaseAssignees}</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {membersLoading && (
+                            <div className="px-2 py-2 space-y-2">
+                              <Skeleton className="h-3 w-24" />
+                              <Skeleton className="h-3 w-20" />
+                            </div>
+                          )}
+                          {!membersLoading && activeMembers.length === 0 && (
+                            <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                              {dict.projects.codebaseNoAssignees}
+                            </div>
+                          )}
+                          {!membersLoading && activeMembers.map((member) => (
+                            <DropdownMenuCheckboxItem
+                              key={member.user_id}
+                              checked={assigneeIds.includes(member.user_id)}
+                              onCheckedChange={() => toggleAssignee(member.user_id)}
+                            >
+                              {member.email}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      {membersError && (
+                        <span className="text-[11px] text-danger">{dict.common.error}</span>
+                      )}
+                    </div>
+                    {selectedAssignees.length > 0 ? (
+                      <div className="px-4 pb-2 flex flex-wrap gap-1">
+                        {selectedAssignees.map((member) => (
+                          <span
+                            key={member.user_id}
+                            className="rounded-full bg-muted/70 px-2 py-0.5 text-[10px] text-muted-foreground"
+                          >
+                            {member.email}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="px-4 pb-2 text-[11px] text-muted-foreground">
+                        {dict.projects.codebaseNoAssignees}
+                      </div>
+                    )}
+                    <div className="px-4 py-3">
                       <Textarea
                         ref={draftRef}
                         value={draftBody}
@@ -722,7 +868,9 @@ export default function CodebaseClient({
                     </Button>
                   </div>
                   {commentSaving && (
-                    <div className="mt-2 text-xs text-muted-foreground">{dict.common.loading}</div>
+                    <div className="mt-2">
+                      <Skeleton className="h-3 w-20" />
+                    </div>
                   )}
                   {commentError && (
                     <div className="mt-2 text-xs text-danger">{dict.common.error}</div>
@@ -739,9 +887,24 @@ export default function CodebaseClient({
                 <span>
                   {dict.projects.codebaseCommentsCount.replace('{{count}}', String(comments.length))}
                 </span>
-                {commentsLoading && <span>{dict.common.loading}</span>}
+                {commentsLoading && <Skeleton className="h-3 w-20" />}
                 {!commentsLoading && commentError && <span className="text-danger">{dict.common.error}</span>}
               </div>
+
+              {commentsLoading && (
+                <div className="px-6 pb-6 space-y-3">
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <div key={`comment-skeleton-${index}`} className="flex gap-3">
+                      <Skeleton className="size-7 rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-3 w-40" />
+                        <Skeleton className="h-3 w-full" />
+                        <Skeleton className="h-3 w-5/6" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {!commentsLoading && !commentError && comments.length === 0 && (
                 <div className="px-6 pb-6 text-xs text-muted-foreground">
@@ -749,7 +912,7 @@ export default function CodebaseClient({
                 </div>
               )}
 
-              {comments.length > 0 && (
+              {!commentsLoading && comments.length > 0 && (
                 <div className="divide-y divide-border">
                   {comments.map((comment) => {
                     const lineEnd = comment.line_end && comment.line_end !== comment.line
@@ -775,6 +938,18 @@ export default function CodebaseClient({
                             <pre className="mt-2 rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground whitespace-pre-wrap">
                               {comment.selection_text}
                             </pre>
+                          )}
+                          {comment.assignees && comment.assignees.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {comment.assignees.map((assignee) => (
+                                <span
+                                  key={`${comment.id}-${assignee.user_id}`}
+                                  className="rounded-full bg-muted/70 px-2 py-0.5 text-[10px] text-muted-foreground"
+                                >
+                                  {assignee.email ?? assignee.user_id.slice(0, 8)}
+                                </span>
+                              ))}
+                            </div>
                           )}
                           <div className="mt-2 text-xs whitespace-pre-wrap text-foreground">
                             {comment.body}

@@ -255,6 +255,26 @@
   }
 }
 
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: hsl(var(--muted) / 0.7);
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    hsl(var(--foreground) / 0.08) 50%,
+    transparent 100%
+  );
+  animation: skeleton-shimmer 1.6s infinite;
+}
+
 .page-enter {
   animation: page-fade-slide var(--motion-base) var(--ease-out);
 }
@@ -265,6 +285,15 @@
   }
   .transition-soft {
     transition: none;
+  }
+  .skeleton::after {
+    animation: none;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
   }
 }
 

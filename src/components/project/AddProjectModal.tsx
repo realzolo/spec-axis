@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Github, Lock, Loader2 } from 'lucide-react';
+import { Search, Github, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -21,6 +21,7 @@ import {
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 import { t } from '@/lib/i18n-utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type RepoItem = {
   fullName: string;
@@ -166,8 +167,20 @@ export default function AddProjectModal({ open, onClose, onCreated, dict }: {
             </div>
             <div className="flex-1 overflow-y-auto border border-border rounded-md max-h-[320px] bg-background">
               {reposLoading ? (
-                <div className="flex justify-center items-center h-[300px]">
-                  <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                <div className="p-4 space-y-3">
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <div key={`repo-skeleton-${index}`} className="flex items-center gap-3">
+                      <Skeleton className="h-10 w-10 rounded-md" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-2/3" />
+                        <Skeleton className="h-3 w-1/2" />
+                      </div>
+                      <div className="space-y-2">
+                        <Skeleton className="h-3 w-14" />
+                        <Skeleton className="h-3 w-20" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : reposError ? (
                 <div className="p-8 text-center text-danger text-sm">{reposError}</div>

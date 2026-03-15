@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import type { Dictionary } from '@/i18n';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type Snapshot = {
   snapshot_date: string;
@@ -37,7 +38,32 @@ export default function TrendChart({ projectId, dict }: { projectId: string; dic
   }, [projectId, days]);
 
   if (loading) {
-    return <div className="text-sm text-muted-foreground">{dict.reportDetail.trendLoading}</div>;
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-6">
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-16" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+          <Skeleton className="h-6 w-24" />
+          <Skeleton className="h-8 w-px" />
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-16" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+        </div>
+        <div className="grid grid-cols-10 gap-2 h-32 items-end">
+          {Array.from({ length: 10 }).map((_, index) => (
+            <Skeleton key={`trend-skeleton-${index}`} className={`w-full ${index % 3 === 0 ? 'h-12' : index % 3 === 1 ? 'h-20' : 'h-28'}`} />
+          ))}
+        </div>
+        <div className="flex gap-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={`trend-pill-${index}`} className="h-7 w-16 rounded-full" />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (snapshots.length === 0) {

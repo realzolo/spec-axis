@@ -102,6 +102,12 @@ export async function getCommitsDiff(repo: string, hashes: string[], projectId: 
   return diffs.join('');
 }
 
+export async function getCommitDiff(repo: string, sha: string, projectId: string): Promise<string> {
+  const client = await getVCSClient(projectId);
+  const [owner, repoName] = repo.split('/');
+  return client.getCommitDiff(owner, repoName, sha);
+}
+
 export async function getCommitBySha(repo: string, sha: string, projectId: string) {
   const client = await getVCSClient(projectId);
   const [owner, repoName] = repo.split('/');

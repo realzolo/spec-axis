@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { ArrowLeft, Send, User, Clock, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Send, User, Clock, CheckCircle2, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
-import { PageLoading } from '@/components/ui/page-loading';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 import { withOrgPrefix } from '@/lib/orgPath';
+import CodeEditor from '@/components/codebase/CodeEditor';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type Commit = { sha: string; message: string; author: string; date: string };
 type Project = { id: string; name: string; repo: string; default_branch: string; ruleset_id?: string };
@@ -32,6 +32,11 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
   const [analyzing, setAnalyzing] = useState(false);
   const [ruleSetName, setRuleSetName] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailCommit, setDetailCommit] = useState<Commit | null>(null);
+  const [detailDiff, setDetailDiff] = useState('');
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(false);
 
   useEffect(() => {
     if (project.ruleset_id) {
@@ -86,6 +91,24 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
     router.push(withOrgPrefix(pathname, `/reports/${data.reportId}`));
   }
 
+  async function openCommitDetail(commit: Commit) {
+    setDetailCommit(commit);
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setDetailError(false);
+    setDetailDiff('');
+    try {
+      const res = await fetch(`/api/commits/${commit.sha}?repo=${project.repo}&project_id=${project.id}`);
+      if (!res.ok) throw new Error('diff_fetch_failed');
+      const data = await res.json();
+      setDetailDiff((data?.diff as string) || '');
+    } catch {
+      setDetailError(true);
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
   function formatDate(d: string) {
     const diff = Date.now() - new Date(d).getTime();
     const h = Math.floor(diff / 3600000);
@@ -120,7 +143,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
           className="gap-1.5"
           size="sm"
         >
-          {analyzing ? <Spinner size="sm" /> : <Send className="size-3.5" />}
+          <Send className="size-3.5" />
           {analyzing ? dict.commits.analyzing : dict.commits.reviewCommits.replace('{{count}}', (selected.length || '').toString())}
         </Button>
       </div>
@@ -159,7 +182,21 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
       {/* Commit list */}
       <div className="flex-1 overflow-auto bg-muted/30 p-4">
         {loading ? (
-          <PageLoading label={dict.common.loading} />
+          <div className="flex flex-col gap-2">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div key={`commit-skeleton-${index}`} className="rounded-xl border border-border bg-card px-4 py-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-4 w-4 rounded-md" />
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+                <div className="flex items-center gap-4">
+                  <Skeleton className="h-3 w-32" />
+                  <Skeleton className="h-3 w-28" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground text-sm">{dict.commits.noCommits}</div>
         ) : (
@@ -169,7 +206,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
               return (
                 <div
                   key={commit.sha}
-                  onClick={() => toggleCommit(commit.sha)}
+                  onClick={() => openCommitDetail(commit)}
                   className={[
                     'flex items-center gap-3.5 px-4 py-3.5 cursor-pointer rounded-xl border transition-all',
                     isSelected
@@ -177,16 +214,24 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
                       : 'border-border bg-card hover:border-[hsl(var(--accent)/0.25)] hover:bg-[hsl(var(--accent)/0.06)]',
                   ].join(' ')}
                 >
-                  <div className={[
-                    'w-4.5 h-4.5 rounded-md shrink-0 flex items-center justify-center border-2 transition-all',
-                    isSelected ? 'border-[hsl(var(--accent))] bg-[hsl(var(--accent))]' : 'border-border bg-background',
-                  ].join(' ')}>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleCommit(commit.sha);
+                    }}
+                    aria-pressed={isSelected}
+                    className={[
+                      'w-4.5 h-4.5 rounded-md shrink-0 flex items-center justify-center border-2 transition-all',
+                      isSelected ? 'border-[hsl(var(--accent))] bg-[hsl(var(--accent))]' : 'border-border bg-background',
+                    ].join(' ')}
+                  >
                     {isSelected && (
                       <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
                         <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     )}
-                  </div>
+                  </button>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1.5">
                       <code className="text-xs font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
@@ -199,13 +244,24 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
                       <span className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="size-3" />{formatDate(commit.date)}</span>
                     </div>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1 text-xs"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openCommitDetail(commit);
+                    }}
+                  >
+                    <FileText className="size-3.5" />
+                    {dict.commits.viewChanges}
+                  </Button>
                 </div>
               );
             })}
             {hasMore && authorFilter === 'all' && (
               <div className="flex justify-center pt-2">
               <Button variant="ghost" disabled={loadingMore} onClick={() => { const next = page + 1; setPage(next); fetchCommits(branch, next, true); }}>
-                {loadingMore ? <Spinner size="sm" /> : null}
                 {loadingMore ? dict.common.loading : dict.commits.loadMore}
               </Button>
             </div>
@@ -238,6 +294,47 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmOpen(false)}>{dict.common.cancel}</Button>
             <Button onClick={startReview}>{dict.commits.startReview}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>{dict.commits.commitChanges}</DialogTitle>
+          </DialogHeader>
+          {detailCommit && (
+            <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
+              <code className="rounded bg-muted px-2 py-0.5">{detailCommit.sha.slice(0, 7)}</code>
+              <span className="text-foreground">{detailCommit.message}</span>
+              <span className="text-muted-foreground">·</span>
+              <span>{detailCommit.author}</span>
+              <span className="text-muted-foreground">·</span>
+              <span>{formatDate(detailCommit.date)}</span>
+            </div>
+          )}
+          <div className="mt-4 border border-border rounded-xl overflow-hidden bg-background">
+            {detailLoading && (
+              <div className="p-4 space-y-2">
+                {Array.from({ length: 12 }).map((_, index) => (
+                  <Skeleton key={`diff-skeleton-${index}`} className="h-3 w-full" />
+                ))}
+              </div>
+            )}
+            {!detailLoading && detailError && (
+              <div className="p-6 text-sm text-muted-foreground">{dict.commits.diffFailed}</div>
+            )}
+            {!detailLoading && !detailError && detailDiff && (
+              <div className="h-[60vh]">
+                <CodeEditor value={detailDiff} language="diff" className="h-full" />
+              </div>
+            )}
+            {!detailLoading && !detailError && !detailDiff && (
+              <div className="p-6 text-sm text-muted-foreground">{dict.commits.diffEmpty}</div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailOpen(false)}>{dict.common.close}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

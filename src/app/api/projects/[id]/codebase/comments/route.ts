@@ -20,6 +20,7 @@ const createCommentSchema = z.object({
   line: z.number().int().positive(),
   line_end: z.number().int().positive().optional(),
   selection_text: z.string().max(2000).optional(),
+  assignees: z.array(z.string().uuid()).max(20).optional(),
   body: z.string().min(1).max(5000),
 }).refine((data) => !data.line_end || data.line_end >= data.line, {
   message: 'line_end must be >= line',
@@ -59,7 +60,7 @@ export async function GET(
       const supabase = createAdminClient();
       let query = supabase
         .from('codebase_comments')
-        .select('*')
+        .select('*, assignees:codebase_comment_assignees(user_id,email)')
         .eq('project_id', projectId)
         .eq('org_id', project.org_id)
         .eq('repo', project.repo)
@@ -140,7 +141,57 @@ export async function POST(
         throw new Error(error.message);
       }
 
-      return data;
+      const assigneeIds = Array.from(new Set(validated.assignees ?? []));
+      if (assigneeIds.length > 0) {
+        const { data: members, error: memberError } = await supabase
+          .from('org_members')
+          .select('user_id')
+          .eq('org_id', project.org_id)
+          .in('user_id', assigneeIds);
+
+        if (memberError) {
+          throw new Error(memberError.message);
+        }
+
+        const allowedIds = new Set((members ?? []).map((member) => member.user_id));
+        const assigneeRows = await Promise.all(
+          assigneeIds
+            .filter((id) => allowedIds.has(id))
+            .map(async (id) => {
+              let email: string | null = null;
+              try {
+                const { data: userData } = await supabase.auth.admin.getUserById(id);
+                email = userData?.user?.email ?? null;
+              } catch {}
+              return {
+                comment_id: data.id,
+                user_id: id,
+                email,
+              };
+            })
+        );
+
+        if (assigneeRows.length > 0) {
+          const { error: assignError } = await supabase
+            .from('codebase_comment_assignees')
+            .upsert(assigneeRows, { onConflict: 'comment_id,user_id' });
+          if (assignError) {
+            throw new Error(assignError.message);
+          }
+        }
+      }
+
+      const { data: enriched, error: fetchError } = await supabase
+        .from('codebase_comments')
+        .select('*, assignees:codebase_comment_assignees(user_id,email)')
+        .eq('id', data.id)
+        .single();
+
+      if (fetchError || !enriched) {
+        return data;
+      }
+
+      return enriched;
     });
 
     return NextResponse.json(comment);

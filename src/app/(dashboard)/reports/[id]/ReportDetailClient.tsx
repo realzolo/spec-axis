@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, AlertCircle, RefreshCw, Github, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Spinner } from '@/components/ui/spinner';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -180,7 +180,7 @@ export default function ReportDetailClient({ initialReport, dict }: { initialRep
         </div>
         {(report.status === 'done' || report.status === 'failed') && (
           <Button variant="outline" size="sm" disabled={retrying} onClick={handleRetry} className="gap-1.5">
-            <RefreshCw className={['size-3.5', retrying ? 'animate-spin' : ''].join(' ')} />
+            <RefreshCw className="size-3.5" />
             {dict.reportDetail.reanalyze}
           </Button>
         )}
@@ -189,10 +189,16 @@ export default function ReportDetailClient({ initialReport, dict }: { initialRep
 
       {/* Analyzing */}
       {(report.status === 'pending' || report.status === 'analyzing') && (
-        <div className="flex-1 flex flex-col items-start justify-center gap-3 px-6">
-          <Spinner size="md" />
-          <div className="text-sm font-medium">{dict.reportDetail.analyzing}</div>
-          <div className="text-xs text-muted-foreground">{dict.reportDetail.analyzingSubtext}</div>
+        <div className="flex-1 flex flex-col items-start justify-center gap-4 px-6">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-3 w-72" />
+          </div>
+          <div className="grid grid-cols-3 gap-3 w-full max-w-sm">
+            <Skeleton className="h-20 rounded-lg" />
+            <Skeleton className="h-20 rounded-lg" />
+            <Skeleton className="h-20 rounded-lg" />
+          </div>
         </div>
       )}
 
