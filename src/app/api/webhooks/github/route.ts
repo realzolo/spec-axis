@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import crypto from 'crypto';
 import { createAdminClient } from '@/lib/supabase/server';
-import { getProjectByRepo, getRulesBySetId, createReport } from '@/services/db';
+import { getProjectById, listProjectsByRepo, getRulesBySetId, createReport } from '@/services/db';
 import { buildReportCommits } from '@/services/analyzeTask';
 import { taskQueue } from '@/services/taskQueue';
 import { logger } from '@/services/logger';
@@ -52,9 +52,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
-  const project = await getProjectByRepo(repoFullName).catch(() => null);
-  if (!project) {
-    return NextResponse.json({ ok: true });
+  const { searchParams } = new URL(request.url);
+  const projectId = searchParams.get('project_id');
+  let project: Record<string, any> | null = null;
+
+  if (projectId) {
+    project = await getProjectById(projectId).catch(() => null);
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+    if (project.repo !== repoFullName) {
+      return NextResponse.json({ error: 'Project repository mismatch' }, { status: 400 });
+    }
+  } else {
+    const projects = await listProjectsByRepo(repoFullName).catch(() => []);
+    if (projects.length === 0) {
+      return NextResponse.json({ ok: true });
+    }
+    if (projects.length > 1) {
+      return NextResponse.json(
+        { error: 'Multiple projects match this repository. Configure webhook with ?project_id=...' },
+        { status: 409 }
+      );
+    }
+    project = projects[0] as Record<string, any>;
   }
   if (!project.org_id) {
     return NextResponse.json({ error: 'Project is not associated with an organization' }, { status: 400 });

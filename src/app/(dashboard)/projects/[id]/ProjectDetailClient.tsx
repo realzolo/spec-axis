@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import EnhancedProjectDetail from './EnhancedProjectDetail';
-import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
+import { PageLoading } from '@/components/ui/page-loading';
 import type { Dictionary } from '@/i18n';
+import { withOrgPrefix } from '@/lib/orgPath';
 
 type Project = {
   id: string;
@@ -23,6 +24,7 @@ export default function ProjectDetailClient({
   dict: Dictionary;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [project, setProject] = useState<Project | null>(null);
   const [branches, setBranches] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,19 +68,18 @@ export default function ProjectDetailClient({
   }, [projectId]);
 
   if (loading) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-3">
-        <Spinner size="lg" />
-        <div className="text-sm text-muted-foreground">{dict.common.loading}</div>
-      </div>
-    );
+    return <PageLoading label={dict.common.loading} />;
   }
 
   if (!project || loadError) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3">
         <div className="text-sm text-muted-foreground">{dict.common.error}</div>
-        <Button variant="outline" size="sm" onClick={() => router.push('/projects')}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => router.push(withOrgPrefix(pathname, '/projects'))}
+        >
           {dict.common.back}
         </Button>
       </div>

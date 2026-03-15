@@ -13,6 +13,16 @@ export default function InviteAcceptPage() {
   const [status, setStatus] = useState<Status>('loading');
   const [message, setMessage] = useState<string>('Accepting invite...');
 
+  async function resolveOrgRedirect(): Promise<string> {
+    try {
+      const res = await fetch('/api/orgs/active');
+      if (!res.ok) return '/projects';
+      const data = await res.json();
+      if (data?.orgId) return `/o/${data.orgId}/projects`;
+    } catch {}
+    return '/projects';
+  }
+
   useEffect(() => {
     const tokenParam = params?.token;
     const token = Array.isArray(tokenParam) ? tokenParam[0] : tokenParam;
@@ -52,7 +62,14 @@ export default function InviteAcceptPage() {
             <div className="text-sm text-muted-foreground">{message}</div>
             <div className="flex items-center justify-center gap-2">
               {status === 'success' && (
-                <Button onClick={() => router.push('/projects')}>Go to dashboard</Button>
+                <Button
+                  onClick={async () => {
+                    const nextPath = await resolveOrgRedirect();
+                    router.push(nextPath);
+                  }}
+                >
+                  Go to dashboard
+                </Button>
               )}
               {status === 'unauthorized' && (
                 <Button onClick={() => router.push('/login')}>Sign in</Button>

@@ -12,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { Dictionary } from '@/i18n';
+import { stripOrgPrefix } from '@/lib/orgPath';
+import { useOrgRole } from '@/lib/useOrgRole';
 
 function useQueryParamUpdater() {
   const router = useRouter();
@@ -33,11 +35,13 @@ export default function Topbar({ dict }: { dict: Dictionary }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const updateQuery = useQueryParamUpdater();
+  const basePath = stripOrgPrefix(pathname);
+  const { isAdmin } = useOrgRole();
 
-  const isProjects = pathname.startsWith('/projects');
-  const isReports = pathname.startsWith('/reports');
-  const isRules = pathname.startsWith('/rules');
-  const isSettings = pathname.startsWith('/settings');
+  const isProjects = basePath.startsWith('/projects');
+  const isReports = basePath.startsWith('/reports');
+  const isRules = basePath.startsWith('/rules');
+  const isSettings = basePath.startsWith('/settings');
 
   const title =
     isProjects ? dict.projects.allProjects :
@@ -113,25 +117,27 @@ export default function Topbar({ dict }: { dict: Dictionary }) {
             </button>
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button className="gap-1.5 h-8 text-sm">
-                <Plus className="h-4 w-4" />
-                {dict.projects.addProject}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => {
-                  if (typeof window !== 'undefined') {
-                    window.dispatchEvent(new CustomEvent('open-add-project'));
-                  }
-                }}
-              >
-                {dict.projects.addProject}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {isAdmin && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="gap-1.5 h-8 text-sm">
+                  <Plus className="h-4 w-4" />
+                  {dict.projects.addProject}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (typeof window !== 'undefined') {
+                      window.dispatchEvent(new CustomEvent('open-add-project'));
+                    }
+                  }}
+                >
+                  {dict.projects.addProject}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       )}
     </div>

@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
-import { requireProjectAccess } from '@/services/orgs';
+import { getActiveOrgId, getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES, requireProjectAccess } from '@/services/orgs';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,8 +18,13 @@ export async function POST(request: NextRequest) {
   if (!user) return unauthorized();
 
   const supabase = createAdminClient();
+  const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
+  const role = await getOrgMemberRole(orgId, user.id);
+  if (!isRoleAllowed(role, ORG_ADMIN_ROLES)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
-  const { error } = await supabase.rpc('auto_adjust_rule_weights');
+  const { error } = await supabase.rpc('auto_adjust_rule_weights', { p_org_id: orgId });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -40,15 +45,20 @@ export async function GET(request: NextRequest) {
   const projectId = searchParams.get('projectId');
 
   const supabase = createAdminClient();
+  const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
 
   let query = supabase
     .from('learned_patterns')
-    .select('*')
+    .select('*, projects!inner(org_id)')
     .eq('is_enabled', true)
+    .eq('projects.org_id', orgId)
     .order('confidence_score', { ascending: false });
 
   if (projectId) {
-    await requireProjectAccess(projectId, user.id);
+    const project = await requireProjectAccess(projectId, user.id);
+    if (!project.org_id || project.org_id !== orgId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     query = query.eq('project_id', projectId);
   }
 
@@ -58,5 +68,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json(data || []);
+  const cleaned = (data || []).map((row: Record<string, unknown>) => {
+    const { projects, ...rest } = row;
+    return rest;
+  });
+
+  return NextResponse.json(cleaned);
 }

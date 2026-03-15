@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { PageLoading } from '@/components/ui/page-loading';
 import { Plus, Settings, Trash2, Check, X, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import AddVCSIntegrationModal from '@/components/settings/AddVCSIntegrationModal';
@@ -11,6 +12,7 @@ import AddAIIntegrationModal from '@/components/settings/AddAIIntegrationModal';
 import EditVCSIntegrationModal from '@/components/settings/EditVCSIntegrationModal';
 import EditAIIntegrationModal from '@/components/settings/EditAIIntegrationModal';
 import SettingsNav from '@/components/settings/SettingsNav';
+import { useOrgRole } from '@/lib/useOrgRole';
 
 interface Integration {
   id: string;
@@ -31,6 +33,7 @@ export default function IntegrationsPage() {
   const [editingVCS, setEditingVCS] = useState<Integration | null>(null);
   const [editingAI, setEditingAI] = useState<Integration | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const { isAdmin } = useOrgRole();
 
   useEffect(() => {
     loadIntegrations();
@@ -136,48 +139,50 @@ export default function IntegrationsPage() {
               )}
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => handleTest(integration.id)}
-                disabled={testingId === integration.id}
-              >
-                {testingId === integration.id ? 'Testing...' : 'Test'}
-              </Button>
-
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  if (type === 'vcs') {
-                    setEditingVCS(integration);
-                  } else {
-                    setEditingAI(integration);
-                  }
-                }}
-              >
-                <Edit className="size-4" />
-              </Button>
-
-              {!integration.is_default && (
+            {isAdmin && (
+              <div className="flex items-center gap-2">
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => handleSetDefault(integration.id, type)}
+                  onClick={() => handleTest(integration.id)}
+                  disabled={testingId === integration.id}
                 >
-                  Set Default
+                  {testingId === integration.id ? 'Testing...' : 'Test'}
                 </Button>
-              )}
 
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => handleDelete(integration.id, type)}
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (type === 'vcs') {
+                      setEditingVCS(integration);
+                    } else {
+                      setEditingAI(integration);
+                    }
+                  }}
+                >
+                  <Edit className="size-4" />
+                </Button>
+
+                {!integration.is_default && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleSetDefault(integration.id, type)}
+                  >
+                    Set Default
+                  </Button>
+                )}
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleDelete(integration.id, type)}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -185,11 +190,7 @@ export default function IntegrationsPage() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    );
+    return <PageLoading />;
   }
 
   return (
@@ -216,10 +217,12 @@ export default function IntegrationsPage() {
                       Connect to GitHub, GitLab, or other Git services
                     </p>
                   </div>
-                  <Button size="sm" onClick={() => setShowVCSModal(true)} className="gap-1.5">
-                    <Plus className="size-4" />
-                    Add Repository
-                  </Button>
+                  {isAdmin && (
+                    <Button size="sm" onClick={() => setShowVCSModal(true)} className="gap-1.5">
+                      <Plus className="size-4" />
+                      Add Repository
+                    </Button>
+                  )}
                 </div>
 
                 {vcsIntegrations.length === 0 ? (
@@ -248,10 +251,12 @@ export default function IntegrationsPage() {
                       Connect to Claude, GPT-4, or other AI services
                     </p>
                   </div>
-                  <Button size="sm" onClick={() => setShowAIModal(true)} className="gap-1.5">
-                    <Plus className="size-4" />
-                    Add AI Model
-                  </Button>
+                  {isAdmin && (
+                    <Button size="sm" onClick={() => setShowAIModal(true)} className="gap-1.5">
+                      <Plus className="size-4" />
+                      Add AI Model
+                    </Button>
+                  )}
                 </div>
 
                 {aiIntegrations.length === 0 ? (
@@ -274,7 +279,7 @@ export default function IntegrationsPage() {
       </div>
 
       {/* Modals */}
-      {showVCSModal && (
+      {isAdmin && showVCSModal && (
         <AddVCSIntegrationModal
           onClose={() => setShowVCSModal(false)}
           onSuccess={() => {
@@ -284,7 +289,7 @@ export default function IntegrationsPage() {
         />
       )}
 
-      {showAIModal && (
+      {isAdmin && showAIModal && (
         <AddAIIntegrationModal
           onClose={() => setShowAIModal(false)}
           onSuccess={() => {
@@ -294,7 +299,7 @@ export default function IntegrationsPage() {
         />
       )}
 
-      {editingVCS && (
+      {isAdmin && editingVCS && (
         <EditVCSIntegrationModal
           integration={editingVCS}
           onClose={() => setEditingVCS(null)}
@@ -305,7 +310,7 @@ export default function IntegrationsPage() {
         />
       )}
 
-      {editingAI && (
+      {isAdmin && editingAI && (
         <EditAIIntegrationModal
           integration={editingAI}
           onClose={() => setEditingAI(null)}

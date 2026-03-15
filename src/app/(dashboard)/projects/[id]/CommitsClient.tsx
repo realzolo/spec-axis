@@ -1,15 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { ArrowLeft, Send, User, Clock, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { PageLoading } from '@/components/ui/page-loading';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
+import { withOrgPrefix } from '@/lib/orgPath';
 
 type Commit = { sha: string; message: string; author: string; date: string };
 type Project = { id: string; name: string; repo: string; default_branch: string; ruleset_id?: string };
@@ -18,6 +20,7 @@ const PER_PAGE = 30;
 
 export default function CommitsClient({ project, branches, dict }: { project: Project; branches: string[]; dict: Dictionary }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [branch, setBranch] = useState(project.default_branch);
   const [authorFilter, setAuthorFilter] = useState('all');
   const [commits, setCommits] = useState<Commit[]>([]);
@@ -80,7 +83,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
     });
     const data = await res.json();
     if (!res.ok) { toast.error(data.error); setAnalyzing(false); return; }
-    router.push(`/reports/${data.reportId}`);
+    router.push(withOrgPrefix(pathname, `/reports/${data.reportId}`));
   }
 
   function formatDate(d: string) {
@@ -100,7 +103,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 h-16 border-b border-border bg-card shrink-0">
-        <Link href="/projects">
+        <Link href={withOrgPrefix(pathname, '/projects')}>
           <Button size="icon" variant="ghost"><ArrowLeft className="size-4" /></Button>
         </Link>
         <div className="flex-1 min-w-0">
@@ -156,9 +159,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
       {/* Commit list */}
       <div className="flex-1 overflow-auto bg-muted/30 p-4">
         {loading ? (
-          <div className="flex justify-center items-center h-[200px]">
-            <Spinner size="lg" />
-          </div>
+          <PageLoading label={dict.common.loading} />
         ) : filtered.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground text-sm">{dict.commits.noCommits}</div>
         ) : (
@@ -172,13 +173,13 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
                   className={[
                     'flex items-center gap-3.5 px-4 py-3.5 cursor-pointer rounded-xl border transition-all',
                     isSelected
-                      ? 'border-primary/40 bg-primary/5 ring-2 ring-primary/10'
-                      : 'border-border bg-card hover:border-primary/20 hover:bg-accent/30',
+                      ? 'border-[hsl(var(--accent)/0.4)] bg-[hsl(var(--accent)/0.08)] ring-2 ring-[hsl(var(--accent)/0.18)]'
+                      : 'border-border bg-card hover:border-[hsl(var(--accent)/0.25)] hover:bg-[hsl(var(--accent)/0.06)]',
                   ].join(' ')}
                 >
                   <div className={[
                     'w-4.5 h-4.5 rounded-md shrink-0 flex items-center justify-center border-2 transition-all',
-                    isSelected ? 'border-primary bg-primary' : 'border-border bg-background',
+                    isSelected ? 'border-[hsl(var(--accent))] bg-[hsl(var(--accent))]' : 'border-border bg-background',
                   ].join(' ')}>
                     {isSelected && (
                       <svg width="10" height="8" viewBox="0 0 10 8" fill="none">

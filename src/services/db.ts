@@ -23,14 +23,21 @@ export async function getProjectById(id: string) {
   return data;
 }
 
-export async function getProjectByRepo(repo: string, orgId?: string) {
-  let query = db().from('projects').select('*').eq('repo', repo);
-  if (orgId) {
-    query = query.eq('org_id', orgId);
-  }
-  const { data, error } = await query.single();
+export async function getProjectByRepo(repo: string, orgId: string) {
+  const { data, error } = await db()
+    .from('projects')
+    .select('*')
+    .eq('repo', repo)
+    .eq('org_id', orgId)
+    .single();
   if (error) throw error;
   return data;
+}
+
+export async function listProjectsByRepo(repo: string) {
+  const { data, error } = await db().from('projects').select('*').eq('repo', repo);
+  if (error) throw error;
+  return data ?? [];
 }
 
 export async function createProject(payload: {

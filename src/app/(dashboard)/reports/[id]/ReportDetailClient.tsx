@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, AlertCircle, RefreshCw, Github, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
+import { withOrgPrefix } from '@/lib/orgPath';
 
 type Issue = {
   file: string; line?: number; severity: 'error' | 'warning' | 'info';
@@ -95,6 +96,7 @@ function IssueRow({ issue, dict }: { issue: Issue; dict: Dictionary }) {
 
 export default function ReportDetailClient({ initialReport, dict }: { initialReport: Report; dict: Dictionary }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [report, setReport] = useState<Report>(initialReport);
   const [sevFilter, setSevFilter] = useState('all');
   const [catFilter, setCatFilter] = useState('all');
@@ -125,7 +127,7 @@ export default function ReportDetailClient({ initialReport, dict }: { initialRep
     const data = await res.json();
     setRetrying(false);
     if (!res.ok) { toast.error(data.error ?? dict.reportDetail.retryFailed); return; }
-    router.push(`/reports/${data.reportId}`);
+    router.push(withOrgPrefix(pathname, `/reports/${data.reportId}`));
   }
 
   const allIssues = report.issues ?? [];
@@ -167,7 +169,7 @@ export default function ReportDetailClient({ initialReport, dict }: { initialRep
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 px-6 h-14 border-b border-border bg-background shrink-0">
-        <Link href="/reports">
+        <Link href={withOrgPrefix(pathname, '/reports')}>
           <Button size="icon" variant="ghost"><ArrowLeft className="size-4" /></Button>
         </Link>
         <div className="flex-1 min-w-0">

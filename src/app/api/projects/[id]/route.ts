@@ -8,6 +8,7 @@ import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES, requireProjectAccess } from '@/services/orgs';
+import { createAdminClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +69,23 @@ export async function PUT(
     if (project.org_id) {
       const role = await getOrgMemberRole(project.org_id, user.id);
       if (!isRoleAllowed(role, ORG_ADMIN_ROLES)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
+
+    if (ruleset_id !== undefined && ruleset_id !== null) {
+      const supabase = createAdminClient();
+      const { data: ruleSet, error: ruleSetError } = await supabase
+        .from('rule_sets')
+        .select('id, is_global, org_id')
+        .eq('id', ruleset_id)
+        .single();
+
+      if (ruleSetError || !ruleSet) {
+        return NextResponse.json({ error: 'Rule set not found' }, { status: 400 });
+      }
+
+      if (!ruleSet.is_global && ruleSet.org_id !== project.org_id) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
     }

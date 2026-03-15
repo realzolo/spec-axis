@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { FileText, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+import { PageLoading } from '@/components/ui/page-loading';
 import {
   Select,
   SelectContent,
@@ -15,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
+import { withOrgPrefix } from '@/lib/orgPath';
 
 type Report = {
   id: string; status: string; score?: number;
@@ -54,6 +56,7 @@ export default function ReportsClient({ initialReports, dict }: { initialReports
   ];
 
   const router = useRouter();
+  const pathname = usePathname();
   const [reports, setReports] = useState<Report[]>(initialReports ?? []);
   const [loading, setLoading] = useState(!initialReports);
   const [loadError, setLoadError] = useState(false);
@@ -123,12 +126,7 @@ export default function ReportsClient({ initialReports, dict }: { initialReports
   ], [projectNames, dict]);
 
   if (loading) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-3">
-        <Spinner size="lg" />
-        <div className="text-sm text-muted-foreground">{dict.common.loading}</div>
-      </div>
-    );
+    return <PageLoading label={dict.common.loading} />;
   }
 
   if (loadError && reports.length === 0) {
@@ -215,7 +213,7 @@ export default function ReportsClient({ initialReports, dict }: { initialReports
                 <div
                   key={report.id}
                   className="grid grid-cols-[64px_1fr_160px_auto] items-center px-4 py-2.5 border-b border-border last:border-0 hover:bg-muted/30 transition-soft cursor-pointer gap-4"
-                  onClick={() => router.push(`/reports/${report.id}`)}
+                  onClick={() => router.push(withOrgPrefix(pathname, `/reports/${report.id}`))}
                 >
                   <div className="flex flex-col items-start">
                     <span className={['text-base font-semibold leading-none', report.score != null ? scoreColor(report.score) : 'text-muted-foreground'].join(' ')}>

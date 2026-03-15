@@ -55,6 +55,16 @@ export default function LoginClient({ dict, locale, legalLinks }: LoginClientPro
     </svg>
   );
 
+  async function resolveOrgRedirect(): Promise<string> {
+    try {
+      const res = await fetch('/api/orgs/active');
+      if (!res.ok) return '/projects';
+      const data = await res.json();
+      if (data?.orgId) return `/o/${data.orgId}/projects`;
+    } catch {}
+    return '/projects';
+  }
+
   async function handleOAuth(provider: 'google' | 'github') {
     setOauthLoading(provider);
 
@@ -88,7 +98,8 @@ export default function LoginClient({ dict, locale, legalLinks }: LoginClientPro
 
       if (error) throw error;
 
-      router.push('/projects');
+      const nextPath = await resolveOrgRedirect();
+      router.push(nextPath);
       router.refresh();
     } catch {
       toast.error(dict.auth.loginFailed);
@@ -126,7 +137,8 @@ export default function LoginClient({ dict, locale, legalLinks }: LoginClientPro
       });
       if (error) throw error;
 
-      router.push('/projects');
+      const nextPath = await resolveOrgRedirect();
+      router.push(nextPath);
       router.refresh();
     } catch {
       toast.error(dict.auth.signUpFailed);

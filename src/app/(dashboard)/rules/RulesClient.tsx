@@ -1,25 +1,30 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Plus, Shield, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { PageLoading } from '@/components/ui/page-loading';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
+import { withOrgPrefix } from '@/lib/orgPath';
+import { useOrgRole } from '@/lib/useOrgRole';
 
 type RuleSet = { id: string; name: string; description?: string; is_global: boolean; rules?: unknown[] };
 
 export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets?: RuleSet[]; dict: Dictionary }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [ruleSets, setRuleSets] = useState<RuleSet[]>(initialRuleSets ?? []);
   const [loading, setLoading] = useState(!initialRuleSets);
   const [loadError, setLoadError] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const { isAdmin } = useOrgRole();
 
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -67,11 +72,7 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
   }
 
   if (loading) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-3">
-        <div className="text-sm text-muted-foreground">{dict.common.loading}</div>
-      </div>
-    );
+    return <PageLoading label={dict.common.loading} />;
   }
 
   if (loadError && ruleSets.length === 0) {
@@ -93,10 +94,12 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
             <h1 className="text-base font-semibold">{dict.rules.title}</h1>
             <p className="text-sm text-muted-foreground mt-0.5">{dict.rules.description}</p>
           </div>
-          <Button onClick={() => setDialogOpen(true)} size="sm" className="gap-1.5 text-sm">
-            <Plus className="size-4" />
-            {dict.rules.newRuleSet}
-          </Button>
+          {isAdmin && (
+            <Button onClick={() => setDialogOpen(true)} size="sm" className="gap-1.5 text-sm">
+              <Plus className="size-4" />
+              {dict.rules.newRuleSet}
+            </Button>
+          )}
         </div>
 
         {ruleSets.length === 0 ? (
@@ -108,9 +111,11 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
               <h3 className="text-sm font-medium">{dict.rules.noRules}</h3>
               <p className="text-sm text-muted-foreground mt-0.5">{dict.rules.noRulesDescription}</p>
             </div>
-            <Button onClick={() => setDialogOpen(true)} size="sm" className="gap-1.5 mt-1">
-              <Plus className="size-4" />{dict.rules.newRuleSet}
-            </Button>
+            {isAdmin && (
+              <Button onClick={() => setDialogOpen(true)} size="sm" className="gap-1.5 mt-1">
+                <Plus className="size-4" />{dict.rules.newRuleSet}
+              </Button>
+            )}
           </div>
         ) : (
           <div className="border border-border rounded-lg overflow-hidden bg-card">
@@ -127,7 +132,7 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
                 <div
                   key={rs.id}
                   className="flex items-center gap-4 px-4 py-2.5 border-b border-border last:border-0 hover:bg-muted/30 transition-soft cursor-pointer"
-                  onClick={() => router.push(`/rules/${rs.id}`)}
+                  onClick={() => router.push(withOrgPrefix(pathname, `/rules/${rs.id}`))}
                 >
                   <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted shrink-0">
                     <Shield className="size-4 text-muted-foreground" />
@@ -154,27 +159,29 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
         )}
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{dict.rules.newRuleSet}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleCreate} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium">{dict.common.name}</label>
-              <Input value={name} onChange={e => setName(e.target.value)} placeholder={dict.rules.ruleSetNamePlaceholder} required />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium">{dict.rules.descriptionOptional}</label>
-              <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={dict.rules.descriptionPlaceholder} />
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{dict.common.cancel}</Button>
-              <Button type="submit" disabled={creating}>{creating ? dict.rules.creating : dict.rules.create}</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {isAdmin && (
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{dict.rules.newRuleSet}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCreate} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">{dict.common.name}</label>
+                <Input value={name} onChange={e => setName(e.target.value)} placeholder={dict.rules.ruleSetNamePlaceholder} required />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">{dict.rules.descriptionOptional}</label>
+                <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={dict.rules.descriptionPlaceholder} />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{dict.common.cancel}</Button>
+                <Button type="submit" disabled={creating}>{creating ? dict.rules.creating : dict.rules.create}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

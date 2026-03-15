@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, Trash2, Pencil, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,8 +11,11 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { PageLoading } from '@/components/ui/page-loading';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
+import { withOrgPrefix } from '@/lib/orgPath';
+import { useOrgRole } from '@/lib/useOrgRole';
 
 type Rule = {
   id: string; ruleset_id: string; category: string; name: string;
@@ -39,6 +42,7 @@ export default function RuleSetDetailClient({
   dict: Dictionary;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [ruleSet, setRuleSet] = useState<RuleSet | null>(initialRuleSet ?? null);
   const [rules, setRules] = useState<Rule[]>(initialRuleSet?.rules ?? []);
   const [loading, setLoading] = useState(!initialRuleSet);
@@ -52,6 +56,7 @@ export default function RuleSetDetailClient({
   const [fName, setFName] = useState('');
   const [fPrompt, setFPrompt] = useState('');
   const [fWeight, setFWeight] = useState(20);
+  const { isAdmin } = useOrgRole();
 
   const CAT_ITEMS = CATEGORIES.map(c => ({ id: c, label: dict.rules.category[c as keyof typeof dict.rules.category] ?? c }));
   const SEV_ITEMS = [
@@ -90,6 +95,7 @@ export default function RuleSetDetailClient({
   }, [initialRuleSet, ruleSetId]);
 
   function openAdd() {
+    if (!isAdmin) return;
     setEditRule(null);
     const r = EMPTY_RULE;
     setFCategory(r.category); setFSeverity(r.severity); setFName(r.name); setFPrompt(r.prompt); setFWeight(r.weight);
@@ -97,6 +103,7 @@ export default function RuleSetDetailClient({
   }
 
   function openEdit(rule: Rule) {
+    if (!isAdmin) return;
     setEditRule(rule);
     setFCategory(rule.category); setFSeverity(rule.severity); setFName(rule.name); setFPrompt(rule.prompt); setFWeight(rule.weight);
     setDialogOpen(true);
@@ -122,6 +129,7 @@ export default function RuleSetDetailClient({
   }
 
   async function handleToggle(rule: Rule) {
+    if (!isAdmin) return;
     setTogglingId(rule.id);
     const res = await fetch(`/api/rules/${ruleSetId}/rules`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -133,6 +141,7 @@ export default function RuleSetDetailClient({
   }
 
   async function handleDelete(ruleId: string) {
+    if (!isAdmin) return;
     const res = await fetch(`/api/rules/${ruleSetId}/rules`, {
       method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ruleId }),
     });
@@ -149,18 +158,18 @@ export default function RuleSetDetailClient({
   const enabledCount = rules.filter(r => r.is_enabled).length;
 
   if (loading) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-3">
-        <div className="text-sm text-muted-foreground">{dict.common.loading}</div>
-      </div>
-    );
+    return <PageLoading label={dict.common.loading} />;
   }
 
   if (!ruleSet || loadError) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3">
         <div className="text-sm text-muted-foreground">{dict.common.error}</div>
-        <Button variant="outline" size="sm" onClick={() => router.push('/rules')}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => router.push(withOrgPrefix(pathname, '/rules'))}
+        >
           {dict.common.back}
         </Button>
       </div>
@@ -172,7 +181,11 @@ export default function RuleSetDetailClient({
       {/* Header */}
       <div className="border-b border-border bg-background shrink-0">
         <div className="flex items-center gap-3 px-6 py-4 max-w-[1200px] mx-auto w-full">
-          <Button size="icon" variant="ghost" onClick={() => router.push('/rules')}>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => router.push(withOrgPrefix(pathname, '/rules'))}
+          >
             <ArrowLeft className="size-4" />
           </Button>
           <Shield className="size-4 text-muted-foreground shrink-0" />
@@ -186,10 +199,12 @@ export default function RuleSetDetailClient({
           <span className="text-sm text-muted-foreground">
             <span className="text-success font-semibold">{enabledCount}</span>/{rules.length} {dict.rules.enabled}
           </span>
-          <Button size="sm" onClick={openAdd} className="gap-1.5">
-            <Plus className="size-4" />
-            {dict.rules.addRule}
-          </Button>
+          {isAdmin && (
+            <Button size="sm" onClick={openAdd} className="gap-1.5">
+              <Plus className="size-4" />
+              {dict.rules.addRule}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -204,9 +219,11 @@ export default function RuleSetDetailClient({
               <h3 className="text-sm font-medium">{dict.rules.noRulesInSet}</h3>
               <p className="text-sm text-muted-foreground mt-0.5">{dict.rules.noRulesInSetDescription}</p>
             </div>
-            <Button size="sm" onClick={openAdd} className="gap-1.5 mt-1">
-              <Plus className="size-4" />{dict.rules.addRule}
-            </Button>
+            {isAdmin && (
+              <Button size="sm" onClick={openAdd} className="gap-1.5 mt-1">
+                <Plus className="size-4" />{dict.rules.addRule}
+              </Button>
+            )}
           </div>
         ) : (
           <div className="max-w-[1200px] mx-auto w-full px-6 py-6 space-y-4">
@@ -225,7 +242,7 @@ export default function RuleSetDetailClient({
                     <div key={rule.id} className={['flex items-start gap-3 px-6 py-3.5 border-b border-border last:border-0 hover:bg-muted/20 transition-colors', !rule.is_enabled ? 'opacity-50' : ''].join(' ')}>
                       <Switch
                         checked={rule.is_enabled}
-                        disabled={togglingId === rule.id}
+                        disabled={!isAdmin || togglingId === rule.id}
                         onCheckedChange={() => handleToggle(rule)}
                         className="mt-0.5 shrink-0"
                       />
@@ -239,26 +256,28 @@ export default function RuleSetDetailClient({
                           {rule.prompt}
                         </div>
                       </div>
-                      <div className="flex gap-0.5 shrink-0">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button size="icon" variant="ghost" onClick={() => openEdit(rule)}>
-                                <Pencil className="size-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>{dict.common.edit}</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button size="icon" variant="ghost" onClick={() => handleDelete(rule.id)}>
-                                <Trash2 className="size-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>{dict.common.delete}</TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
+                      {isAdmin && (
+                        <div className="flex gap-0.5 shrink-0">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button size="icon" variant="ghost" onClick={() => openEdit(rule)}>
+                                  <Pencil className="size-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{dict.common.edit}</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button size="icon" variant="ghost" onClick={() => handleDelete(rule.id)}>
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{dict.common.delete}</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -269,61 +288,63 @@ export default function RuleSetDetailClient({
       </div>
 
       {/* Add/Edit Modal */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>{editRule ? dict.rules.editRule : dict.rules.addRule}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSaveRule} className="flex flex-col gap-4">
-            <div className="flex gap-3">
-              <div className="flex flex-col gap-1.5 flex-1">
-                <label className="text-sm font-medium">{dict.rules.categoryLabel}</label>
-                <Select value={fCategory} onValueChange={(value) => setFCategory(value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CAT_ITEMS.map(item => (
-                      <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+      {isAdmin && (
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>{editRule ? dict.rules.editRule : dict.rules.addRule}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSaveRule} className="flex flex-col gap-4">
+              <div className="flex gap-3">
+                <div className="flex flex-col gap-1.5 flex-1">
+                  <label className="text-sm font-medium">{dict.rules.categoryLabel}</label>
+                  <Select value={fCategory} onValueChange={(value) => setFCategory(value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CAT_ITEMS.map(item => (
+                        <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5 w-[130px]">
+                  <label className="text-sm font-medium">{dict.rules.severityLabel}</label>
+                  <Select value={fSeverity} onValueChange={(value) => setFSeverity(value as 'error' | 'warning' | 'info')}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SEV_ITEMS.map(item => (
+                        <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="flex flex-col gap-1.5 w-[130px]">
-                <label className="text-sm font-medium">{dict.rules.severityLabel}</label>
-                <Select value={fSeverity} onValueChange={(value) => setFSeverity(value as 'error' | 'warning' | 'info')}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SEV_ITEMS.map(item => (
-                      <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">{dict.rules.ruleNameLabel}</label>
+                <Input value={fName} onChange={e => setFName(e.target.value)} placeholder={dict.rules.ruleNamePlaceholder} required />
               </div>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium">{dict.rules.ruleNameLabel}</label>
-              <Input value={fName} onChange={e => setFName(e.target.value)} placeholder={dict.rules.ruleNamePlaceholder} required />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium">{dict.rules.promptLabel}</label>
-              <Textarea value={fPrompt} onChange={e => setFPrompt(e.target.value)}
-                placeholder={dict.rules.promptPlaceholder} required rows={4} className="font-mono text-sm" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium">{dict.rules.weightLabel}</label>
-              <Input type="number" min={0} max={100} step={5} value={String(fWeight)}
-                onChange={e => setFWeight(Number(e.target.value))} className="w-[120px]" />
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); setEditRule(null); }}>{dict.common.cancel}</Button>
-              <Button type="submit" disabled={saving}>{saving ? dict.rules.saving : editRule ? dict.rules.saveChanges : dict.rules.addRule}</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">{dict.rules.promptLabel}</label>
+                <Textarea value={fPrompt} onChange={e => setFPrompt(e.target.value)}
+                  placeholder={dict.rules.promptPlaceholder} required rows={4} className="font-mono text-sm" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">{dict.rules.weightLabel}</label>
+                <Input type="number" min={0} max={100} step={5} value={String(fWeight)}
+                  onChange={e => setFWeight(Number(e.target.value))} className="w-[120px]" />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); setEditRule(null); }}>{dict.common.cancel}</Button>
+                <Button type="submit" disabled={saving}>{saving ? dict.rules.saving : editRule ? dict.rules.saveChanges : dict.rules.addRule}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

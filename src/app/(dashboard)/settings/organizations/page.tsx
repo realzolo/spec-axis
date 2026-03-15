@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Check, Copy, Plus, UserMinus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { PageLoading } from '@/components/ui/page-loading';
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,7 @@ import {
 } from '@/components/ui/select';
 import SettingsNav from '@/components/settings/SettingsNav';
 import { createClient } from '@/lib/supabase/client';
+import { replaceOrgInPath } from '@/lib/orgPath';
 
 type OrgRole = 'owner' | 'admin' | 'reviewer' | 'member';
 
@@ -73,6 +75,7 @@ const roleBadgeVariant: Record<OrgRole, 'accent' | 'secondary' | 'outline' | 'mu
 
 export default function OrganizationsPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [members, setMembers] = useState<OrgMember[]>([]);
@@ -180,6 +183,7 @@ export default function OrganizationsPage() {
       });
       if (!res.ok) throw new Error('Failed to set active org');
       setActiveOrgId(orgId);
+      router.push(replaceOrgInPath(pathname, orgId));
       router.refresh();
     } catch {
       toast.error('Failed to switch organization');
@@ -307,13 +311,7 @@ export default function OrganizationsPage() {
   }
 
   if (loading) {
-    return (
-      <div className="flex-1 overflow-auto">
-        <div className="max-w-5xl px-6 py-6">
-          <p className="text-sm text-muted-foreground">Loading organizations...</p>
-        </div>
-      </div>
-    );
+    return <PageLoading />;
   }
 
   return (

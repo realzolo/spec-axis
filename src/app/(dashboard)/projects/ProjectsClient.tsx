@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PageLoading } from '@/components/ui/page-loading';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { FolderOpen } from 'lucide-react';
@@ -11,6 +12,7 @@ import AddProjectModal from '@/components/project/AddProjectModal';
 import DashboardStats from '@/components/dashboard/DashboardStats';
 import { t } from '@/lib/i18n-utils';
 import type { Dictionary } from '@/i18n';
+import { useOrgRole } from '@/lib/useOrgRole';
 
 type Project = {
   id: string; name: string; repo: string;
@@ -25,6 +27,7 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
   const searchParams = useSearchParams();
   const search = searchParams.get('q') ?? '';
   const view = searchParams.get('view') === 'list' ? 'list' : 'grid';
+  const { isAdmin } = useOrgRole();
 
   const filtered = useMemo(() => {
     if (!search.trim()) return projects;
@@ -49,11 +52,12 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
 
   useEffect(() => {
     function handleOpen() {
+      if (!isAdmin) return;
       setShowAdd(true);
     }
     window.addEventListener('open-add-project', handleOpen);
     return () => window.removeEventListener('open-add-project', handleOpen);
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     if (initialProjects) return;
@@ -82,11 +86,7 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
   }, [initialProjects]);
 
   if (loading) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-3">
-        <div className="text-sm text-muted-foreground">{dict.common.loading}</div>
-      </div>
-    );
+    return <PageLoading label={dict.common.loading} />;
   }
 
   if (loadError && projects.length === 0) {
@@ -112,10 +112,12 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
                 <h3 className="text-sm font-medium">{dict.projects.noProjectsEmpty}</h3>
                 <p className="text-sm text-muted-foreground mt-0.5">{dict.projects.noProjectsEmptyDescription}</p>
               </div>
-              <Button onClick={() => setShowAdd(true)} size="sm" className="gap-1.5 mt-1">
-                <Plus className="h-4 w-4" />
-                {dict.projects.addProject}
-              </Button>
+              {isAdmin && (
+                <Button onClick={() => setShowAdd(true)} size="sm" className="gap-1.5 mt-1">
+                  <Plus className="h-4 w-4" />
+                  {dict.projects.addProject}
+                </Button>
+              )}
             </div>
           ) : filtered.length === 0 ? (
             <div className="py-20">
@@ -147,13 +149,13 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
                 {view === 'grid' ? (
                   <div className="grid gap-4 md:grid-cols-2">
                     {filtered.map(p => (
-                      <ProjectCard key={p.id} project={p} onDelete={handleDelete} onUpdate={handleUpdate} dict={dict} view="grid" />
+                      <ProjectCard key={p.id} project={p} onDelete={handleDelete} onUpdate={handleUpdate} dict={dict} view="grid" canManage={isAdmin} />
                     ))}
                   </div>
                 ) : (
                   <div className="rounded-xl border border-border bg-card divide-y divide-border">
                     {filtered.map(p => (
-                      <ProjectCard key={p.id} project={p} onDelete={handleDelete} onUpdate={handleUpdate} dict={dict} view="list" />
+                      <ProjectCard key={p.id} project={p} onDelete={handleDelete} onUpdate={handleUpdate} dict={dict} view="list" canManage={isAdmin} />
                     ))}
                   </div>
                 )}
@@ -162,12 +164,14 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
           )}
       </div>
 
-      <AddProjectModal
-        open={showAdd}
-        onClose={() => setShowAdd(false)}
-        onCreated={() => { setShowAdd(false); refresh(); }}
-        dict={dict}
-      />
+      {isAdmin && (
+        <AddProjectModal
+          open={showAdd}
+          onClose={() => setShowAdd(false)}
+          onCreated={() => { setShowAdd(false); refresh(); }}
+          dict={dict}
+        />
+      )}
     </div>
   );
 }

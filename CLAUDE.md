@@ -30,6 +30,30 @@ AI code review platform: Next.js 16 + React 19 + TypeScript + HeroUI v3 (beta) +
 Multi-GitHub project management, commit selection, Claude AI analysis, configurable rule sets, quality report scoring.
 Backend: task queue + analysis workers (by commit SHA), incremental report updates via SSE.
 
+## Organization Model & Routing
+
+Supabase-style multi-tenant org system (Vercel-like UI). Each user has a **personal org** on signup.
+
+**Org-scoped assets:** projects, reports, rule_sets, rules, integrations, rule learning stats.
+
+**Roles:** `owner | admin | reviewer | member`
+- `owner/admin`: manage org assets (create/update/delete projects, rules, integrations, config)
+- `reviewer/member`: read-only (view projects/reports/rules)
+
+**Active org:**
+- Stored in `org_id` cookie
+- Resolved via `/api/orgs/active` (GET/POST)
+- Auth callback + invite accept also set the cookie
+
+**URL routing:**
+- Dashboard URLs must include org prefix: `/o/:orgId/...`
+- `middleware.ts` rewrites `/o/:orgId/...` to the internal route and keeps cookie in sync
+- If a user hits `/projects` (or other dashboard path) and has `org_id`, middleware redirects to `/o/:orgId/...`
+
+**Frontend helpers:**
+- `src/lib/orgPath.ts` → `withOrgPrefix`, `stripOrgPrefix`, `replaceOrgInPath`, `extractOrgFromPath`
+- `src/lib/useOrgRole.ts` → `isAdmin` gating for UI actions
+
 ## Tech Stack
 
 | Tech | Version | Notes |
@@ -145,7 +169,8 @@ Avoid custom font sizes unless a new token is added.
 
 ## Next.js 16 Special Configuration
 
-- **Middleware**: file is `src/proxy.ts`, export is `proxy()` (not `middleware`)
+- **Middleware**: file is `middleware.ts` at repo root (Next.js middleware). It handles `/o/:orgId` rewrites and org redirects.
+- `src/proxy.ts` is legacy and currently unused.
 - **Dynamic pages**: all dashboard pages with Supabase must have `export const dynamic = 'force-dynamic'`
 - **Vercel timeout**: analyze route configured for 300s in `vercel.json`
 
@@ -155,6 +180,8 @@ Avoid custom font sizes unless a new token is added.
 src/
   app/
     (auth)/login/           # Login (no Sidebar)
+    (auth)/invite/[token]/  # Invite accept
+    auth/callback/          # OAuth callback
     (dashboard)/            # Protected pages + Sidebar
       layout.tsx
       projects/             # ProjectsClient
@@ -179,8 +206,11 @@ src/
     index.ts                # getDictionary(), Dictionary type (inferred from en.json)
     dictionaries/           # en.json zh.json ja.json es.json zh-TW.json
   lib/locale.ts             # getLocale() — reads NEXT_LOCALE cookie
+  lib/orgPath.ts            # /o/:orgId path helpers
+  lib/useOrgRole.ts         # client hook for org role + admin gating
   services/db.ts github.ts claude.ts taskQueue.ts analyzeTask.ts ...
-  proxy.ts                  # Auth middleware
+  proxy.ts                  # Legacy auth middleware (unused)
+middleware.ts               # Org path rewrite + redirect (Next.js middleware)
 ```
 
 ## Environment Variables
@@ -215,6 +245,8 @@ pnpm lint    # ESLint
 
 **Task queue:** `POST /api/tasks/run?limit=1` — auth via `x-task-token` or login; max limit 10
 
+**GitHub webhook:** `/api/webhooks/github` supports `?project_id=...`. If a repo matches multiple projects, the endpoint returns 409 and requires `project_id`.
+
 ## Toast Usage
 
 ```ts
@@ -228,7 +260,9 @@ toast.success('...'); toast.error('...'); toast.warning('...');
 - All API routes require login; task endpoints accept `x-task-token`
 - `report_issues.status`: `open | fixed | ignored | false_positive | planned`
 - `/api/projects/[id]/trends` returns array directly (no `data` wrapper)
-- Public pages accessible without login: `/`, `/terms`, `/privacy`
+- Rules learning endpoints are admin-only (org-scoped)
+- Public pages accessible without login: `/`, `/login`, `/auth/*`, `/invite/*`, `/terms`, `/privacy`
+- Dashboard routes must be accessed via `/o/:orgId/...` (middleware rewrites internally)
 
 ## FAQ
 

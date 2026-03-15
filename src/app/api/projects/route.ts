@@ -61,6 +61,22 @@ export async function POST(request: NextRequest) {
 
     const supabase = createAdminClient();
 
+    if (ruleset_id) {
+      const { data: ruleSet, error: ruleSetError } = await supabase
+        .from('rule_sets')
+        .select('id, is_global, org_id')
+        .eq('id', ruleset_id)
+        .single();
+
+      if (ruleSetError || !ruleSet) {
+        return NextResponse.json({ error: 'Rule set not found' }, { status: 400 });
+      }
+
+      if (!ruleSet.is_global && ruleSet.org_id !== orgId) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
+
     // Get user's default VCS integration
     const { data: vcsIntegration, error: vcsError } = await supabase
       .from('user_integrations')

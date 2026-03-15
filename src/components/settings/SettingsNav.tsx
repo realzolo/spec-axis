@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Plug, Users } from 'lucide-react';
+import { stripOrgPrefix, withOrgPrefix } from '@/lib/orgPath';
 
 const items = [
   { href: '/settings/organizations', label: 'Organizations', icon: Users },
@@ -11,6 +12,7 @@ const items = [
 
 export default function SettingsNav() {
   const pathname = usePathname();
+  const basePath = stripOrgPrefix(pathname);
 
   return (
     <div className="space-y-1">
@@ -19,12 +21,13 @@ export default function SettingsNav() {
       </div>
       <nav className="space-y-1">
         {items.map((item) => {
-          const active = pathname.startsWith(item.href);
+          const href = withOrgPrefix(pathname, item.href);
+          const active = basePath.startsWith(item.href);
           const Icon = item.icon;
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={href}
               className={[
                 'flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors',
                 active

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, AlertCircle, RefreshCw, Github, ChevronDown, ChevronUp,
@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+import { PageLoading } from '@/components/ui/page-loading';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
@@ -26,6 +27,7 @@ import EnhancedIssueCard from '@/components/report/EnhancedIssueCard';
 import AIChat from '@/components/report/AIChat';
 import TrendChart from '@/components/report/TrendChart';
 import type { Dictionary } from '@/i18n';
+import { withOrgPrefix } from '@/lib/orgPath';
 
 type Issue = {
   file: string; line?: number;
@@ -104,6 +106,7 @@ export default function EnhancedReportDetailClient({
   dict: Dictionary;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [report, setReport] = useState<Report | null>(initialReport ?? null);
   const [loading, setLoading] = useState(!initialReport);
   const [loadError, setLoadError] = useState(false);
@@ -194,19 +197,18 @@ export default function EnhancedReportDetailClient({
   }, [report, pollReport]);
 
   if (loading) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-3">
-        <Spinner size="lg" />
-        <div className="text-sm text-muted-foreground">{dict.common.loading}</div>
-      </div>
-    );
+    return <PageLoading label={dict.common.loading} />;
   }
 
   if (!report || loadError) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3">
         <div className="text-sm text-muted-foreground">{dict.common.error}</div>
-        <Button variant="outline" size="sm" onClick={() => router.push('/reports')}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => router.push(withOrgPrefix(pathname, '/reports'))}
+        >
           {dict.common.back}
         </Button>
       </div>
@@ -229,7 +231,7 @@ export default function EnhancedReportDetailClient({
     const data = await res.json();
     setRetrying(false);
     if (!res.ok) { toast.error(data.error ?? dict.reportDetail.retryFailed); return; }
-    router.push(`/reports/${data.reportId}`);
+    router.push(withOrgPrefix(pathname, `/reports/${data.reportId}`));
   }
 
   const allIssues = report.issues ?? [];
@@ -284,7 +286,7 @@ export default function EnhancedReportDetailClient({
       {/* Header */}
       <div className="border-b border-border shrink-0 bg-card">
         <div className="flex items-center gap-3 px-6 h-16 max-w-[1200px] mx-auto w-full">
-          <Link href="/reports">
+          <Link href={withOrgPrefix(pathname, '/reports')}>
             <Button size="icon" variant="ghost">
               <ArrowLeft className="size-4" />
             </Button>

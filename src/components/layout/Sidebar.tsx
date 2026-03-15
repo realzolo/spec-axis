@@ -32,6 +32,7 @@ import ThemeToggle from '@/components/theme/ThemeToggle';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import type { Locale } from '@/i18n/config';
 import type { Dictionary } from '@/i18n';
+import { extractOrgFromPath, replaceOrgInPath, stripOrgPrefix, withOrgPrefix } from '@/lib/orgPath';
 
 interface SidebarProps {
   locale: Locale;
@@ -58,15 +59,17 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [dragging, setDragging] = useState(false);
+  const basePath = stripOrgPrefix(pathname);
+  const pathOrgId = extractOrgFromPath(pathname).orgId;
 
   const navItems = [
-    { href: '/projects', label: dict.nav.projects, icon: FolderOpen, countKey: 'projects' as const },
-    { href: '/reports',  label: dict.nav.reports,  icon: FileText,   countKey: 'reports' as const },
-    { href: '/rules',    label: dict.nav.rules,    icon: Shield,     countKey: null },
-    { href: '/settings', label: dict.nav.settings,  icon: Settings,   countKey: null },
+    { base: '/projects', href: withOrgPrefix(pathname, '/projects'), label: dict.nav.projects, icon: FolderOpen, countKey: 'projects' as const },
+    { base: '/reports',  href: withOrgPrefix(pathname, '/reports'),  label: dict.nav.reports,  icon: FileText,   countKey: 'reports' as const },
+    { base: '/rules',    href: withOrgPrefix(pathname, '/rules'),    label: dict.nav.rules,    icon: Shield,     countKey: null },
+    { base: '/settings', href: withOrgPrefix(pathname, '/settings'), label: dict.nav.settings,  icon: Settings,   countKey: null },
   ];
 
-  const activeHref = navItems.find(item => pathname.startsWith(item.href))?.href ?? '/projects';
+  const activeBase = navItems.find(item => basePath.startsWith(item.base))?.base ?? '/projects';
 
   useEffect(() => {
     let alive = true;
@@ -99,6 +102,13 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
       fetch('/api/reports').then(r => r.json()).then((d: unknown[]) => ({ reports: Array.isArray(d) ? d.length : 0 })).catch(() => ({ reports: 0 })),
     ]).then(([p, r]) => setCounts({ ...p, ...r }));
   }, [activeOrgId]);
+
+  useEffect(() => {
+    if (!activeOrgId || !pathOrgId) return;
+    if (pathOrgId !== activeOrgId) {
+      router.replace(replaceOrgInPath(pathname, activeOrgId));
+    }
+  }, [activeOrgId, pathOrgId, pathname, router]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -158,6 +168,7 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
       });
       if (!res.ok) throw new Error('Failed to switch org');
       setActiveOrgId(orgId);
+      router.push(replaceOrgInPath(pathname, orgId));
       router.refresh();
     } catch {}
   }
@@ -191,7 +202,7 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => router.push('/settings/organizations')}>
+        <DropdownMenuItem onClick={() => router.push(withOrgPrefix(pathname, '/settings/organizations'))}>
           Manage organizations
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -265,12 +276,12 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
 
       <nav className="flex-1 px-2 pb-3 space-y-0.5 overflow-y-auto">
         {navItems.map(item => {
-          const active = activeHref === item.href;
+          const active = activeBase === item.base;
           const count = item.countKey ? counts[item.countKey] : null;
           const Icon = item.icon;
           return (
             <Link
-              key={item.href}
+              key={item.base}
               href={item.href}
               className={[
                 'group relative flex items-center gap-2.5 h-8 px-2.5 rounded-md text-sm w-full transition-soft',
