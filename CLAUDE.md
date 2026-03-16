@@ -6,7 +6,7 @@
 
 ## Internationalization (i18n)
 
-5 languages, English default: `en` | `zh` | `ja` | `es` | `zh-TW`
+2 languages, English default: `en` | `zh`
 
 **Server component:**
 ```tsx
@@ -19,8 +19,8 @@ const dict = await getDictionary(locale);
 **Client component:** Pass `dict` as prop from server page, type as `Dictionary` from `@/i18n`.
 
 **Rules:**
-- All 5 dictionary files (`src/i18n/dictionaries/*.json`) must have **identical key structure** — TypeScript infers types from `en.json`
-- When adding keys, update ALL 5 files simultaneously or the build fails
+- Both dictionary files (`src/i18n/dictionaries/en.json` and `src/i18n/dictionaries/zh.json`) must have **identical key structure** — TypeScript infers types from `en.json`
+- When adding keys, update BOTH files simultaneously or the build fails
 - Run `rm -rf .next` if TypeScript type cache is stale after dict changes
 - `LanguageSwitcher` in Sidebar footer persists locale in cookies
 
@@ -223,7 +223,7 @@ apps/
         common/LanguageSwitcher.tsx
       i18n/
         index.ts                # getDictionary(), Dictionary type (inferred from en.json)
-        dictionaries/           # en.json zh.json ja.json es.json zh-TW.json
+        dictionaries/           # en.json zh.json
       lib/locale.ts             # getLocale() — reads NEXT_LOCALE cookie
       lib/orgPath.ts            # /o/:orgId path helpers
       lib/useOrgRole.ts         # client hook for org role + admin gating
