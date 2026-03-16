@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { formatErrorResponse } from '@/services/retry';
-import { createEmailVerification, createUser } from '@/services/auth';
+import { createEmailVerification, createUser, isEmailVerificationRequired } from '@/services/auth';
 import { ensurePersonalOrg } from '@/services/orgs';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { auditLogger, extractClientInfo } from '@/services/audit';
@@ -27,7 +27,12 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await createUser(email, password, displayName);
-    const verification = await createEmailVerification(user.id);
+    const verificationRequired = isEmailVerificationRequired();
+    let verificationToken: string | undefined;
+    if (verificationRequired) {
+      const verification = await createEmailVerification(user.id);
+      verificationToken = verification.token;
+    }
 
     await ensurePersonalOrg(user.id, user.email ?? null);
 
@@ -42,11 +47,11 @@ export async function POST(request: NextRequest) {
 
     const payload: Record<string, unknown> = {
       user: { id: user.id, email: user.email },
-      verificationRequired: true,
+      verificationRequired,
     };
 
-    if (process.env.NODE_ENV !== 'production') {
-      payload.verificationToken = verification.token;
+    if (process.env.NODE_ENV !== 'production' && verificationToken) {
+      payload.verificationToken = verificationToken;
     }
 
     return NextResponse.json(payload, { status: 201 });

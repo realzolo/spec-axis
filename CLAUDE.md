@@ -238,6 +238,7 @@ packages/
 ```
 DATABASE_URL=               # Studio Postgres connection string
 ENCRYPTION_KEY=             # AES-256-GCM key for secrets
+EMAIL_VERIFICATION_REQUIRED= # Require email verification before login (true|false)
 RUNNER_BASE_URL=            # Runner base URL (e.g. http://localhost:8200)
 RUNNER_TOKEN=               # Shared token for runner auth
 TASK_RUNNER_TOKEN=          # Optional, protects internal task endpoints (e.g. /api/codebase/sync)
@@ -344,7 +345,7 @@ toast.success('...'); toast.error('...'); toast.warning('...');
 ## Runtime Contracts
 
 - All API routes require login; runner endpoints accept `X-Runner-Token`
-- Auth uses the `session` HTTP-only cookie; email verification is required before login
+- Auth uses the `session` HTTP-only cookie; email verification is controlled by `EMAIL_VERIFICATION_REQUIRED` (default true)
 - `analysis_issues.status`: `open | fixed | ignored | false_positive | planned`
 - `/api/projects/[id]/trends` returns array directly (no `data` wrapper)
 - Rules learning endpoints are admin-only (org-scoped)

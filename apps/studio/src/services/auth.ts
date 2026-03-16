@@ -31,6 +31,12 @@ export type AuthResult =
   | { user: AuthUser }
   | { error: AuthErrorCode; retryAfter?: number; lockedUntil?: string };
 
+const EMAIL_VERIFICATION_REQUIRED = (() => {
+  const raw = process.env.EMAIL_VERIFICATION_REQUIRED;
+  const normalized = (raw ?? 'true').trim().toLowerCase();
+  return !['0', 'false', 'no', 'off'].includes(normalized);
+})();
+
 const SESSION_COOKIE = 'session';
 const SESSION_TTL_DAYS = 14;
 const SESSION_ROTATE_DAYS = 7;
@@ -53,6 +59,10 @@ type UserRow = {
 
 function hashToken(token: string) {
   return createHash('sha256').update(token).digest('hex');
+}
+
+export function isEmailVerificationRequired() {
+  return EMAIL_VERIFICATION_REQUIRED;
 }
 
 export async function getSession(): Promise<{ user: AuthUser; session: AuthSession; token: string } | null> {
@@ -83,7 +93,9 @@ export async function getSession(): Promise<{ user: AuthUser; session: AuthSessi
     [tokenHash]
   );
 
-  if (!row || row.status !== 'active' || !row.email_verified_at) return null;
+  if (!row) return null;
+  if (row.status === 'disabled') return null;
+  if (EMAIL_VERIFICATION_REQUIRED && (!row.email_verified_at || row.status !== 'active')) return null;
 
   await exec(
     `update auth_sessions set last_used_at = now()
@@ -130,12 +142,14 @@ export async function createUser(email: string, password: string, displayName?: 
     throw new Error('Email already in use');
   }
 
+  const status = EMAIL_VERIFICATION_REQUIRED ? 'pending' : 'active';
+  const emailVerifiedAt = EMAIL_VERIFICATION_REQUIRED ? null : new Date();
   const passwordHash = await hash(password);
   const user = await queryOne<UserRow>(
-    `insert into auth_users (email, display_name, status, created_at, updated_at)
-     values ($1, $2, 'pending', now(), now())
+    `insert into auth_users (email, display_name, status, email_verified_at, created_at, updated_at)
+     values ($1, $2, $3, $4, now(), now())
      returning id, email, status`,
-    [email, displayName ?? null]
+    [email, displayName ?? null, status, emailVerifiedAt]
   );
 
   if (!user) {
@@ -194,7 +208,7 @@ export async function authenticateUser(
     return { error: 'ACCOUNT_LOCKED', lockedUntil: row.locked_until };
   }
 
-  if (!row.email_verified_at || row.status !== 'active') {
+  if (EMAIL_VERIFICATION_REQUIRED && (!row.email_verified_at || row.status !== 'active')) {
     await recordLoginAttempt(row.id, email, ip ?? null, userAgent ?? null, false, 'unverified');
     return { error: 'EMAIL_NOT_VERIFIED' };
   }
@@ -203,6 +217,17 @@ export async function authenticateUser(
   if (!ok) {
     await handleFailedLogin(row.id, email, ip ?? null, userAgent ?? null);
     return { error: 'INVALID_CREDENTIALS' };
+  }
+
+  if (!EMAIL_VERIFICATION_REQUIRED && (!row.email_verified_at || row.status !== 'active')) {
+    await exec(
+      `update auth_users
+       set email_verified_at = coalesce(email_verified_at, now()),
+           status = 'active',
+           updated_at = now()
+       where id = $1`,
+      [row.id]
+    );
   }
 
   await handleSuccessfulLogin(row.id, email, ip ?? null, userAgent ?? null);
@@ -374,7 +399,10 @@ export async function createPasswordReset(email: string) {
     `select id, email_verified_at, status from auth_users where email = $1`,
     [email]
   );
-  if (!user || user.status !== 'active' || !user.email_verified_at) {
+  if (!user || user.status === 'disabled') {
+    return null;
+  }
+  if (EMAIL_VERIFICATION_REQUIRED && (!user.email_verified_at || user.status !== 'active')) {
     return null;
   }
 

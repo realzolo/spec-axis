@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createEmailVerification } from '@/services/auth';
+import { createEmailVerification, isEmailVerificationRequired } from '@/services/auth';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { queryOne } from '@/lib/db';
 
@@ -12,6 +12,10 @@ export async function POST(request: NextRequest) {
   const rateLimitResponse = rateLimiter(request);
   if (rateLimitResponse) {
     return rateLimitResponse;
+  }
+
+  if (!isEmailVerificationRequired()) {
+    return NextResponse.json({ success: true, verificationRequired: false });
   }
 
   const body = await request.json();
