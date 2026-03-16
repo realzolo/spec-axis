@@ -20,10 +20,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
-    const projectId = request.nextUrl.searchParams.get('projectId');
-    if (!projectId) {
-      return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
-    }
+    const projectId = request.nextUrl.searchParams.get('projectId') || undefined;
     const data = await listPipelines(orgId, projectId);
     return NextResponse.json(data);
   } catch (err) {
@@ -48,14 +45,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       orgId,
-      projectId: validated.projectId,
       name: validated.name,
       description: validated.description ?? '',
       config: validated.config,
       createdBy: user.id,
     };
+    if (validated.projectId) {
+      payload.projectId = validated.projectId;
+    }
     const result = await createPipeline(payload);
     return NextResponse.json(result, { status: 201 });
   } catch (err) {

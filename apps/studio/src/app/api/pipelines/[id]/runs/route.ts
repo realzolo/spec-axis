@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const rateLimitResponse = rateLimiter(request);
   if (rateLimitResponse) return rateLimitResponse;
 
@@ -18,9 +18,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   if (!user) return unauthorized();
 
   try {
+    const { id } = await params;
     const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
     if (!orgId) return unauthorized();
-    const pipelineData = await getPipeline(params.id);
+    const pipelineData = await getPipeline(id);
     const pipeline = (pipelineData as any)?.pipeline ?? (pipelineData as any)?.Pipeline;
     if (!pipeline) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
     const limitRaw = request.nextUrl.searchParams.get('limit');
     const limit = limitRaw ? Number(limitRaw) : 20;
-    const runs = await listPipelineRuns(params.id, Number.isNaN(limit) ? 20 : limit);
+    const runs = await listPipelineRuns(id, Number.isNaN(limit) ? 20 : limit);
     return NextResponse.json(runs);
   } catch (err) {
     const { error, statusCode } = formatErrorResponse(err);
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const rateLimitResponse = rateLimiter(request);
   if (rateLimitResponse) return rateLimitResponse;
 
@@ -46,13 +47,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   if (!user) return unauthorized();
 
   try {
+    const { id } = await params;
     const body = await request.json();
     const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
     const role = await getOrgMemberRole(orgId, user.id);
     if (!isRoleAllowed(role, ORG_ADMIN_ROLES)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    const pipelineData = await getPipeline(params.id);
+    const pipelineData = await getPipeline(id);
     const pipeline = (pipelineData as any)?.pipeline ?? (pipelineData as any)?.Pipeline;
     if (!pipeline) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -66,7 +68,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       idempotencyKey: body?.idempotencyKey ?? '',
       metadata: body?.metadata ?? {},
     };
-    const result = await createPipelineRun(params.id, payload);
+    const result = await createPipelineRun(id, payload);
     return NextResponse.json(result, { status: 202 });
   } catch (err) {
     const { error, statusCode } = formatErrorResponse(err);

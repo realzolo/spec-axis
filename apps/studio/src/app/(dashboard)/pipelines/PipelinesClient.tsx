@@ -34,12 +34,14 @@ type Project = {
   repo?: string | null;
 };
 
+const ALL_PROJECTS = '__all__';
+
 export default function PipelinesClient({ dict }: { dict: Dictionary }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(ALL_PROJECTS);
   const [pipelines, setPipelines] = useState<PipelineSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -58,7 +60,7 @@ export default function PipelinesClient({ dict }: { dict: Dictionary }) {
         if (!active) return;
         setProjects(Array.isArray(data) ? data : []);
         const queryProject = searchParams.get('projectId');
-        const initialId = queryProject || data?.[0]?.id || '';
+        const initialId = queryProject || ALL_PROJECTS;
         setSelectedProjectId(initialId);
       } catch {
         if (!active) return;
@@ -72,12 +74,14 @@ export default function PipelinesClient({ dict }: { dict: Dictionary }) {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!selectedProjectId) return;
     let active = true;
     async function loadPipelines() {
       setLoading(true);
       try {
-        const res = await fetch(`/api/pipelines?projectId=${selectedProjectId}`);
+        const url = selectedProjectId === ALL_PROJECTS
+          ? '/api/pipelines'
+          : `/api/pipelines?projectId=${selectedProjectId}`;
+        const res = await fetch(url);
         const data = res.ok ? await res.json() : [];
         if (!active) return;
         setPipelines(Array.isArray(data) ? data : []);
@@ -99,13 +103,10 @@ export default function PipelinesClient({ dict }: { dict: Dictionary }) {
       toast.error(dict.pipelines.pipelineNameRequired);
       return;
     }
-    if (!selectedProjectId) {
-      toast.error(dict.pipelines.selectProject);
-      return;
-    }
 
     setCreating(true);
     try {
+      const projectId = selectedProjectId !== ALL_PROJECTS ? selectedProjectId : undefined;
       const config = createDefaultPipelineConfig(pipelineName.trim(), {
         stageName: dict.pipelines.defaultStageName,
         jobName: dict.pipelines.defaultJobName,
@@ -118,7 +119,7 @@ export default function PipelinesClient({ dict }: { dict: Dictionary }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          projectId: selectedProjectId,
+          ...(projectId ? { projectId } : {}),
           name: pipelineName.trim(),
           description: pipelineDescription.trim(),
           config,
@@ -193,6 +194,7 @@ export default function PipelinesClient({ dict }: { dict: Dictionary }) {
                 <SelectValue placeholder={dict.projects.allProjects} />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={ALL_PROJECTS}>{dict.projects.allProjects}</SelectItem>
                 {projectOptions.map((project) => (
                   <SelectItem key={project.id} value={project.id}>
                     {project.name}

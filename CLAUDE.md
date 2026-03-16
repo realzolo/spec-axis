@@ -36,7 +36,7 @@ Unless stated otherwise, paths in this guide are relative to `apps/studio`.
 
 Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on signup.
 
-**Org-scoped assets:** projects, reports, rule sets, rules, integrations, rule learning stats.
+**Org-scoped assets:** projects, reports, pipelines, rule sets, rules, integrations, rule learning stats.
 
 **Roles:** `owner | admin | reviewer | member`
 - `owner/admin`: manage org assets (create/update/delete projects, rules, integrations, config)
@@ -179,6 +179,7 @@ Avoid custom font sizes unless a new token is added.
 - **Middleware**: file is `apps/studio/middleware.ts` (Next.js middleware). It handles `/o/:orgId` rewrites and org redirects.
 - `apps/studio/src/proxy.ts` is legacy and currently unused.
 - **Dynamic pages**: any dashboard page that depends on auth/session or database reads must use `export const dynamic = 'force-dynamic'`
+- **Dynamic route params**: in pages and route handlers, `params` is async — `const { id } = await params` (avoid sync dynamic APIs errors)
 - **Vercel timeout**: analyze route configured for 300s in `vercel.json`
 
 ## Directory Structure
@@ -297,6 +298,7 @@ If new install warnings appear, approve the dependency and update the allowlist.
 ## Pipeline Engine (CI/CD)
 
 - **Studio** ships a drag-and-drop DAG builder under `/pipelines` with stage/job/step configuration.
+- **Pipelines** are org-scoped and may be created without linking a project (`project_id` is nullable).
 - **Pipeline config** is versioned in `pipeline_versions` and linked from `pipelines.current_version_id`.
 - **Execution model**: jobs form a DAG via `needs`; steps run sequentially inside a job.
 - **Runner** executes **shell** steps only (for now) with per-step timeouts, retries, and status events.

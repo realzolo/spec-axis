@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Pipeline struct {
 	ID               string    `json:"id"`
 	OrgID            string    `json:"org_id"`
-	ProjectID        string    `json:"project_id"`
+	ProjectID        *string   `json:"project_id"`
 	Name             string    `json:"name"`
 	Description      string    `json:"description"`
 	IsActive         bool      `json:"is_active"`
@@ -44,7 +45,7 @@ type PipelineRun struct {
 	PipelineID     string          `json:"pipeline_id"`
 	VersionID      string          `json:"version_id"`
 	OrgID          string          `json:"org_id"`
-	ProjectID      string          `json:"project_id"`
+	ProjectID      *string         `json:"project_id"`
 	Status         string          `json:"status"`
 	TriggerType    string          `json:"trigger_type"`
 	TriggeredBy    *string         `json:"triggered_by,omitempty"`
@@ -124,12 +125,13 @@ func (s *Store) CreatePipeline(ctx context.Context, pipeline Pipeline) (*Pipelin
 		 values ($1,$2,$3,$4,true,$5,now(),now())
 		 returning id, org_id, project_id, name, description, is_active, current_version_id, created_by, created_at, updated_at`,
 		pipeline.OrgID,
-		pipeline.ProjectID,
+		nullIfEmptyPtr(pipeline.ProjectID),
 		pipeline.Name,
 		nullIfEmpty(pipeline.Description),
 		nullIfEmptyPtr(pipeline.CreatedBy),
 	)
 
+	var projectID pgtype.UUID
 	var currentVersion pgtype.UUID
 	var createdBy pgtype.UUID
 	var desc pgtype.Text
@@ -137,7 +139,7 @@ func (s *Store) CreatePipeline(ctx context.Context, pipeline Pipeline) (*Pipelin
 	if err := row.Scan(
 		&out.ID,
 		&out.OrgID,
-		&out.ProjectID,
+		&projectID,
 		&out.Name,
 		&desc,
 		&out.IsActive,
@@ -147,6 +149,10 @@ func (s *Store) CreatePipeline(ctx context.Context, pipeline Pipeline) (*Pipelin
 		&out.UpdatedAt,
 	); err != nil {
 		return nil, err
+	}
+	if projectID.Valid {
+		val := projectID.String()
+		out.ProjectID = &val
 	}
 	if desc.Valid {
 		out.Description = desc.String
@@ -231,11 +237,12 @@ func (s *Store) GetPipeline(ctx context.Context, pipelineID string) (*Pipeline, 
 	var currentVersion pgtype.UUID
 	var createdBy pgtype.UUID
 	var desc pgtype.Text
+	var projectID pgtype.UUID
 	var out Pipeline
 	if err := row.Scan(
 		&out.ID,
 		&out.OrgID,
-		&out.ProjectID,
+		&projectID,
 		&out.Name,
 		&desc,
 		&out.IsActive,
@@ -246,6 +253,10 @@ func (s *Store) GetPipeline(ctx context.Context, pipelineID string) (*Pipeline, 
 		&out.LatestVersion,
 	); err != nil {
 		return nil, err
+	}
+	if projectID.Valid {
+		val := projectID.String()
+		out.ProjectID = &val
 	}
 	if desc.Valid {
 		out.Description = desc.String
@@ -303,17 +314,33 @@ func (s *Store) GetPipelineVersion(ctx context.Context, versionID string) (*Pipe
 	return &out, nil
 }
 
-func (s *Store) ListPipelines(ctx context.Context, orgID string, projectID string) ([]Pipeline, error) {
-	rows, err := s.pool.Query(
-		ctx,
-		`select p.id, p.org_id, p.project_id, p.name, p.description, p.is_active, p.current_version_id, p.created_by, p.created_at, p.updated_at,
-		        coalesce((select max(version) from pipeline_versions where pipeline_id=p.id), 0) as latest_version
-		 from pipelines p
-		 where p.org_id=$1 and p.project_id=$2
-		 order by p.updated_at desc`,
-		orgID,
-		projectID,
+func (s *Store) ListPipelines(ctx context.Context, orgID string, projectID *string) ([]Pipeline, error) {
+	var (
+		rows pgx.Rows
+		err  error
 	)
+	if projectID != nil && *projectID != "" {
+		rows, err = s.pool.Query(
+			ctx,
+			`select p.id, p.org_id, p.project_id, p.name, p.description, p.is_active, p.current_version_id, p.created_by, p.created_at, p.updated_at,
+			        coalesce((select max(version) from pipeline_versions where pipeline_id=p.id), 0) as latest_version
+			 from pipelines p
+			 where p.org_id=$1 and p.project_id=$2
+			 order by p.updated_at desc`,
+			orgID,
+			*projectID,
+		)
+	} else {
+		rows, err = s.pool.Query(
+			ctx,
+			`select p.id, p.org_id, p.project_id, p.name, p.description, p.is_active, p.current_version_id, p.created_by, p.created_at, p.updated_at,
+			        coalesce((select max(version) from pipeline_versions where pipeline_id=p.id), 0) as latest_version
+			 from pipelines p
+			 where p.org_id=$1
+			 order by p.updated_at desc`,
+			orgID,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -324,11 +351,12 @@ func (s *Store) ListPipelines(ctx context.Context, orgID string, projectID strin
 		var currentVersion pgtype.UUID
 		var createdBy pgtype.UUID
 		var desc pgtype.Text
+		var projectID pgtype.UUID
 		var item Pipeline
 		if err := rows.Scan(
 			&item.ID,
 			&item.OrgID,
-			&item.ProjectID,
+			&projectID,
 			&item.Name,
 			&desc,
 			&item.IsActive,
@@ -339,6 +367,10 @@ func (s *Store) ListPipelines(ctx context.Context, orgID string, projectID strin
 			&item.LatestVersion,
 		); err != nil {
 			return nil, err
+		}
+		if projectID.Valid {
+			val := projectID.String()
+			item.ProjectID = &val
 		}
 		if desc.Valid {
 			item.Description = desc.String
@@ -367,7 +399,7 @@ func (s *Store) CreatePipelineRun(ctx context.Context, run PipelineRun) (*Pipeli
 		run.PipelineID,
 		run.VersionID,
 		run.OrgID,
-		run.ProjectID,
+		nullIfEmptyPtr(run.ProjectID),
 		run.Status,
 		run.TriggerType,
 		nullIfEmptyPtr(run.TriggeredBy),
@@ -378,6 +410,7 @@ func (s *Store) CreatePipelineRun(ctx context.Context, run PipelineRun) (*Pipeli
 		meta,
 	)
 
+	var projectID pgtype.UUID
 	var triggeredBy pgtype.UUID
 	var idempotency pgtype.Text
 	var errorCode pgtype.Text
@@ -390,7 +423,7 @@ func (s *Store) CreatePipelineRun(ctx context.Context, run PipelineRun) (*Pipeli
 		&out.PipelineID,
 		&out.VersionID,
 		&out.OrgID,
-		&out.ProjectID,
+		&projectID,
 		&out.Status,
 		&out.TriggerType,
 		&triggeredBy,
@@ -405,6 +438,10 @@ func (s *Store) CreatePipelineRun(ctx context.Context, run PipelineRun) (*Pipeli
 		&out.UpdatedAt,
 	); err != nil {
 		return nil, err
+	}
+	if projectID.Valid {
+		val := projectID.String()
+		out.ProjectID = &val
 	}
 	if triggeredBy.Valid {
 		val := triggeredBy.String()
@@ -443,6 +480,7 @@ func (s *Store) GetPipelineRunWithVersion(ctx context.Context, runID string) (*P
 		runID,
 	)
 
+	var projectID pgtype.UUID
 	var triggeredBy pgtype.UUID
 	var idempotency pgtype.Text
 	var errorCode pgtype.Text
@@ -458,7 +496,7 @@ func (s *Store) GetPipelineRunWithVersion(ctx context.Context, runID string) (*P
 		&run.PipelineID,
 		&run.VersionID,
 		&run.OrgID,
-		&run.ProjectID,
+		&projectID,
 		&run.Status,
 		&run.TriggerType,
 		&triggeredBy,
@@ -479,6 +517,10 @@ func (s *Store) GetPipelineRunWithVersion(ctx context.Context, runID string) (*P
 		&version.CreatedAt,
 	); err != nil {
 		return nil, nil, err
+	}
+	if projectID.Valid {
+		val := projectID.String()
+		run.ProjectID = &val
 	}
 	if triggeredBy.Valid {
 		val := triggeredBy.String()
@@ -531,6 +573,7 @@ func (s *Store) ListPipelineRuns(ctx context.Context, pipelineID string, limit i
 
 	var items []PipelineRun
 	for rows.Next() {
+		var projectID pgtype.UUID
 		var triggeredBy pgtype.UUID
 		var idempotency pgtype.Text
 		var errorCode pgtype.Text
@@ -544,7 +587,7 @@ func (s *Store) ListPipelineRuns(ctx context.Context, pipelineID string, limit i
 			&run.PipelineID,
 			&run.VersionID,
 			&run.OrgID,
-			&run.ProjectID,
+			&projectID,
 			&run.Status,
 			&run.TriggerType,
 			&triggeredBy,
@@ -559,6 +602,10 @@ func (s *Store) ListPipelineRuns(ctx context.Context, pipelineID string, limit i
 			&run.UpdatedAt,
 		); err != nil {
 			return nil, err
+		}
+		if projectID.Valid {
+			val := projectID.String()
+			run.ProjectID = &val
 		}
 		if triggeredBy.Valid {
 			val := triggeredBy.String()

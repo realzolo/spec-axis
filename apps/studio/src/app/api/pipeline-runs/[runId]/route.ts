@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 
-export async function GET(request: NextRequest, { params }: { params: { runId: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ runId: string }> }) {
   const rateLimitResponse = rateLimiter(request);
   if (rateLimitResponse) return rateLimitResponse;
 
@@ -18,9 +18,10 @@ export async function GET(request: NextRequest, { params }: { params: { runId: s
   if (!user) return unauthorized();
 
   try {
+    const { runId } = await params;
     const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
     if (!orgId) return unauthorized();
-    const data = await getPipelineRun(params.runId);
+    const data = await getPipelineRun(runId);
     const run = (data as any)?.run ?? (data as any)?.Run;
     if (run?.org_id && run.org_id !== orgId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

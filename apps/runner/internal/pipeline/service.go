@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -23,7 +24,7 @@ type Service struct {
 
 type CreatePipelineInput struct {
 	OrgID       string
-	ProjectID   string
+	ProjectID   *string
 	Name        string
 	Description string
 	Config      PipelineConfig
@@ -47,8 +48,11 @@ type TriggerRunInput struct {
 }
 
 func (s *Service) CreatePipeline(ctx context.Context, input CreatePipelineInput) (*store.Pipeline, *store.PipelineVersion, error) {
-	if input.OrgID == "" || input.ProjectID == "" {
-		return nil, nil, errors.New("orgId and projectId are required")
+	if input.OrgID == "" {
+		return nil, nil, errors.New("orgId is required")
+	}
+	if input.ProjectID != nil && strings.TrimSpace(*input.ProjectID) == "" {
+		input.ProjectID = nil
 	}
 	if input.Name == "" {
 		return nil, nil, errors.New("pipeline name is required")
@@ -220,7 +224,11 @@ func (s *Service) GetPipeline(ctx context.Context, pipelineID string) (*store.Pi
 }
 
 func (s *Service) ListPipelines(ctx context.Context, orgID string, projectID string) ([]store.Pipeline, error) {
-	return s.Store.ListPipelines(ctx, orgID, projectID)
+	var project *string
+	if projectID != "" {
+		project = &projectID
+	}
+	return s.Store.ListPipelines(ctx, orgID, project)
 }
 
 func (s *Service) ListRuns(ctx context.Context, pipelineID string, limit int) ([]store.PipelineRun, error) {

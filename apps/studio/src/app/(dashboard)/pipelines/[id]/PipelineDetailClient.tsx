@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
-import ReactFlow, {
+import {
+  ReactFlow,
   addEdge,
   Background,
   Controls,
@@ -57,9 +58,15 @@ const JobNode = ({ data }: { data: JobNodeData }) => (
 const nodeTypes = { job: JobNode };
 
 export default function PipelineDetailClient({ dict, pipelineId }: { dict: Dictionary; pipelineId: string }) {
-  const [config, setConfig] = useState<PipelineConfig | null>(null);
-  const [nodes, setNodes] = useState<Node<JobNodeData>[]>([]);
-  const [edges, setEdges] = useState<Edge[]>([]);
+  const defaultConfig = useMemo(() => createDefaultPipelineConfig(dict.pipelines.title, {
+    stageName: dict.pipelines.defaultStageName,
+    jobName: dict.pipelines.defaultJobName,
+    stepName: dict.pipelines.defaultStepName,
+  }), [dict.pipelines.title, dict.pipelines.defaultStageName, dict.pipelines.defaultJobName, dict.pipelines.defaultStepName]);
+
+  const [config, setConfig] = useState<PipelineConfig>(defaultConfig);
+  const [nodes, setNodes] = useState<Node<JobNodeData>[]>(() => buildNodes(defaultConfig, []));
+  const [edges, setEdges] = useState<Edge[]>(() => buildEdges(defaultConfig));
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
@@ -83,11 +90,7 @@ export default function PipelineDetailClient({ dict, pipelineId }: { dict: Dicti
         const data = await res.json();
         const rawConfig = data?.version?.config ?? data?.version?.Config;
         const parsedConfig: PipelineConfig = typeof rawConfig === 'string' ? JSON.parse(rawConfig) : rawConfig;
-        const normalized = parsedConfig ?? createDefaultPipelineConfig(dict.pipelines.title, {
-          stageName: dict.pipelines.defaultStageName,
-          jobName: dict.pipelines.defaultJobName,
-          stepName: dict.pipelines.defaultStepName,
-        });
+        const normalized = parsedConfig ?? defaultConfig;
         if (!active) return;
         setConfig(normalized);
         setNodes(buildNodes(normalized, []));

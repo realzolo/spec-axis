@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const rateLimitResponse = rateLimiter(request);
   if (rateLimitResponse) return rateLimitResponse;
 
@@ -19,9 +19,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   if (!user) return unauthorized();
 
   try {
+    const { id } = await params;
     const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
     if (!orgId) return unauthorized();
-    const data = await getPipeline(params.id);
+    const data = await getPipeline(id);
     const pipeline = (data as any)?.pipeline ?? (data as any)?.Pipeline;
     if (!pipeline) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const rateLimitResponse = rateLimiter(request);
   if (rateLimitResponse) return rateLimitResponse;
 
@@ -44,6 +45,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   if (!user) return unauthorized();
 
   try {
+    const { id } = await params;
     const body = await request.json();
     const validated = validateRequest(updatePipelineSchema, body);
     const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
@@ -51,7 +53,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     if (!isRoleAllowed(role, ORG_ADMIN_ROLES)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    const existing = await getPipeline(params.id);
+    const existing = await getPipeline(id);
     const pipeline = (existing as any)?.pipeline ?? (existing as any)?.Pipeline;
     if (!pipeline) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -66,7 +68,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       config: validated.config,
       updatedBy: user.id,
     };
-    const result = await updatePipeline(params.id, payload);
+    const result = await updatePipeline(id, payload);
     return NextResponse.json(result);
   } catch (err) {
     const { error, statusCode } = formatErrorResponse(err);

@@ -589,7 +589,7 @@ create index idx_quality_learned_patterns_enabled on quality_learned_patterns(is
 create table pipelines (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
-  project_id uuid not null references code_projects(id) on delete cascade,
+  project_id uuid references code_projects(id) on delete cascade,
   name text not null,
   description text,
   is_active boolean not null default true,
@@ -618,7 +618,7 @@ create table pipeline_runs (
   pipeline_id uuid not null references pipelines(id) on delete cascade,
   version_id uuid not null references pipeline_versions(id),
   org_id uuid not null references organizations(id) on delete cascade,
-  project_id uuid not null references code_projects(id) on delete cascade,
+  project_id uuid references code_projects(id) on delete cascade,
   status text not null,
   trigger_type text not null,
   triggered_by uuid references auth_users(id) on delete set null,

@@ -39,7 +39,7 @@ export type PipelineSummary = {
   id: string;
   name: string;
   description: string;
-  project_id: string;
+  project_id?: string | null;
   org_id: string;
   current_version_id?: string | null;
   latest_version: number;
@@ -59,6 +59,7 @@ export type PipelineRun = {
   id: string;
   pipeline_id: string;
   version_id: string;
+  project_id?: string | null;
   status: string;
   trigger_type: string;
   created_at: string;

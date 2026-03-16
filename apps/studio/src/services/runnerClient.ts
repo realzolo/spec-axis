@@ -45,8 +45,12 @@ export async function enqueueAnalyze(payload: AnalyzePayload): Promise<RunnerRes
   return (await res.json()) as RunnerResponse;
 }
 
-export async function listPipelines(orgId: string, projectId: string) {
-  const res = await fetch(`${runnerBaseUrl()}/v1/pipelines?orgId=${orgId}&projectId=${projectId}`, {
+export async function listPipelines(orgId: string, projectId?: string | null) {
+  const params = new URLSearchParams({ orgId });
+  if (projectId) {
+    params.set('projectId', projectId);
+  }
+  const res = await fetch(`${runnerBaseUrl()}/v1/pipelines?${params.toString()}`, {
     headers: runnerHeaders(),
     method: 'GET',
   });

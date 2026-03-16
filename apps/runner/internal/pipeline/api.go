@@ -33,8 +33,8 @@ func (a *API) handlePipelines(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		orgID := r.URL.Query().Get("orgId")
 		projectID := r.URL.Query().Get("projectId")
-		if orgID == "" || projectID == "" {
-			httpx.WriteError(w, http.StatusBadRequest, "orgId and projectId are required")
+		if orgID == "" {
+			httpx.WriteError(w, http.StatusBadRequest, "orgId is required")
 			return
 		}
 		items, err := a.service.ListPipelines(r.Context(), orgID, projectID)
@@ -46,7 +46,7 @@ func (a *API) handlePipelines(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		var payload struct {
 			OrgID       string         `json:"orgId"`
-			ProjectID   string         `json:"projectId"`
+			ProjectID   *string        `json:"projectId,omitempty"`
 			Name        string         `json:"name"`
 			Description string         `json:"description"`
 			Config      PipelineConfig `json:"config"`

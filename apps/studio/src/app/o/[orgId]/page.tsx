@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 
-export default function OrgRootPage({ params }: { params: { orgId: string } }) {
-  redirect(`/o/${params.orgId}/projects`);
+export default async function OrgRootPage({ params }: { params: Promise<{ orgId: string }> }) {
+  const { orgId } = await params;
+  redirect(`/o/${orgId}/projects`);
 }
