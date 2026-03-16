@@ -1,12 +1,12 @@
 # spec-axis
 
-An AI-powered code review + CI/CD pipeline platform built with Next.js 16 + React 19 + TypeScript. It integrates GitHub/GitLab repository management, commit-based analysis, configurable AI models (Claude, GPT-4, etc.), custom rule sets, quality scoring, and a drag-and-drop pipeline DAG builder. The UI follows a modern dashboard style using HeroUI v3 (beta) and Tailwind CSS v4. The backend runs analysis and pipeline jobs in a Go runner via a Redis-backed queue and streams updates via SSE (NATS optional). The repo is a monorepo with `apps/studio` (Next.js console) and `apps/runner` (Go runner).
+An AI-powered code review + CI/CD pipeline platform built with Next.js 16 + React 19 + TypeScript. It integrates GitHub/GitLab repository management, commit-based analysis, configurable AI models (Claude, GPT-4, etc.), custom rule sets, quality scoring, and a drag-and-drop pipeline DAG builder. The UI follows a modern dashboard style using HeroUI v3 (beta) and Tailwind CSS v4. The backend runs analysis and pipeline jobs in a Go runner via a Redis-backed queue and streams updates via SSE. The repo is a monorepo with `apps/studio` (Next.js console) and `apps/runner` (Go runner).
 
 ## ✨ Features
 
 - **Multi-VCS Support**: GitHub, GitLab, and generic Git repositories
 - **AI-Powered Analysis**: Claude, GPT-4, DeepSeek, and other OpenAI-compatible models
-- **Smart Task Queue**: Go runner with Redis-backed queue and SSE updates (NATS optional)
+- **Smart Task Queue**: Go runner with Redis-backed queue and SSE updates
 - **Configurable Rule Sets**: Custom code quality rules per project
 - **Quality Scoring**: Detailed reports with severity-based metrics
 - **Pipeline DAG Builder**: Drag-and-drop jobs, stages, and shell steps
@@ -24,7 +24,6 @@ An AI-powered code review + CI/CD pipeline platform built with Next.js 16 + Reac
 - Go 1.22 (runner)
 - golang-migrate (DB migrations)
 - Redis (queue)
-- NATS (optional, report status events)
 
 ### Installation
 
@@ -127,9 +126,6 @@ RUNNER_TOKEN=your-runner-token
 
 ### Optional
 ```bash
-# Event bus (optional)
-NATS_URL=nats://localhost:4222
-
 # Internal task endpoints (optional)
 TASK_RUNNER_TOKEN=your-secure-token
 ```
@@ -140,7 +136,6 @@ RUNNER_PORT=8200
 RUNNER_TOKEN=your-runner-token
 DATABASE_URL=postgres://...
 REDIS_URL=redis://...
-NATS_URL=nats://localhost:4222
 ENCRYPTION_KEY=<same as studio>
 PIPELINE_QUEUE=pipelines
 PIPELINE_CONCURRENCY=4

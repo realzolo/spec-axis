@@ -19,6 +19,7 @@
 
 # production
 **/build
+apps/runner/runner
 
 # misc
 .DS_Store

@@ -97,24 +97,24 @@ func RunAnalyzeTask(
 	categoryScoresJSON, _ := json.Marshal(result.CategoryScores)
 
 	update := store.ReportAnalysisUpdate{
-		Status:               "done",
-		Score:                result.Score,
-		CategoryScores:       categoryScoresJSON,
-		Issues:               issuesJSON,
-		Summary:              result.Summary,
-		ComplexityMetrics:    result.ComplexityMetrics,
-		DuplicationMetrics:   result.DuplicationMetrics,
-		DependencyMetrics:    result.DependencyMetrics,
-		SecurityFindings:     result.SecurityFindings,
-		PerformanceFindings:  result.PerformanceFindings,
-		AISuggestions:        result.AISuggestions,
-		CodeExplanations:     result.CodeExplanations,
-		ContextAnalysis:      result.ContextAnalysis,
-		TotalFiles:           stats.TotalFiles,
-		TotalAdditions:       stats.TotalAdditions,
-		TotalDeletions:       stats.TotalDeletions,
-		AnalysisDurationMs:   durationMs,
-		ModelVersion:         aiClient.Model(),
+		Status:              "done",
+		Score:               result.Score,
+		CategoryScores:      categoryScoresJSON,
+		Issues:              issuesJSON,
+		Summary:             result.Summary,
+		ComplexityMetrics:   result.ComplexityMetrics,
+		DuplicationMetrics:  result.DuplicationMetrics,
+		DependencyMetrics:   result.DependencyMetrics,
+		SecurityFindings:    result.SecurityFindings,
+		PerformanceFindings: result.PerformanceFindings,
+		AISuggestions:       result.AISuggestions,
+		CodeExplanations:    result.CodeExplanations,
+		ContextAnalysis:     result.ContextAnalysis,
+		TotalFiles:          stats.TotalFiles,
+		TotalAdditions:      stats.TotalAdditions,
+		TotalDeletions:      stats.TotalDeletions,
+		AnalysisDurationMs:  durationMs,
+		ModelVersion:        aiClient.Model(),
 	}
 
 	if err := st.UpdateReportAnalysis(ctx, payload.ReportID, update); err != nil {
@@ -274,6 +274,7 @@ func buildAnalysisPrompt(rules []domain.Rule, diff string) string {
 	}
 
 	rulesText := buildRulesText(allRules)
+	diffBlock := "```diff\n" + diff + "\n```"
 
 	return fmt.Sprintf(`You are a senior code reviewer. Analyze the following code changes thoroughly and provide structured feedback.
 %s
@@ -281,9 +282,7 @@ func buildAnalysisPrompt(rules []domain.Rule, diff string) string {
 %s
 
 ## Code Changes (Git Diff)
-```diff
 %s
-```
 
 ## Analysis Requirements
 
@@ -448,17 +447,20 @@ Return ONLY valid JSON (no markdown):
   }
 }
 
-All text fields must be in English.`, languageInfo, rulesText, diff)
+All text fields must be in English.`, languageInfo, rulesText, diffBlock)
 }
 
 func buildIncrementalPrompt(rules []domain.Rule, diff string, previousIssues []domain.ReviewIssue) string {
 	diff = truncateDiff(diff, 150000)
 	rulesText := buildRulesText(rules)
+	diffBlock := "```diff\n" + diff + "\n```"
 	previousJSON := "None"
 	if len(previousIssues) > 0 {
 		raw, _ := json.MarshalIndent(previousIssues, "", "  ")
 		previousJSON = string(raw)
 	}
+	isNewLabel := "`isNew`"
+	wasFixedLabel := "`wasFixed`"
 
 	return fmt.Sprintf(`You are a senior code reviewer. This is an **incremental analysis**, focus on changed files.
 
@@ -466,9 +468,7 @@ func buildIncrementalPrompt(rules []domain.Rule, diff string, previousIssues []d
 %s
 
 ## Code Changes (Git Diff)
-```diff
 %s
-```
 
 ## Previous Issues (changed files only)
 %s
@@ -487,10 +487,10 @@ func buildIncrementalPrompt(rules []domain.Rule, diff string, previousIssues []d
 
 ## Output Format
 Return the standard ReviewResult JSON. In the issues array, include:
-- `+"`"+`isNew`+"`"+`: true/false
-- `+"`"+`wasFixed`+"`"+`: true/false
+- %s: true/false
+- %s: true/false
 
-All text fields must be in English.`, rulesText, diff, previousJSON)
+All text fields must be in English.`, rulesText, diffBlock, previousJSON, isNewLabel, wasFixedLabel)
 }
 
 func buildRulesText(rules []domain.Rule) string {

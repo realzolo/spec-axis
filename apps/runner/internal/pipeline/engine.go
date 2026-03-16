@@ -66,11 +66,11 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 		return err
 	}
 	_ = e.Store.AppendRunEvent(ctx, runID, "run.started", map[string]any{
-		"runId":    runID,
+		"runId":      runID,
 		"pipelineId": run.PipelineID,
 		"versionId":  run.VersionID,
-		"status":  StatusRunning,
-		"startedAt": time.Now().UTC().Format(time.RFC3339),
+		"status":     StatusRunning,
+		"startedAt":  time.Now().UTC().Format(time.RFC3339),
 	})
 
 	concurrency := e.Concurrency
@@ -153,8 +153,8 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 	if failed {
 		_ = e.Store.MarkPipelineRunFailed(ctx, runID, "job_failed")
 		_ = e.Store.AppendRunEvent(ctx, runID, "run.failed", map[string]any{
-			"runId": runID,
-			"status": StatusFailed,
+			"runId":      runID,
+			"status":     StatusFailed,
 			"finishedAt": time.Now().UTC().Format(time.RFC3339),
 		})
 		return fmt.Errorf("pipeline run failed")
@@ -163,8 +163,8 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 	if completed < total {
 		_ = e.Store.MarkPipelineRunFailed(ctx, runID, "dependency_deadlock")
 		_ = e.Store.AppendRunEvent(ctx, runID, "run.failed", map[string]any{
-			"runId": runID,
-			"status": StatusFailed,
+			"runId":      runID,
+			"status":     StatusFailed,
 			"finishedAt": time.Now().UTC().Format(time.RFC3339),
 		})
 		return fmt.Errorf("pipeline run stalled")
@@ -172,8 +172,8 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 
 	_ = e.Store.MarkPipelineRunSuccess(ctx, runID)
 	_ = e.Store.AppendRunEvent(ctx, runID, "run.completed", map[string]any{
-		"runId": runID,
-		"status": StatusSuccess,
+		"runId":      runID,
+		"status":     StatusSuccess,
 		"finishedAt": time.Now().UTC().Format(time.RFC3339),
 	})
 
@@ -189,11 +189,11 @@ func (e *Engine) runJob(ctx context.Context, runID string, cfg PipelineConfig, j
 		return err
 	}
 	_ = e.Store.AppendRunEvent(ctx, runID, "job.started", map[string]any{
-		"runId": runID,
-		"jobId": record.ID,
-		"jobKey": job.ID,
-		"name": job.Name,
-		"status": StatusRunning,
+		"runId":     runID,
+		"jobId":     record.ID,
+		"jobKey":    job.ID,
+		"name":      job.Name,
+		"status":    StatusRunning,
 		"startedAt": time.Now().UTC().Format(time.RFC3339),
 	})
 
@@ -235,10 +235,10 @@ func (e *Engine) runJob(ctx context.Context, runID string, cfg PipelineConfig, j
 			_ = e.Store.MarkPipelineJobFailed(ctx, record.ID, jobErr.Error())
 		}
 		_ = e.Store.AppendRunEvent(ctx, runID, "job.failed", map[string]any{
-			"runId": runID,
-			"jobId": record.ID,
-			"jobKey": job.ID,
-			"status": StatusFailed,
+			"runId":      runID,
+			"jobId":      record.ID,
+			"jobKey":     job.ID,
+			"status":     StatusFailed,
 			"finishedAt": time.Now().UTC().Format(time.RFC3339),
 		})
 		return jobErr
@@ -246,10 +246,10 @@ func (e *Engine) runJob(ctx context.Context, runID string, cfg PipelineConfig, j
 
 	_ = e.Store.MarkPipelineJobSuccess(ctx, record.ID)
 	_ = e.Store.AppendRunEvent(ctx, runID, "job.completed", map[string]any{
-		"runId": runID,
-		"jobId": record.ID,
-		"jobKey": job.ID,
-		"status": StatusSuccess,
+		"runId":      runID,
+		"jobId":      record.ID,
+		"jobKey":     job.ID,
+		"status":     StatusSuccess,
 		"finishedAt": time.Now().UTC().Format(time.RFC3339),
 	})
 	return nil
@@ -269,12 +269,12 @@ func (e *Engine) runStep(
 		return StatusFailed, err
 	}
 	_ = e.Store.AppendRunEvent(ctx, runID, "step.started", map[string]any{
-		"runId": runID,
-		"jobId": jobRecord.ID,
-		"jobKey": job.ID,
-		"stepId": stepRecord.ID,
-		"stepKey": step.ID,
-		"status": StatusRunning,
+		"runId":     runID,
+		"jobId":     jobRecord.ID,
+		"jobKey":    job.ID,
+		"stepId":    stepRecord.ID,
+		"stepKey":   step.ID,
+		"status":    StatusRunning,
 		"startedAt": time.Now().UTC().Format(time.RFC3339),
 	})
 
@@ -313,15 +313,15 @@ func (e *Engine) runStep(
 		} else {
 			status = StatusFailed
 		}
-		_ = e.Store.MarkPipelineStepFailed(ctx, stepRecord.ID, status, exitCode, err.Error())
+		_ = e.Store.MarkPipelineStepFailed(ctx, stepRecord.ID, string(status), exitCode, err.Error())
 		_ = e.Store.AppendRunEvent(ctx, runID, "step.failed", map[string]any{
-			"runId": runID,
-			"jobId": jobRecord.ID,
-			"jobKey": job.ID,
-			"stepId": stepRecord.ID,
-			"stepKey": step.ID,
-			"status": status,
-			"exitCode": exitCode,
+			"runId":      runID,
+			"jobId":      jobRecord.ID,
+			"jobKey":     job.ID,
+			"stepId":     stepRecord.ID,
+			"stepKey":    step.ID,
+			"status":     status,
+			"exitCode":   exitCode,
 			"finishedAt": time.Now().UTC().Format(time.RFC3339),
 		})
 		return status, err
@@ -335,13 +335,13 @@ func (e *Engine) runStep(
 
 	_ = e.Store.MarkPipelineStepSuccess(ctx, stepRecord.ID, exitCode)
 	_ = e.Store.AppendRunEvent(ctx, runID, "step.completed", map[string]any{
-		"runId": runID,
-		"jobId": jobRecord.ID,
-		"jobKey": job.ID,
-		"stepId": stepRecord.ID,
-		"stepKey": step.ID,
-		"status": StatusSuccess,
-		"exitCode": exitCode,
+		"runId":      runID,
+		"jobId":      jobRecord.ID,
+		"jobKey":     job.ID,
+		"stepId":     stepRecord.ID,
+		"stepKey":    step.ID,
+		"status":     StatusSuccess,
+		"exitCode":   exitCode,
 		"finishedAt": time.Now().UTC().Format(time.RFC3339),
 	})
 	return StatusSuccess, nil
@@ -404,8 +404,8 @@ func (e *Engine) cancelPendingJobs(ctx context.Context, runID string, jobIndex m
 		}
 	}
 	_ = e.Store.AppendRunEvent(ctx, runID, "run.canceled", map[string]any{
-		"runId": runID,
-		"status": StatusCanceled,
+		"runId":     runID,
+		"status":    StatusCanceled,
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	})
 	return nil

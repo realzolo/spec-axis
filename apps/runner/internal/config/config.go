@@ -8,35 +8,33 @@ import (
 )
 
 type Config struct {
-	Port                    string
-	RunnerToken             string
-	DatabaseURL             string
-	RedisURL                string
-	NatsURL                 string
-	Concurrency             int
-	Queue                   string
-	AnalyzeTimeout          time.Duration
-	PipelineQueue           string
-	PipelineConcurrency     int
-	PipelineRunTimeout      time.Duration
-	DataDir                 string
-	LogRetentionDays        int
-	ArtifactRetentionDays   int
+	Port                  string
+	RunnerToken           string
+	DatabaseURL           string
+	RedisURL              string
+	Concurrency           int
+	Queue                 string
+	AnalyzeTimeout        time.Duration
+	PipelineQueue         string
+	PipelineConcurrency   int
+	PipelineRunTimeout    time.Duration
+	DataDir               string
+	LogRetentionDays      int
+	ArtifactRetentionDays int
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		Port:                envString("RUNNER_PORT", "8200"),
-		RunnerToken:         os.Getenv("RUNNER_TOKEN"),
-		DatabaseURL:         os.Getenv("DATABASE_URL"),
-		RedisURL:            os.Getenv("REDIS_URL"),
-		NatsURL:             os.Getenv("NATS_URL"),
-		Concurrency:         envInt("RUNNER_CONCURRENCY", 4),
-		Queue:               envString("RUNNER_QUEUE", "analysis"),
-		PipelineQueue:       envString("PIPELINE_QUEUE", "pipelines"),
-		PipelineConcurrency: envInt("PIPELINE_CONCURRENCY", 4),
-		DataDir:             envString("RUNNER_DATA_DIR", "data"),
-		LogRetentionDays:    envInt("PIPELINE_LOG_RETENTION_DAYS", 30),
+		Port:                  envString("RUNNER_PORT", "8200"),
+		RunnerToken:           os.Getenv("RUNNER_TOKEN"),
+		DatabaseURL:           os.Getenv("DATABASE_URL"),
+		RedisURL:              os.Getenv("REDIS_URL"),
+		Concurrency:           envInt("RUNNER_CONCURRENCY", 4),
+		Queue:                 envString("RUNNER_QUEUE", "analysis"),
+		PipelineQueue:         envString("PIPELINE_QUEUE", "pipelines"),
+		PipelineConcurrency:   envInt("PIPELINE_CONCURRENCY", 4),
+		DataDir:               envString("RUNNER_DATA_DIR", "data"),
+		LogRetentionDays:      envInt("PIPELINE_LOG_RETENTION_DAYS", 30),
 		ArtifactRetentionDays: envInt("PIPELINE_ARTIFACT_RETENTION_DAYS", 30),
 	}
 

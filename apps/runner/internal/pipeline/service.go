@@ -14,11 +14,11 @@ import (
 )
 
 type Service struct {
-	Store        *store.Store
-	Queue        *asynq.Client
-	QueueName    string
-	RunTimeout   time.Duration
-	Storage      *LocalStorage
+	Store      *store.Store
+	Queue      *asynq.Client
+	QueueName  string
+	RunTimeout time.Duration
+	Storage    *LocalStorage
 }
 
 type CreatePipelineInput struct {
@@ -92,9 +92,6 @@ func (s *Service) CreatePipeline(ctx context.Context, input CreatePipelineInput)
 func (s *Service) UpdatePipeline(ctx context.Context, input UpdatePipelineInput) (*store.PipelineVersion, error) {
 	if input.PipelineID == "" {
 		return nil, errors.New("pipelineId is required")
-	}
-	if input.TriggerType == "" {
-		input.TriggerType = "manual"
 	}
 	current, err := s.Store.GetPipeline(ctx, input.PipelineID)
 	if err != nil {
@@ -189,11 +186,11 @@ func (s *Service) TriggerRun(ctx context.Context, input TriggerRunInput) (*store
 	}
 
 	_ = s.Store.AppendRunEvent(ctx, run.ID, "run.queued", map[string]any{
-		"runId": run.ID,
+		"runId":      run.ID,
 		"pipelineId": pipeline.ID,
-		"versionId": version.ID,
-		"status": StatusQueued,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"versionId":  version.ID,
+		"status":     StatusQueued,
+		"timestamp":  time.Now().UTC().Format(time.RFC3339),
 	})
 
 	if s.Queue == nil {
@@ -243,8 +240,8 @@ func (s *Service) ReadLog(ctx context.Context, stepID string, offset int64, limi
 	if err != nil {
 		return nil, 0, err
 	}
-	if step == nil || step.LogPath == "" {
+	if step == nil || step.LogPath == nil || *step.LogPath == "" {
 		return nil, 0, fmt.Errorf("log not found")
 	}
-	return s.Storage.ReadLog(step.LogPath, offset, limit)
+	return s.Storage.ReadLog(*step.LogPath, offset, limit)
 }

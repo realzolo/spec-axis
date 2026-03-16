@@ -11,7 +11,6 @@ import (
 	"spec-axis/runner/internal/analysis"
 	"spec-axis/runner/internal/domain"
 	"spec-axis/runner/internal/events"
-	"spec-axis/runner/internal/pipeline"
 	"spec-axis/runner/internal/store"
 )
 
@@ -20,6 +19,10 @@ const TaskTypePipelineRun = "task:pipeline-run"
 
 type PipelineRunPayload struct {
 	RunID string `json:"runId"`
+}
+
+type PipelineExecutor interface {
+	Execute(ctx context.Context, runID string) error
 }
 
 func NewAnalyzeTask(payload domain.AnalyzeRequest) (*asynq.Task, error) {
@@ -59,7 +62,7 @@ func HandleAnalyzeTask(st *store.Store, publisher *events.Publisher, timeout tim
 	}
 }
 
-func HandlePipelineRunTask(engine *pipeline.Engine) asynq.HandlerFunc {
+func HandlePipelineRunTask(executor PipelineExecutor) asynq.HandlerFunc {
 	return func(ctx context.Context, task *asynq.Task) error {
 		var payload PipelineRunPayload
 		if err := json.Unmarshal(task.Payload(), &payload); err != nil {
@@ -68,6 +71,6 @@ func HandlePipelineRunTask(engine *pipeline.Engine) asynq.HandlerFunc {
 		if payload.RunID == "" {
 			return nil
 		}
-		return engine.Execute(ctx, payload.RunID)
+		return executor.Execute(ctx, payload.RunID)
 	}
 }

@@ -32,9 +32,9 @@ func main() {
 	}
 	defer st.Close()
 
-	publisher, err := events.NewPublisher(cfg.NatsURL)
+	publisher, err := events.NewPublisher()
 	if err != nil {
-		log.Fatalf("nats error: %v", err)
+		log.Fatalf("publisher error: %v", err)
 	}
 	defer func() {
 		if publisher != nil {
@@ -48,7 +48,7 @@ func main() {
 	}
 
 	queueWeights := map[string]int{
-		cfg.Queue:        1,
+		cfg.Queue:         1,
 		cfg.PipelineQueue: 1,
 	}
 	server := asynq.NewServer(redisOpt, asynq.Config{

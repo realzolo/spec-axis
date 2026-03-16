@@ -28,7 +28,7 @@ const dict = await getDictionary(locale);
 
 AI code review + CI/CD platform: Next.js 16 + React 19 + TypeScript + HeroUI v3 (beta) + Tailwind CSS v4.
 Multi-GitHub project management, commit selection, Claude AI analysis, configurable rule sets, quality report scoring, and pipeline DAG builder.
-Backend: PostgreSQL for core data, Go runner executes analysis jobs and pipeline runs via Redis queue; status updates can be published via NATS.
+Backend: PostgreSQL for core data, Go runner executes analysis jobs and pipeline runs via Redis queue; status updates stream via SSE with polling fallback.
 Monorepo layout: `apps/studio` (Next.js), `apps/runner` (Go runner), `packages/*` (shared contracts).
 Unless stated otherwise, paths in this guide are relative to `apps/studio`.
 
@@ -71,9 +71,8 @@ Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on si
 | PostgreSQL | 14+ | Primary database (self-managed) |
 | Octokit | `^5.0.5` | GitHub API |
 | Anthropic SDK | `^0.78` | Claude AI, supports `ANTHROPIC_BASE_URL` |
-| Go | 1.22 | Runner service |
-| Asynq | ^0.28 | Redis-backed job queue (runner) |
-| NATS | ^1.36 | Report status events (optional) |
+| Go | 1.24.0 | Runner service |
+| Asynq | 0.26.0 | Redis-backed job queue (runner) |
 | sonner | ^2 | Toast notifications |
 | zod | `^4.3.6` | Runtime validation |
 | lucide-react | ^0.577 | Icons |
@@ -242,7 +241,6 @@ DATABASE_URL=               # Studio Postgres connection string
 ENCRYPTION_KEY=             # AES-256-GCM key for secrets
 RUNNER_BASE_URL=            # Runner base URL (e.g. http://localhost:8200)
 RUNNER_TOKEN=               # Shared token for runner auth
-NATS_URL=                   # Optional, report status events
 TASK_RUNNER_TOKEN=          # Optional, protects internal task endpoints (e.g. /api/codebase/sync)
 ```
 
@@ -252,7 +250,6 @@ RUNNER_PORT=8200
 RUNNER_TOKEN=
 DATABASE_URL=               # Postgres connection string
 REDIS_URL=                  # Redis queue
-NATS_URL=                   # Optional
 ENCRYPTION_KEY=             # Same key used by studio for decrypting secrets
 PIPELINE_QUEUE=             # Pipeline queue name
 PIPELINE_CONCURRENCY=       # Max concurrent pipeline jobs
@@ -294,7 +291,7 @@ If new install warnings appear, approve the dependency and update the allowlist.
 
 1. `POST /api/analyze` → returns `{ reportId }` immediately, enqueues runner task
 2. Runner: fetch diff by commit SHA → AI analysis → sync `analysis_issues` → update status
-3. Frontend: SSE on `/api/reports/[id]/stream` (NATS-backed if configured), fallback to polling every 2.5s
+3. Frontend: SSE on `/api/reports/[id]/stream`, fallback to polling every 2.5s
 
 ## Pipeline Engine (CI/CD)
 
