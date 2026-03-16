@@ -7,6 +7,7 @@ export type OrgRole = 'owner' | 'admin' | 'reviewer' | 'member';
 export type OrgStatus = 'active' | 'invited' | 'suspended';
 export const ORG_COOKIE = 'org_id';
 export const ORG_ADMIN_ROLES: OrgRole[] = ['owner', 'admin'];
+const DEFAULT_PERSONAL_ORG_NAME = 'Default';
 
 export interface Organization {
   id: string;
@@ -17,10 +18,8 @@ export interface Organization {
   created_at: string;
 }
 
-function personalOrgName(email?: string | null) {
-  if (!email) return 'Personal Org';
-  const handle = email.split('@')[0]?.trim();
-  return handle ? `${handle} Org` : 'Personal Org';
+function personalOrgName(_email?: string | null) {
+  return DEFAULT_PERSONAL_ORG_NAME;
 }
 
 export async function ensurePersonalOrg(userId: string, email?: string | null): Promise<Organization> {
