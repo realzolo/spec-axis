@@ -11,6 +11,14 @@ export const maxDuration = 60;
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 
+interface ReportRow {
+  score: number | null;
+  summary: string | null;
+  issues: Array<Record<string, unknown>> | null;
+  project_name: string | null;
+  project_repo: string | null;
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -34,7 +42,7 @@ export async function POST(
   await requireReportAccess(reportId, user.id);
 
   // Get report details
-  const reportRow = await queryOne<Record<string, any>>(
+  const reportRow = await queryOne<ReportRow>(
     `select r.*, p.name as project_name, p.repo as project_repo
      from analysis_reports r
      join code_projects p on p.id = r.project_id
@@ -46,18 +54,16 @@ export async function POST(
     return NextResponse.json({ error: 'Report not found' }, { status: 404 });
   }
 
-  const report = {
-    ...reportRow,
-    projects: {
-      name: reportRow.project_name,
-      repo: reportRow.project_repo,
-    },
+  const project = {
+    name: reportRow.project_name,
+    repo: reportRow.project_repo,
   };
-  delete (report as Record<string, unknown>).project_name;
-  delete (report as Record<string, unknown>).project_repo;
+  const issues = Array.isArray(reportRow.issues) ? reportRow.issues : [];
+  const summary = typeof reportRow.summary === 'string' ? reportRow.summary : '';
+  const score = typeof reportRow.score === 'number' ? reportRow.score : 0;
 
   // Get or create conversation
-  let conversation;
+  let conversation: Record<string, any> | null = null;
   if (conversationId) {
     conversation = await queryOne<Record<string, any>>(
       `select * from analysis_conversations where id = $1`,
@@ -75,22 +81,26 @@ export async function POST(
     );
   }
 
-  const messages = conversation?.messages || [];
+  if (!conversation) {
+    return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 });
+  }
+
+  const messages = conversation.messages || [];
 
   // Build context
   let context = `You are a senior code reviewer assisting a developer with code quality questions.
 
 ## Project
-- Name: ${report.projects?.name}
-- Repository: ${report.projects?.repo}
-- Overall score: ${report.score}/100
+- Name: ${project.name}
+- Repository: ${project.repo}
+- Overall score: ${score}/100
 
 ## Report summary
-${report.summary}
+${summary}
 
 ## Issue stats
-- Total issues: ${report.issues?.length ?? 0}
-- Critical/high issues: ${report.issues?.filter((i: Record<string, unknown>) => i.severity === 'critical' || i.severity === 'high').length ?? 0}
+- Total issues: ${issues.length}
+- Critical/high issues: ${issues.filter((i: Record<string, unknown>) => i.severity === 'critical' || i.severity === 'high').length}
 
 `;
 
@@ -103,8 +113,8 @@ ${report.summary}
       );
     }
 
-    if (!issue && report.issues) {
-      issue = report.issues.find((i: Record<string, unknown>) => i.file === issueId) || null;
+    if (!issue && issues.length > 0) {
+      issue = issues.find((i: Record<string, unknown>) => i.file === issueId) || null;
     }
 
     if (issue) {

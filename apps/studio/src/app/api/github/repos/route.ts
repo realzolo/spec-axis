@@ -4,6 +4,7 @@ import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { queryOne } from '@/lib/db';
 import { createVCSClient } from '@/services/integrations';
+import type { Integration } from '@/services/integrations';
 import { readSecret } from '@/lib/vault';
 import { getActiveOrgId, getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES } from '@/services/orgs';
 
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get org's default VCS integration
-    const integration = await queryOne<Record<string, any>>(
+    const integrationRow = await queryOne<Integration & { config: Integration['config'] | string | null }>(
       `select *
        from org_integrations
        where org_id = $1 and type = 'vcs' and is_default = true
@@ -34,12 +35,20 @@ export async function GET(request: NextRequest) {
       [orgId]
     );
 
-    if (!integration) {
+    if (!integrationRow) {
       return NextResponse.json(
         { error: 'No VCS integration configured. Please add a code repository integration in Settings > Integrations.' },
         { status: 400 }
       );
     }
+
+    const integration: Integration = {
+      ...integrationRow,
+      config:
+        typeof integrationRow.config === 'string'
+          ? JSON.parse(integrationRow.config)
+          : (integrationRow.config ?? {}),
+    };
 
     // Decrypt the token
     const token = await readSecret(integration.vault_secret_name);

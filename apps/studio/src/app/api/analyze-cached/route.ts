@@ -13,6 +13,12 @@ interface CacheEntry {
   timestamp: number;
 }
 
+interface RecentReportRow {
+  id: string;
+  commits: Array<{ sha: string }>;
+  created_at: string | Date;
+}
+
 // Cache analysis results
 const analysisCache = new Map<string, CacheEntry>();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
@@ -61,7 +67,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Check for recent identical analysis
-  const recentReports = await query<Record<string, unknown>>(
+  const recentReports = await query<RecentReportRow>(
     `select id, commits, created_at
      from analysis_reports
      where project_id = $1
@@ -72,7 +78,10 @@ export async function POST(request: NextRequest) {
 
   if (recentReports && useCache) {
     for (const report of recentReports) {
-      const reportCommits = (report.commits as Array<Record<string, unknown>>).map((c: Record<string, unknown>) => c.sha).sort();
+      const reportCommits = (report.commits ?? [])
+        .map((commit) => commit.sha)
+        .filter((sha): sha is string => typeof sha === 'string')
+        .sort();
       const requestCommits = [...commits].sort();
 
       if (JSON.stringify(reportCommits) === JSON.stringify(requestCommits)) {

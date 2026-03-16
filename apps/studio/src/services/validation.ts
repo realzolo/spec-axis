@@ -58,7 +58,7 @@ const pipelineStepSchema = z.object({
   name: z.string().min(1),
   type: z.literal('shell'),
   script: z.string().min(1),
-  env: z.record(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
   workingDir: z.string().optional(),
   timeoutSeconds: z.number().int().positive().optional(),
   continueOnError: z.boolean().optional(),
@@ -71,7 +71,7 @@ const pipelineJobSchema = z.object({
   needs: z.array(z.string()).optional(),
   steps: z.array(pipelineStepSchema).min(1),
   timeoutSeconds: z.number().int().positive().optional(),
-  env: z.record(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
   workingDir: z.string().optional(),
 });
 
@@ -85,7 +85,7 @@ export const pipelineConfigSchema = z.object({
   version: z.string().min(1),
   name: z.string().min(1),
   description: z.string().optional(),
-  variables: z.record(z.string()).optional(),
+  variables: z.record(z.string(), z.string()).optional(),
   stages: z.array(pipelineStageSchema),
   jobs: z.array(pipelineJobSchema).min(1),
 });

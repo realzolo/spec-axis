@@ -199,7 +199,7 @@ export default function PipelineDetailClient({ dict, pipelineId }: { dict: Dicti
     setConfig({ ...config, jobs: nextJobs });
   }
 
-  function onNodesChange(changes: NodeChange[]) {
+  function onNodesChange(changes: NodeChange<Node<JobNodeData>>[]) {
     setNodes((prev) => applyNodeChanges(changes, prev));
   }
 

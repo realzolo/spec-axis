@@ -9,7 +9,7 @@ import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { queryOne } from '@/lib/db';
-import { createVCSClient } from '@/services/integrations';
+import { createVCSClient, type Integration } from '@/services/integrations';
 import { readSecret } from '@/lib/vault';
 import { getActiveOrgId, getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES } from '@/services/orgs';
 import { codebaseService } from '@/services/CodebaseService';
@@ -17,6 +17,13 @@ import { codebaseService } from '@/services/CodebaseService';
 export const dynamic = 'force-dynamic';
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
+
+function normalizeIntegration(row: Integration & { config: Integration['config'] | string | null }): Integration {
+  return {
+    ...row,
+    config: typeof row.config === 'string' ? JSON.parse(row.config) : (row.config ?? {}),
+  };
+}
 
 export async function GET(request: NextRequest) {
   const rateLimitResponse = rateLimiter(request);
@@ -78,7 +85,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user's default VCS integration
-    const vcsIntegration = await queryOne<Record<string, any>>(
+    const vcsIntegrationRow = await queryOne<Integration & { config: Integration['config'] | string | null }>(
       `select *
        from org_integrations
        where org_id = $1 and type = 'vcs' and is_default = true
@@ -86,15 +93,16 @@ export async function POST(request: NextRequest) {
       [orgId]
     );
 
-    if (!vcsIntegration) {
+    if (!vcsIntegrationRow) {
       return NextResponse.json(
         { error: 'No VCS integration configured. Please add a code repository integration in Settings > Integrations.' },
         { status: 400 }
       );
     }
+    const vcsIntegration = normalizeIntegration(vcsIntegrationRow);
 
     // Get user's default AI integration
-    const aiIntegration = await queryOne<Record<string, any>>(
+    const aiIntegrationRow = await queryOne<Integration & { config: Integration['config'] | string | null }>(
       `select *
        from org_integrations
        where org_id = $1 and type = 'ai' and is_default = true
@@ -102,12 +110,13 @@ export async function POST(request: NextRequest) {
       [orgId]
     );
 
-    if (!aiIntegration) {
+    if (!aiIntegrationRow) {
       return NextResponse.json(
         { error: 'No AI integration configured. Please add an AI model integration in Settings > Integrations.' },
         { status: 400 }
       );
     }
+    const aiIntegration = normalizeIntegration(aiIntegrationRow);
 
     // Decrypt the VCS token
     const token = await readSecret(vcsIntegration.vault_secret_name);
