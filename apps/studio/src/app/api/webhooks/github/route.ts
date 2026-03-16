@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import { exec, queryOne } from '@/lib/db';
 import { getProjectById, listProjectsByRepo, getRulesBySetId, createReport, updateReport } from '@/services/db';
 import { buildReportCommits } from '@/services/analyzeTask';
-import { enqueueAnalyze } from '@/services/runnerClient';
+import { enqueueAnalyze, listPipelines, createPipelineRun } from '@/services/runnerClient';
 import { logger } from '@/services/logger';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { codebaseService } from '@/services/CodebaseService';
@@ -67,6 +67,10 @@ export async function POST(request: NextRequest) {
 
     let synced = 0;
     let failed = 0;
+    let pipelinesTriggered = 0;
+    const pushedBranch = (payload?.ref as string | undefined)?.replace('refs/heads/', '') ?? '';
+    const orgIds = new Set<string>();
+
     for (const project of projects) {
       if (!project.org_id || !project.repo) {
         failed += 1;
@@ -82,13 +86,40 @@ export async function POST(request: NextRequest) {
           { forceSync: true }
         );
         synced += 1;
+        orgIds.add(project.org_id);
       } catch (err) {
         failed += 1;
         logger.warn('Codebase sync from webhook failed', err instanceof Error ? err : undefined);
       }
     }
 
-    return NextResponse.json({ ok: true, synced, failed });
+    // Auto-trigger pipelines with matching branch
+    if (pushedBranch) {
+      for (const orgId of orgIds) {
+        try {
+          const allPipelines = (await listPipelines(orgId)) as any[];
+          if (!Array.isArray(allPipelines)) continue;
+          for (const p of allPipelines) {
+            if (!p.auto_trigger) continue;
+            const branch = p.trigger_branch || 'main';
+            if (branch !== pushedBranch) continue;
+            try {
+              await createPipelineRun(p.id, {
+                triggerType: 'webhook',
+                metadata: { ref: payload?.ref, pushedBranch, repo: repoFullName },
+              });
+              pipelinesTriggered += 1;
+            } catch (err) {
+              logger.warn('Auto-trigger pipeline failed', err instanceof Error ? err : undefined);
+            }
+          }
+        } catch {
+          // best-effort
+        }
+      }
+    }
+
+    return NextResponse.json({ ok: true, synced, failed, pipelinesTriggered });
   }
 
   if (event !== 'pull_request') {

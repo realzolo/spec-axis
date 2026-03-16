@@ -18,6 +18,9 @@ type Engine struct {
 	Executors   *ExecutorRegistry
 	Storage     *LocalStorage
 	Concurrency int
+	// Studio integration for source_checkout and review_gate
+	StudioURL   string
+	StudioToken string
 }
 
 func (e *Engine) Execute(ctx context.Context, runID string) error {
@@ -38,17 +41,26 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 		return err
 	}
 
+	// Derive projectID from run record
+	projectID := ""
+	if run.ProjectID != nil {
+		projectID = *run.ProjectID
+	}
+
+	// Build the internal plan from the four-stage config
+	plan := BuildInternalPlan(cfg, projectID, e.StudioURL, e.StudioToken)
 	jobIndex := map[string]PipelineJob{}
-	for _, job := range cfg.Jobs {
+	for _, job := range plan.Jobs {
 		jobIndex[job.ID] = job
 	}
 
+	// Ensure job/step records exist in DB
 	jobRecords, err := e.Store.ListPipelineJobs(ctx, runID)
 	if err != nil {
 		return err
 	}
 	if len(jobRecords) == 0 {
-		if err := EnsureRunGraph(ctx, e.Store, runID, cfg); err != nil {
+		if err := EnsureRunGraph(ctx, e.Store, runID, cfg, projectID, e.StudioURL, e.StudioToken); err != nil {
 			return err
 		}
 		jobRecords, err = e.Store.ListPipelineJobs(ctx, runID)
@@ -90,7 +102,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 	var mu sync.Mutex
 	remaining := map[string]int{}
 	dependents := map[string][]string{}
-	for _, job := range cfg.Jobs {
+	for _, job := range plan.Jobs {
 		remaining[job.ID] = len(job.Needs)
 		for _, dep := range job.Needs {
 			dependents[dep] = append(dependents[dep], job.ID)
@@ -104,7 +116,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 		}
 	}
 
-	total := len(cfg.Jobs)
+	total := len(plan.Jobs)
 	inFlight := 0
 	completed := 0
 	failed := false
@@ -199,9 +211,9 @@ func (e *Engine) runJob(ctx context.Context, runID string, cfg PipelineConfig, j
 
 	jobCtx := ctx
 	if job.TimeoutSeconds != nil && *job.TimeoutSeconds > 0 {
-		var cancel context.CancelFunc
-		jobCtx, cancel = context.WithTimeout(ctx, time.Duration(*job.TimeoutSeconds)*time.Second)
-		defer cancel()
+		var cancelFn context.CancelFunc
+		jobCtx, cancelFn = context.WithTimeout(ctx, time.Duration(*job.TimeoutSeconds)*time.Second)
+		defer cancelFn()
 	}
 
 	var jobErr error
@@ -294,14 +306,35 @@ func (e *Engine) runStep(
 
 	execCtx := ctx
 	if step.TimeoutSeconds != nil && *step.TimeoutSeconds > 0 {
-		var cancel context.CancelFunc
-		execCtx, cancel = context.WithTimeout(ctx, time.Duration(*step.TimeoutSeconds)*time.Second)
-		defer cancel()
+		var cancelFn context.CancelFunc
+		execCtx, cancelFn = context.WithTimeout(ctx, time.Duration(*step.TimeoutSeconds)*time.Second)
+		defer cancelFn()
 	}
 
-	executor := e.Executors.Get(step.Type)
+	// Resolve executor: built-in job types take precedence over step type
+	var executor StepExecutor
+	switch job.Type {
+	case "source_checkout":
+		executor = &SourceCheckoutExecutor{
+			StudioURL:   job.StudioURL,
+			StudioToken: job.StudioToken,
+			ProjectID:   job.ProjectID,
+			Branch:      job.Branch,
+		}
+	case "review_gate":
+		executor = &ReviewGateExecutor{
+			StudioURL:   job.StudioURL,
+			StudioToken: job.StudioToken,
+			ProjectID:   job.ProjectID,
+			MinScore:    job.MinScore,
+			GateEnabled: job.MinScore > 0,
+		}
+	default:
+		executor = e.Executors.Get("shell")
+	}
+
 	if executor == nil {
-		return StatusFailed, fmt.Errorf("no executor registered for %s", step.Type)
+		return StatusFailed, fmt.Errorf("no executor for job type %q", job.Type)
 	}
 
 	exitCode, err := executor.Execute(execCtx, step, env, workingDir, logWriter)
@@ -327,12 +360,6 @@ func (e *Engine) runStep(
 		return status, err
 	}
 
-	if len(step.Artifacts) > 0 && workingDir != "" {
-		if err := e.collectArtifacts(ctx, runID, job, jobRecord, step, stepRecord, workingDir); err != nil {
-			log.Printf("artifact collection failed: %v", err)
-		}
-	}
-
 	_ = e.Store.MarkPipelineStepSuccess(ctx, stepRecord.ID, exitCode)
 	_ = e.Store.AppendRunEvent(ctx, runID, "step.completed", map[string]any{
 		"runId":      runID,
@@ -345,41 +372,6 @@ func (e *Engine) runStep(
 		"finishedAt": time.Now().UTC().Format(time.RFC3339),
 	})
 	return StatusSuccess, nil
-}
-
-func (e *Engine) collectArtifacts(
-	ctx context.Context,
-	runID string,
-	job PipelineJob,
-	jobRecord store.PipelineJob,
-	step PipelineStep,
-	stepRecord store.PipelineStep,
-	workingDir string,
-) error {
-	for _, artifact := range step.Artifacts {
-		path := artifact
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(workingDir, artifact)
-		}
-		info, err := os.Stat(path)
-		if err != nil || info.IsDir() {
-			continue
-		}
-		storagePath, size, sha, err := e.Storage.SaveArtifact(runID, job.ID, step.ID, path, artifact)
-		if err != nil {
-			continue
-		}
-		_ = e.Store.InsertPipelineArtifact(ctx, store.PipelineArtifact{
-			RunID:       runID,
-			JobID:       jobRecord.ID,
-			StepID:      stepRecord.ID,
-			Path:        artifact,
-			StoragePath: storagePath,
-			SizeBytes:   size,
-			Sha256:      sha,
-		})
-	}
-	return nil
 }
 
 func (e *Engine) cancelPendingJobs(ctx context.Context, runID string, jobIndex map[string]PipelineJob, jobMap map[string]store.PipelineJob) error {
@@ -426,4 +418,27 @@ func buildEnv(runID string, cfg PipelineConfig, job PipelineJob, step PipelineSt
 	env["PIPELINE_JOB_ID"] = job.ID
 	env["PIPELINE_STEP_ID"] = step.ID
 	return env
+}
+
+// collectArtifacts is kept for possible future shell-step artifact support.
+func (e *Engine) collectArtifacts(
+	ctx context.Context,
+	runID string,
+	job PipelineJob,
+	jobRecord store.PipelineJob,
+	step PipelineStep,
+	stepRecord store.PipelineStep,
+	workingDir string,
+) error {
+	// No artifacts field in current step schema; reserved for future use.
+	_ = runID
+	_ = job
+	_ = jobRecord
+	_ = step
+	_ = stepRecord
+	_ = workingDir
+	_ = log.Writer()
+	_ = os.Stderr
+	_ = filepath.Join
+	return nil
 }

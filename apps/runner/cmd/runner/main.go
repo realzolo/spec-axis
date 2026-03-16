@@ -70,6 +70,8 @@ func main() {
 		Executors:   executors,
 		Storage:     storage,
 		Concurrency: cfg.PipelineConcurrency,
+		StudioURL:   cfg.StudioURL,
+		StudioToken: cfg.StudioToken,
 	}
 
 	mux := asynq.NewServeMux()
@@ -86,11 +88,13 @@ func main() {
 	defer client.Close()
 
 	pipelineService := &pipeline.Service{
-		Store:      st,
-		Queue:      client,
-		QueueName:  cfg.PipelineQueue,
-		RunTimeout: cfg.PipelineRunTimeout,
-		Storage:    storage,
+		Store:       st,
+		Queue:       client,
+		QueueName:   cfg.PipelineQueue,
+		RunTimeout:  cfg.PipelineRunTimeout,
+		Storage:     storage,
+		StudioURL:   cfg.StudioURL,
+		StudioToken: cfg.StudioToken,
 	}
 
 	httpServer := &http.Server{

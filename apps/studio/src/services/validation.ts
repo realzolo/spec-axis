@@ -53,54 +53,72 @@ export const createRuleSchema = z.object({
   sort_order: z.number().int().default(0),
 });
 
+// ─── Pipeline V2 schemas ───────────────────────────────────────────────────
+
 const pipelineStepSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  type: z.literal('shell'),
-  script: z.string().min(1),
-  env: z.record(z.string(), z.string()).optional(),
-  workingDir: z.string().optional(),
-  timeoutSeconds: z.number().int().positive().optional(),
+  script: z.string(),
   continueOnError: z.boolean().optional(),
-  artifacts: z.array(z.string()).optional(),
-});
-
-const pipelineJobSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  needs: z.array(z.string()).optional(),
-  steps: z.array(pipelineStepSchema).min(1),
   timeoutSeconds: z.number().int().positive().optional(),
   env: z.record(z.string(), z.string()).optional(),
   workingDir: z.string().optional(),
 });
 
-const pipelineStageSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  jobIds: z.array(z.string()).min(1),
+const pipelineSourceSchema = z.object({
+  branch: z.string().min(1).default('main'),
+  autoTrigger: z.boolean().default(false),
+});
+
+const pipelineReviewSchema = z.object({
+  enabled: z.boolean().default(true),
+  qualityGateEnabled: z.boolean().default(false),
+  qualityGateMinScore: z.number().int().min(0).max(100).default(60),
+});
+
+const pipelineBuildSchema = z.object({
+  enabled: z.boolean().default(true),
+  steps: z.array(pipelineStepSchema),
+  artifactPaths: z.array(z.string()).optional(),
+  cacheEnabled: z.boolean().optional(),
+});
+
+const pipelineDeploySchema = z.object({
+  enabled: z.boolean().default(true),
+  steps: z.array(pipelineStepSchema),
+  rollbackEnabled: z.boolean().default(true),
+});
+
+const pipelineNotificationsSchema = z.object({
+  onSuccess: z.boolean().default(true),
+  onFailure: z.boolean().default(true),
+  channels: z.array(z.enum(['email', 'inapp'])).default(['inapp', 'email']),
 });
 
 export const pipelineConfigSchema = z.object({
-  version: z.string().min(1),
-  name: z.string().min(1),
+  name: z.string().min(1).max(100),
   description: z.string().optional(),
   variables: z.record(z.string(), z.string()).optional(),
-  stages: z.array(pipelineStageSchema),
-  jobs: z.array(pipelineJobSchema).min(1),
+  source: pipelineSourceSchema,
+  review: pipelineReviewSchema,
+  build: pipelineBuildSchema,
+  deploy: pipelineDeploySchema,
+  notifications: pipelineNotificationsSchema,
 });
 
 export const createPipelineSchema = z.object({
-  projectId: projectIdSchema.optional().nullable(),
+  projectId: projectIdSchema,
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
+  environment: z.enum(['development', 'staging', 'production']).default('production'),
   config: pipelineConfigSchema,
 });
 
 export const updatePipelineSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional(),
-  config: pipelineConfigSchema,
+  environment: z.enum(['development', 'staging', 'production']).optional(),
+  config: pipelineConfigSchema.optional(),
 });
 
 /**

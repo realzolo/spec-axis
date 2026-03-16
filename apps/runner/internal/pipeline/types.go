@@ -6,6 +6,7 @@ import (
 	"regexp"
 )
 
+// RunStatus values
 type RunStatus string
 
 const (
@@ -18,20 +19,62 @@ const (
 	StatusSkipped  RunStatus = "skipped"
 )
 
+// ── Pipeline config (fixed four-stage format) ─────────────────────────────
+
 type PipelineConfig struct {
-	Version     string            `json:"version"`
 	Name        string            `json:"name"`
 	Description string            `json:"description,omitempty"`
 	Variables   map[string]string `json:"variables,omitempty"`
-	Stages      []PipelineStage   `json:"stages"`
-	Jobs        []PipelineJob     `json:"jobs"`
+	Source      SourceStage       `json:"source"`
+	Review      ReviewStage       `json:"review"`
+	Build       BuildStage        `json:"build"`
+	Deploy      DeployStage       `json:"deploy"`
+	Notify      NotifyConfig      `json:"notifications"`
 }
 
-type PipelineStage struct {
-	ID     string   `json:"id"`
-	Name   string   `json:"name"`
-	JobIDs []string `json:"jobIds"`
+type SourceStage struct {
+	Branch      string `json:"branch"`
+	AutoTrigger bool   `json:"autoTrigger"`
 }
+
+type ReviewStage struct {
+	Enabled              bool `json:"enabled"`
+	QualityGateEnabled   bool `json:"qualityGateEnabled"`
+	QualityGateMinScore  int  `json:"qualityGateMinScore"`
+}
+
+type BuildStage struct {
+	Enabled bool           `json:"enabled"`
+	Steps   []PipelineStep `json:"steps"`
+}
+
+type DeployStage struct {
+	Enabled         bool           `json:"enabled"`
+	Steps           []PipelineStep `json:"steps"`
+	RollbackEnabled bool           `json:"rollbackEnabled"`
+}
+
+type NotifyConfig struct {
+	OnSuccess bool     `json:"onSuccess"`
+	OnFailure bool     `json:"onFailure"`
+	Channels  []string `json:"channels"`
+}
+
+// ── Step (same for build and deploy) ─────────────────────────────────────
+
+type PipelineStep struct {
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	Script          string            `json:"script"`
+	Env             map[string]string `json:"env,omitempty"`
+	WorkingDir      string            `json:"workingDir,omitempty"`
+	TimeoutSeconds  *int              `json:"timeoutSeconds,omitempty"`
+	ContinueOnError bool              `json:"continueOnError,omitempty"`
+}
+
+// ── Internal job representation (used by engine) ─────────────────────────
+// The engine works with PipelineJob DAGs internally.
+// Four-stage config is translated to a linear DAG before execution.
 
 type PipelineJob struct {
 	ID             string            `json:"id"`
@@ -41,51 +84,135 @@ type PipelineJob struct {
 	TimeoutSeconds *int              `json:"timeoutSeconds,omitempty"`
 	Env            map[string]string `json:"env,omitempty"`
 	WorkingDir     string            `json:"workingDir,omitempty"`
+	// Internal metadata for built-in step types
+	Type string `json:"type,omitempty"` // "shell" | "source_checkout" | "review_gate"
+	// For source_checkout
+	Branch    string `json:"branch,omitempty"`
+	ProjectID string `json:"projectId,omitempty"`
+	// For review_gate
+	MinScore    int    `json:"minScore,omitempty"`
+	StudioURL   string `json:"studioUrl,omitempty"`
+	StudioToken string `json:"studioToken,omitempty"`
 }
 
-type PipelineStep struct {
-	ID              string            `json:"id"`
-	Name            string            `json:"name"`
-	Type            string            `json:"type"`
-	Script          string            `json:"script,omitempty"`
-	Env             map[string]string `json:"env,omitempty"`
-	WorkingDir      string            `json:"workingDir,omitempty"`
-	TimeoutSeconds  *int              `json:"timeoutSeconds,omitempty"`
-	ContinueOnError bool              `json:"continueOnError,omitempty"`
-	Artifacts       []string          `json:"artifacts,omitempty"`
+// ── Legacy internal stage structure (used by graph/engine) ────────────────
+
+type PipelineStage struct {
+	ID     string   `json:"id"`
+	Name   string   `json:"name"`
+	JobIDs []string `json:"jobIds"`
 }
+
+// ── InternalPlan: four-stage config translated to a job DAG ───────────────
+
+type InternalPlan struct {
+	Jobs   []PipelineJob  `json:"jobs"`
+	Stages []PipelineStage `json:"stages"`
+}
+
+// BuildInternalPlan translates the four-stage PipelineConfig into a linear
+// job DAG: source_checkout → review_gate? → build? → deploy?
+func BuildInternalPlan(cfg PipelineConfig, projectID, studioURL, studioToken string) InternalPlan {
+	var jobs []PipelineJob
+	var prev string // job ID that the next one depends on
+
+	// Stage 1: source checkout (always present)
+	sourceJob := PipelineJob{
+		ID:        "source",
+		Name:      "Source",
+		Type:      "source_checkout",
+		Branch:    cfg.Source.Branch,
+		ProjectID: projectID,
+		Steps: []PipelineStep{{
+			ID:     "checkout",
+			Name:   "Checkout",
+			Script: "",
+		}},
+	}
+	if prev != "" {
+		sourceJob.Needs = []string{prev}
+	}
+	jobs = append(jobs, sourceJob)
+	prev = sourceJob.ID
+
+	// Stage 2: review gate (optional)
+	if cfg.Review.Enabled {
+		score := cfg.Review.QualityGateMinScore
+		if !cfg.Review.QualityGateEnabled {
+			score = 0 // run review but don't block
+		}
+		reviewJob := PipelineJob{
+			ID:          "review",
+			Name:        "Code Review",
+			Type:        "review_gate",
+			Needs:       []string{prev},
+			ProjectID:   projectID,
+			MinScore:    score,
+			StudioURL:   studioURL,
+			StudioToken: studioToken,
+			Steps: []PipelineStep{{
+				ID:     "gate",
+				Name:   "Quality Gate",
+				Script: "",
+			}},
+		}
+		jobs = append(jobs, reviewJob)
+		prev = reviewJob.ID
+	}
+
+	// Stage 3: build (optional)
+	if cfg.Build.Enabled && len(cfg.Build.Steps) > 0 {
+		buildJob := PipelineJob{
+			ID:    "build",
+			Name:  "Build",
+			Needs: []string{prev},
+			Steps: cfg.Build.Steps,
+		}
+		jobs = append(jobs, buildJob)
+		prev = buildJob.ID
+	}
+
+	// Stage 4: deploy (optional)
+	if cfg.Deploy.Enabled && len(cfg.Deploy.Steps) > 0 {
+		deployJob := PipelineJob{
+			ID:    "deploy",
+			Name:  "Deploy",
+			Needs: []string{prev},
+			Steps: cfg.Deploy.Steps,
+		}
+		jobs = append(jobs, deployJob)
+		prev = deployJob.ID
+	}
+
+	// Build stage list (one stage per job for simplicity)
+	var stages []PipelineStage
+	for _, j := range jobs {
+		stages = append(stages, PipelineStage{
+			ID:     j.ID,
+			Name:   j.Name,
+			JobIDs: []string{j.ID},
+		})
+	}
+
+	return InternalPlan{Jobs: jobs, Stages: stages}
+}
+
+// ── Validation ─────────────────────────────────────────────────────────────
 
 func ValidateConfig(cfg PipelineConfig) error {
-	if cfg.Version == "" {
-		return errors.New("config version is required")
-	}
 	if cfg.Name == "" {
 		return errors.New("pipeline name is required")
 	}
-	if len(cfg.Jobs) == 0 {
-		return errors.New("at least one job is required")
+	if cfg.Source.Branch == "" {
+		cfg.Source.Branch = "main"
 	}
 
-	jobIndex := map[string]PipelineJob{}
-	for _, job := range cfg.Jobs {
-		if job.ID == "" {
-			return errors.New("job id is required")
-		}
-		if !isSafeID(job.ID) {
-			return fmt.Errorf("job id contains invalid characters: %s", job.ID)
-		}
-		if _, exists := jobIndex[job.ID]; exists {
-			return fmt.Errorf("duplicate job id: %s", job.ID)
-		}
-		if job.Name == "" {
-			return fmt.Errorf("job name is required for %s", job.ID)
-		}
-		if len(job.Steps) == 0 {
-			return fmt.Errorf("job %s must have at least one step", job.ID)
-		}
-		jobIndex[job.ID] = job
+	plan := BuildInternalPlan(cfg, "", "", "")
+	if len(plan.Jobs) == 0 {
+		return errors.New("pipeline must have at least one enabled stage with steps")
+	}
 
-		stepIndex := map[string]struct{}{}
+	for _, job := range plan.Jobs {
 		for _, step := range job.Steps {
 			if step.ID == "" {
 				return fmt.Errorf("job %s has a step with empty id", job.ID)
@@ -93,62 +220,8 @@ func ValidateConfig(cfg PipelineConfig) error {
 			if !isSafeID(step.ID) {
 				return fmt.Errorf("step id contains invalid characters: %s", step.ID)
 			}
-			if _, exists := stepIndex[step.ID]; exists {
-				return fmt.Errorf("job %s has duplicate step id: %s", job.ID, step.ID)
-			}
-			stepIndex[step.ID] = struct{}{}
-			if step.Name == "" {
-				return fmt.Errorf("step %s in job %s is missing name", step.ID, job.ID)
-			}
-			if step.Type == "" {
-				return fmt.Errorf("step %s in job %s is missing type", step.ID, job.ID)
-			}
-			if step.Type != "shell" {
-				return fmt.Errorf("unsupported step type %s in job %s", step.Type, job.ID)
-			}
-			if step.Type == "shell" && step.Script == "" {
-				return fmt.Errorf("shell step %s in job %s requires script", step.ID, job.ID)
-			}
 		}
 	}
-
-	stageIndex := map[string]struct{}{}
-	for _, stage := range cfg.Stages {
-		if stage.ID == "" {
-			return errors.New("stage id is required")
-		}
-		if !isSafeID(stage.ID) {
-			return fmt.Errorf("stage id contains invalid characters: %s", stage.ID)
-		}
-		if _, exists := stageIndex[stage.ID]; exists {
-			return fmt.Errorf("duplicate stage id: %s", stage.ID)
-		}
-		stageIndex[stage.ID] = struct{}{}
-		if stage.Name == "" {
-			return fmt.Errorf("stage %s is missing name", stage.ID)
-		}
-		for _, jobID := range stage.JobIDs {
-			if _, exists := jobIndex[jobID]; !exists {
-				return fmt.Errorf("stage %s references unknown job %s", stage.ID, jobID)
-			}
-		}
-	}
-
-	for _, job := range cfg.Jobs {
-		for _, need := range job.Needs {
-			if need == job.ID {
-				return fmt.Errorf("job %s cannot depend on itself", job.ID)
-			}
-			if _, exists := jobIndex[need]; !exists {
-				return fmt.Errorf("job %s depends on unknown job %s", job.ID, need)
-			}
-		}
-	}
-
-	if hasCycle(jobIndex) {
-		return errors.New("job dependency graph contains a cycle")
-	}
-
 	return nil
 }
 
@@ -183,7 +256,6 @@ func hasCycle(jobIndex map[string]PipelineJob) bool {
 		state[id] = visited
 		return false
 	}
-
 	for id := range jobIndex {
 		if state[id] == unvisited {
 			if visit(id) {

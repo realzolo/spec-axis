@@ -594,6 +594,16 @@ create table pipelines (
   description text,
   is_active boolean not null default true,
   current_version_id uuid,
+  -- v2 fields
+  environment text not null default 'production'
+    check (environment in ('development', 'staging', 'production')),
+  auto_trigger boolean not null default false,
+  trigger_branch text not null default 'main',
+  quality_gate_enabled boolean not null default false,
+  quality_gate_min_score int not null default 60
+    check (quality_gate_min_score between 0 and 100),
+  notify_on_success boolean not null default true,
+  notify_on_failure boolean not null default true,
   created_by uuid references auth_users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -626,13 +636,19 @@ create table pipeline_runs (
   attempt int not null default 1,
   error_code text,
   error_message text,
+  -- rollback: points to the run being rolled back
+  rollback_of uuid references pipeline_runs(id) on delete set null,
+  -- commit info captured at trigger time
+  commit_sha text,
+  commit_message text,
+  branch text,
   metadata jsonb,
   created_at timestamptz not null default now(),
   started_at timestamptz,
   finished_at timestamptz,
   updated_at timestamptz not null default now(),
   constraint pipeline_runs_status_check check (status in ('queued','running','success','failed','canceled','timed_out','skipped')),
-  constraint pipeline_runs_trigger_check check (trigger_type in ('manual','push','schedule','webhook'))
+  constraint pipeline_runs_trigger_check check (trigger_type in ('manual','push','schedule','webhook','rollback'))
 );
 
 create unique index pipeline_runs_idempotency_unique

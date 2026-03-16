@@ -53,6 +53,8 @@ func LoadWithOptions(opts LoadOptions) (Config, error) {
 	cfg.DataDir = envString("RUNNER_DATA_DIR", cfg.DataDir)
 	cfg.LogRetentionDays = envInt("PIPELINE_LOG_RETENTION_DAYS", cfg.LogRetentionDays)
 	cfg.ArtifactRetentionDays = envInt("PIPELINE_ARTIFACT_RETENTION_DAYS", cfg.ArtifactRetentionDays)
+	cfg.StudioURL = envString("STUDIO_URL", cfg.StudioURL)
+	cfg.StudioToken = envString("STUDIO_TOKEN", cfg.StudioToken)
 
 	analyzeTimeoutRaw = envString("ANALYZE_TIMEOUT", analyzeTimeoutRaw)
 	pipelineTimeoutRaw = envString("PIPELINE_RUN_TIMEOUT", pipelineTimeoutRaw)

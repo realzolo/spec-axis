@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
       orgId,
       name: validated.name,
       description: validated.description ?? '',
+      environment: validated.environment ?? 'production',
       config: validated.config,
       createdBy: user.id,
     };

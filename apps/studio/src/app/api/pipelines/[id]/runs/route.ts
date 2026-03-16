@@ -67,6 +67,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       triggeredBy: user.id,
       idempotencyKey: body?.idempotencyKey ?? '',
       metadata: body?.metadata ?? {},
+      ...(body?.rollbackOf ? { rollbackOf: body.rollbackOf } : {}),
     };
     const result = await createPipelineRun(id, payload);
     return NextResponse.json(result, { status: 202 });

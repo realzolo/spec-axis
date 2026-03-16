@@ -15,20 +15,29 @@ import (
 )
 
 type Service struct {
-	Store      *store.Store
-	Queue      *asynq.Client
-	QueueName  string
-	RunTimeout time.Duration
-	Storage    *LocalStorage
+	Store       *store.Store
+	Queue       *asynq.Client
+	QueueName   string
+	RunTimeout  time.Duration
+	Storage     *LocalStorage
+	StudioURL   string
+	StudioToken string
 }
 
 type CreatePipelineInput struct {
-	OrgID       string
-	ProjectID   *string
-	Name        string
-	Description string
-	Config      PipelineConfig
-	CreatedBy   string
+	OrgID               string
+	ProjectID           *string
+	Name                string
+	Description         string
+	Config              PipelineConfig
+	CreatedBy           string
+	Environment         string
+	AutoTrigger         bool
+	TriggerBranch       string
+	QualityGateEnabled  bool
+	QualityGateMinScore int
+	NotifyOnSuccess     bool
+	NotifyOnFailure     bool
 }
 
 type UpdatePipelineInput struct {
@@ -45,6 +54,7 @@ type TriggerRunInput struct {
 	TriggeredBy    string
 	IdempotencyKey string
 	Metadata       map[string]any
+	RollbackOf     *string
 }
 
 func (s *Service) CreatePipeline(ctx context.Context, input CreatePipelineInput) (*store.Pipeline, *store.PipelineVersion, error) {
@@ -70,11 +80,18 @@ func (s *Service) CreatePipeline(ctx context.Context, input CreatePipelineInput)
 		createdBy = &input.CreatedBy
 	}
 	pipeline, err := s.Store.CreatePipeline(ctx, store.Pipeline{
-		OrgID:       input.OrgID,
-		ProjectID:   input.ProjectID,
-		Name:        input.Name,
-		Description: input.Description,
-		CreatedBy:   createdBy,
+		OrgID:               input.OrgID,
+		ProjectID:           input.ProjectID,
+		Name:                input.Name,
+		Description:         input.Description,
+		CreatedBy:           createdBy,
+		Environment:         input.Environment,
+		AutoTrigger:         input.AutoTrigger,
+		TriggerBranch:       input.TriggerBranch,
+		QualityGateEnabled:  input.QualityGateEnabled,
+		QualityGateMinScore: input.QualityGateMinScore,
+		NotifyOnSuccess:     input.NotifyOnSuccess,
+		NotifyOnFailure:     input.NotifyOnFailure,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -170,6 +187,10 @@ func (s *Service) TriggerRun(ctx context.Context, input TriggerRunInput) (*store
 	if input.IdempotencyKey != "" {
 		idempotency = &input.IdempotencyKey
 	}
+	projectID := ""
+	if pipeline.ProjectID != nil {
+		projectID = *pipeline.ProjectID
+	}
 	run, err := s.Store.CreatePipelineRun(ctx, store.PipelineRun{
 		PipelineID:     pipeline.ID,
 		VersionID:      version.ID,
@@ -179,13 +200,14 @@ func (s *Service) TriggerRun(ctx context.Context, input TriggerRunInput) (*store
 		TriggerType:    input.TriggerType,
 		TriggeredBy:    triggeredBy,
 		IdempotencyKey: idempotency,
+		RollbackOf:     input.RollbackOf,
 		Metadata:       metadataRaw,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	if err := EnsureRunGraph(ctx, s.Store, run.ID, cfg); err != nil {
+	if err := EnsureRunGraph(ctx, s.Store, run.ID, cfg, projectID, s.StudioURL, s.StudioToken); err != nil {
 		return nil, err
 	}
 

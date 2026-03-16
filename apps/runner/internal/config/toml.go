@@ -14,6 +14,7 @@ type fileConfig struct {
 	Redis    redisConfig    `toml:"redis"`
 	Pipeline pipelineConfig `toml:"pipeline"`
 	Security securityConfig `toml:"security"`
+	Studio   studioConfig   `toml:"studio"`
 }
 
 type runnerConfig struct {
@@ -43,6 +44,11 @@ type pipelineConfig struct {
 
 type securityConfig struct {
 	EncryptionKey *string `toml:"encryption_key"`
+}
+
+type studioConfig struct {
+	URL   *string `toml:"url"`
+	Token *string `toml:"token"`
 }
 
 func resolveConfigPath(explicitPath string) (string, error) {
@@ -133,5 +139,11 @@ func applyFileConfig(cfg *Config, fileCfg fileConfig, analyzeTimeoutRaw *string,
 	}
 	if fileCfg.Pipeline.RunTimeout != nil {
 		*pipelineTimeoutRaw = *fileCfg.Pipeline.RunTimeout
+	}
+	if fileCfg.Studio.URL != nil {
+		cfg.StudioURL = *fileCfg.Studio.URL
+	}
+	if fileCfg.Studio.Token != nil {
+		cfg.StudioToken = *fileCfg.Studio.Token
 	}
 }

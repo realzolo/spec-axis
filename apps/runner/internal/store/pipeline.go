@@ -11,17 +11,24 @@ import (
 )
 
 type Pipeline struct {
-	ID               string    `json:"id"`
-	OrgID            string    `json:"org_id"`
-	ProjectID        *string   `json:"project_id"`
-	Name             string    `json:"name"`
-	Description      string    `json:"description"`
-	IsActive         bool      `json:"is_active"`
-	CurrentVersionID *string   `json:"current_version_id,omitempty"`
-	CreatedBy        *string   `json:"created_by,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	LatestVersion    int       `json:"latest_version"`
+	ID                  string    `json:"id"`
+	OrgID               string    `json:"org_id"`
+	ProjectID           *string   `json:"project_id"`
+	Name                string    `json:"name"`
+	Description         string    `json:"description"`
+	IsActive            bool      `json:"is_active"`
+	CurrentVersionID    *string   `json:"current_version_id,omitempty"`
+	Environment         string    `json:"environment"`
+	AutoTrigger         bool      `json:"auto_trigger"`
+	TriggerBranch       string    `json:"trigger_branch"`
+	QualityGateEnabled  bool      `json:"quality_gate_enabled"`
+	QualityGateMinScore int       `json:"quality_gate_min_score"`
+	NotifyOnSuccess     bool      `json:"notify_on_success"`
+	NotifyOnFailure     bool      `json:"notify_on_failure"`
+	CreatedBy           *string   `json:"created_by,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
+	LatestVersion       int       `json:"latest_version"`
 }
 
 type PipelineVersion struct {
@@ -50,6 +57,7 @@ type PipelineRun struct {
 	TriggerType    string          `json:"trigger_type"`
 	TriggeredBy    *string         `json:"triggered_by,omitempty"`
 	IdempotencyKey *string         `json:"idempotency_key,omitempty"`
+	RollbackOf     *string         `json:"rollback_of,omitempty"`
 	Attempt        int             `json:"attempt"`
 	ErrorCode      *string         `json:"error_code,omitempty"`
 	ErrorMessage   *string         `json:"error_message,omitempty"`
@@ -119,15 +127,34 @@ type PipelineRunDetail struct {
 }
 
 func (s *Store) CreatePipeline(ctx context.Context, pipeline Pipeline) (*Pipeline, error) {
+	env := pipeline.Environment
+	if env == "" {
+		env = "production"
+	}
+	triggerBranch := pipeline.TriggerBranch
+	if triggerBranch == "" {
+		triggerBranch = "main"
+	}
 	row := s.pool.QueryRow(
 		ctx,
-		`insert into pipelines (org_id, project_id, name, description, is_active, created_by, created_at, updated_at)
-		 values ($1,$2,$3,$4,true,$5,now(),now())
-		 returning id, org_id, project_id, name, description, is_active, current_version_id, created_by, created_at, updated_at`,
+		`insert into pipelines
+		 (org_id, project_id, name, description, is_active, environment, auto_trigger, trigger_branch,
+		  quality_gate_enabled, quality_gate_min_score, notify_on_success, notify_on_failure, created_by, created_at, updated_at)
+		 values ($1,$2,$3,$4,true,$5,$6,$7,$8,$9,$10,$11,$12,now(),now())
+		 returning id, org_id, project_id, name, description, is_active, current_version_id,
+		           environment, auto_trigger, trigger_branch, quality_gate_enabled, quality_gate_min_score,
+		           notify_on_success, notify_on_failure, created_by, created_at, updated_at`,
 		pipeline.OrgID,
 		nullIfEmptyPtr(pipeline.ProjectID),
 		pipeline.Name,
 		nullIfEmpty(pipeline.Description),
+		env,
+		pipeline.AutoTrigger,
+		triggerBranch,
+		pipeline.QualityGateEnabled,
+		pipeline.QualityGateMinScore,
+		pipeline.NotifyOnSuccess,
+		pipeline.NotifyOnFailure,
 		nullIfEmptyPtr(pipeline.CreatedBy),
 	)
 
@@ -144,6 +171,13 @@ func (s *Store) CreatePipeline(ctx context.Context, pipeline Pipeline) (*Pipelin
 		&desc,
 		&out.IsActive,
 		&currentVersion,
+		&out.Environment,
+		&out.AutoTrigger,
+		&out.TriggerBranch,
+		&out.QualityGateEnabled,
+		&out.QualityGateMinScore,
+		&out.NotifyOnSuccess,
+		&out.NotifyOnFailure,
 		&createdBy,
 		&out.CreatedAt,
 		&out.UpdatedAt,
@@ -227,7 +261,9 @@ func (s *Store) SetPipelineCurrentVersion(ctx context.Context, pipelineID string
 func (s *Store) GetPipeline(ctx context.Context, pipelineID string) (*Pipeline, error) {
 	row := s.pool.QueryRow(
 		ctx,
-		`select p.id, p.org_id, p.project_id, p.name, p.description, p.is_active, p.current_version_id, p.created_by, p.created_at, p.updated_at,
+		`select p.id, p.org_id, p.project_id, p.name, p.description, p.is_active, p.current_version_id,
+		        p.environment, p.auto_trigger, p.trigger_branch, p.quality_gate_enabled, p.quality_gate_min_score,
+		        p.notify_on_success, p.notify_on_failure, p.created_by, p.created_at, p.updated_at,
 		        coalesce((select max(version) from pipeline_versions where pipeline_id=p.id), 0) as latest_version
 		 from pipelines p
 		 where p.id=$1`,
@@ -247,6 +283,13 @@ func (s *Store) GetPipeline(ctx context.Context, pipelineID string) (*Pipeline, 
 		&desc,
 		&out.IsActive,
 		&currentVersion,
+		&out.Environment,
+		&out.AutoTrigger,
+		&out.TriggerBranch,
+		&out.QualityGateEnabled,
+		&out.QualityGateMinScore,
+		&out.NotifyOnSuccess,
+		&out.NotifyOnFailure,
 		&createdBy,
 		&out.CreatedAt,
 		&out.UpdatedAt,
@@ -319,11 +362,14 @@ func (s *Store) ListPipelines(ctx context.Context, orgID string, projectID *stri
 		rows pgx.Rows
 		err  error
 	)
+	selectCols := `p.id, p.org_id, p.project_id, p.name, p.description, p.is_active, p.current_version_id,
+		        p.environment, p.auto_trigger, p.trigger_branch, p.quality_gate_enabled, p.quality_gate_min_score,
+		        p.notify_on_success, p.notify_on_failure, p.created_by, p.created_at, p.updated_at,
+		        coalesce((select max(version) from pipeline_versions where pipeline_id=p.id), 0) as latest_version`
 	if projectID != nil && *projectID != "" {
 		rows, err = s.pool.Query(
 			ctx,
-			`select p.id, p.org_id, p.project_id, p.name, p.description, p.is_active, p.current_version_id, p.created_by, p.created_at, p.updated_at,
-			        coalesce((select max(version) from pipeline_versions where pipeline_id=p.id), 0) as latest_version
+			`select `+selectCols+`
 			 from pipelines p
 			 where p.org_id=$1 and p.project_id=$2
 			 order by p.updated_at desc`,
@@ -333,8 +379,7 @@ func (s *Store) ListPipelines(ctx context.Context, orgID string, projectID *stri
 	} else {
 		rows, err = s.pool.Query(
 			ctx,
-			`select p.id, p.org_id, p.project_id, p.name, p.description, p.is_active, p.current_version_id, p.created_by, p.created_at, p.updated_at,
-			        coalesce((select max(version) from pipeline_versions where pipeline_id=p.id), 0) as latest_version
+			`select `+selectCols+`
 			 from pipelines p
 			 where p.org_id=$1
 			 order by p.updated_at desc`,
@@ -351,16 +396,23 @@ func (s *Store) ListPipelines(ctx context.Context, orgID string, projectID *stri
 		var currentVersion pgtype.UUID
 		var createdBy pgtype.UUID
 		var desc pgtype.Text
-		var projectID pgtype.UUID
+		var pID pgtype.UUID
 		var item Pipeline
 		if err := rows.Scan(
 			&item.ID,
 			&item.OrgID,
-			&projectID,
+			&pID,
 			&item.Name,
 			&desc,
 			&item.IsActive,
 			&currentVersion,
+			&item.Environment,
+			&item.AutoTrigger,
+			&item.TriggerBranch,
+			&item.QualityGateEnabled,
+			&item.QualityGateMinScore,
+			&item.NotifyOnSuccess,
+			&item.NotifyOnFailure,
 			&createdBy,
 			&item.CreatedAt,
 			&item.UpdatedAt,
@@ -368,8 +420,8 @@ func (s *Store) ListPipelines(ctx context.Context, orgID string, projectID *stri
 		); err != nil {
 			return nil, err
 		}
-		if projectID.Valid {
-			val := projectID.String()
+		if pID.Valid {
+			val := pID.String()
 			item.ProjectID = &val
 		}
 		if desc.Valid {
@@ -393,9 +445,9 @@ func (s *Store) CreatePipelineRun(ctx context.Context, run PipelineRun) (*Pipeli
 	row := s.pool.QueryRow(
 		ctx,
 		`insert into pipeline_runs
-		 (pipeline_id, version_id, org_id, project_id, status, trigger_type, triggered_by, idempotency_key, attempt, error_code, error_message, metadata, created_at, updated_at)
-		 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now(),now())
-		 returning id, pipeline_id, version_id, org_id, project_id, status, trigger_type, triggered_by, idempotency_key, attempt, error_code, error_message, metadata, created_at, started_at, finished_at, updated_at`,
+		 (pipeline_id, version_id, org_id, project_id, status, trigger_type, triggered_by, idempotency_key, rollback_of, attempt, error_code, error_message, metadata, created_at, updated_at)
+		 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now(),now())
+		 returning id, pipeline_id, version_id, org_id, project_id, status, trigger_type, triggered_by, idempotency_key, rollback_of, attempt, error_code, error_message, metadata, created_at, started_at, finished_at, updated_at`,
 		run.PipelineID,
 		run.VersionID,
 		run.OrgID,
@@ -404,6 +456,7 @@ func (s *Store) CreatePipelineRun(ctx context.Context, run PipelineRun) (*Pipeli
 		run.TriggerType,
 		nullIfEmptyPtr(run.TriggeredBy),
 		nullIfEmptyPtr(run.IdempotencyKey),
+		nullIfEmptyPtr(run.RollbackOf),
 		run.Attempt,
 		nullIfEmptyPtr(run.ErrorCode),
 		nullIfEmptyPtr(run.ErrorMessage),
@@ -413,6 +466,7 @@ func (s *Store) CreatePipelineRun(ctx context.Context, run PipelineRun) (*Pipeli
 	var projectID pgtype.UUID
 	var triggeredBy pgtype.UUID
 	var idempotency pgtype.Text
+	var rollbackOf pgtype.UUID
 	var errorCode pgtype.Text
 	var errorMessage pgtype.Text
 	var startedAt pgtype.Timestamptz
@@ -428,6 +482,7 @@ func (s *Store) CreatePipelineRun(ctx context.Context, run PipelineRun) (*Pipeli
 		&out.TriggerType,
 		&triggeredBy,
 		&idempotency,
+		&rollbackOf,
 		&out.Attempt,
 		&errorCode,
 		&errorMessage,
@@ -450,6 +505,10 @@ func (s *Store) CreatePipelineRun(ctx context.Context, run PipelineRun) (*Pipeli
 	if idempotency.Valid {
 		val := idempotency.String
 		out.IdempotencyKey = &val
+	}
+	if rollbackOf.Valid {
+		val := rollbackOf.String()
+		out.RollbackOf = &val
 	}
 	if errorCode.Valid {
 		val := errorCode.String

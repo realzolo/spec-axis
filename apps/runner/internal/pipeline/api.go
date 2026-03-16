@@ -45,24 +45,38 @@ func (a *API) handlePipelines(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, items)
 	case http.MethodPost:
 		var payload struct {
-			OrgID       string         `json:"orgId"`
-			ProjectID   *string        `json:"projectId,omitempty"`
-			Name        string         `json:"name"`
-			Description string         `json:"description"`
-			Config      PipelineConfig `json:"config"`
-			CreatedBy   string         `json:"createdBy"`
+			OrgID               string         `json:"orgId"`
+			ProjectID           *string        `json:"projectId,omitempty"`
+			Name                string         `json:"name"`
+			Description         string         `json:"description"`
+			Config              PipelineConfig `json:"config"`
+			CreatedBy           string         `json:"createdBy"`
+			Environment         string         `json:"environment"`
+			AutoTrigger         bool           `json:"autoTrigger"`
+			TriggerBranch       string         `json:"triggerBranch"`
+			QualityGateEnabled  bool           `json:"qualityGateEnabled"`
+			QualityGateMinScore int            `json:"qualityGateMinScore"`
+			NotifyOnSuccess     bool           `json:"notifyOnSuccess"`
+			NotifyOnFailure     bool           `json:"notifyOnFailure"`
 		}
 		if err := httpx.ReadJSON(r, 2<<20, &payload); err != nil {
 			httpx.WriteError(w, http.StatusBadRequest, "invalid json")
 			return
 		}
 		pipeline, version, err := a.service.CreatePipeline(r.Context(), CreatePipelineInput{
-			OrgID:       payload.OrgID,
-			ProjectID:   payload.ProjectID,
-			Name:        payload.Name,
-			Description: payload.Description,
-			Config:      payload.Config,
-			CreatedBy:   payload.CreatedBy,
+			OrgID:               payload.OrgID,
+			ProjectID:           payload.ProjectID,
+			Name:                payload.Name,
+			Description:         payload.Description,
+			Config:              payload.Config,
+			CreatedBy:           payload.CreatedBy,
+			Environment:         payload.Environment,
+			AutoTrigger:         payload.AutoTrigger,
+			TriggerBranch:       payload.TriggerBranch,
+			QualityGateEnabled:  payload.QualityGateEnabled,
+			QualityGateMinScore: payload.QualityGateMinScore,
+			NotifyOnSuccess:     payload.NotifyOnSuccess,
+			NotifyOnFailure:     payload.NotifyOnFailure,
 		})
 		if err != nil {
 			httpx.WriteError(w, http.StatusBadRequest, err.Error())
@@ -156,6 +170,7 @@ func (a *API) handlePipelineByID(w http.ResponseWriter, r *http.Request) {
 				TriggerType    string         `json:"triggerType"`
 				TriggeredBy    string         `json:"triggeredBy"`
 				IdempotencyKey string         `json:"idempotencyKey"`
+				RollbackOf     *string        `json:"rollbackOf,omitempty"`
 				Metadata       map[string]any `json:"metadata"`
 			}
 			if err := httpx.ReadJSON(r, 2<<20, &payload); err != nil {
@@ -170,6 +185,7 @@ func (a *API) handlePipelineByID(w http.ResponseWriter, r *http.Request) {
 				TriggerType:    payload.TriggerType,
 				TriggeredBy:    payload.TriggeredBy,
 				IdempotencyKey: payload.IdempotencyKey,
+				RollbackOf:     payload.RollbackOf,
 				Metadata:       payload.Metadata,
 			})
 			if err != nil {

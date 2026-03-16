@@ -6,7 +6,10 @@ import (
 	"spec-axis/runner/internal/store"
 )
 
-func EnsureRunGraph(ctx context.Context, st *store.Store, runID string, cfg PipelineConfig) error {
+// EnsureRunGraph creates the job and step records for a run if they don't exist.
+// It uses the InternalPlan (built from the four-stage PipelineConfig) to determine
+// the jobs and steps to create.
+func EnsureRunGraph(ctx context.Context, st *store.Store, runID string, cfg PipelineConfig, projectID, studioURL, studioToken string) error {
 	existing, err := st.ListPipelineJobs(ctx, runID)
 	if err != nil {
 		return err
@@ -15,7 +18,9 @@ func EnsureRunGraph(ctx context.Context, st *store.Store, runID string, cfg Pipe
 		return nil
 	}
 
-	for _, job := range cfg.Jobs {
+	plan := BuildInternalPlan(cfg, projectID, studioURL, studioToken)
+
+	for _, job := range plan.Jobs {
 		jobRecord, err := st.CreatePipelineJob(ctx, runID, job.ID, job.Name)
 		if err != nil {
 			return err

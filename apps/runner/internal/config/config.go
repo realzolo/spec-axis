@@ -21,6 +21,9 @@ type Config struct {
 	DataDir               string
 	LogRetentionDays      int
 	ArtifactRetentionDays int
+	// Studio integration — used by source_checkout and review_gate job types
+	StudioURL   string
+	StudioToken string
 }
 
 func Load() (Config, error) {
