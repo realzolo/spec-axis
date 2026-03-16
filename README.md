@@ -53,23 +53,31 @@ node -e "console.log('ENCRYPTION_KEY=' + require('crypto').randomBytes(32).toStr
 
 Add the output to your `apps/studio/.env` file.
 
-4. **Setup runner environment**:
+4. **Setup runner config**:
 ```bash
-cp apps/runner/.env.example apps/runner/.env
+cp apps/runner/config.example.toml apps/runner/config.toml
 ```
 
-Edit `apps/runner/.env` and add:
-```bash
-DATABASE_URL=postgres://...
-REDIS_URL=redis://...
-RUNNER_TOKEN=your_runner_token
-ENCRYPTION_KEY=<same as studio>
-PIPELINE_QUEUE=pipelines
-PIPELINE_CONCURRENCY=4
-PIPELINE_RUN_TIMEOUT=2h
-RUNNER_DATA_DIR=data
-PIPELINE_LOG_RETENTION_DAYS=30
-PIPELINE_ARTIFACT_RETENTION_DAYS=30
+Edit `apps/runner/config.toml` and add:
+```toml
+[runner]
+token = "your_runner_token"
+
+[database]
+url = "postgres://..."
+
+[redis]
+url = "redis://..."
+
+[pipeline]
+queue = "pipelines"
+concurrency = 4
+run_timeout = "2h"
+log_retention_days = 30
+artifact_retention_days = 30
+
+[security]
+encryption_key = "<same as studio>"
 ```
 
 5. **Initialize database schema**:

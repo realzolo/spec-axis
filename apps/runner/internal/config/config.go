@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -12,6 +11,7 @@ type Config struct {
 	RunnerToken           string
 	DatabaseURL           string
 	RedisURL              string
+	EncryptionKey         string
 	Concurrency           int
 	Queue                 string
 	AnalyzeTimeout        time.Duration
@@ -24,42 +24,7 @@ type Config struct {
 }
 
 func Load() (Config, error) {
-	cfg := Config{
-		Port:                  envString("RUNNER_PORT", "8200"),
-		RunnerToken:           os.Getenv("RUNNER_TOKEN"),
-		DatabaseURL:           os.Getenv("DATABASE_URL"),
-		RedisURL:              os.Getenv("REDIS_URL"),
-		Concurrency:           envInt("RUNNER_CONCURRENCY", 4),
-		Queue:                 envString("RUNNER_QUEUE", "analysis"),
-		PipelineQueue:         envString("PIPELINE_QUEUE", "pipelines"),
-		PipelineConcurrency:   envInt("PIPELINE_CONCURRENCY", 4),
-		DataDir:               envString("RUNNER_DATA_DIR", "data"),
-		LogRetentionDays:      envInt("PIPELINE_LOG_RETENTION_DAYS", 30),
-		ArtifactRetentionDays: envInt("PIPELINE_ARTIFACT_RETENTION_DAYS", 30),
-	}
-
-	analyzeTimeoutRaw := envString("ANALYZE_TIMEOUT", "300s")
-	analyzeTimeout, err := time.ParseDuration(analyzeTimeoutRaw)
-	if err != nil {
-		return Config{}, fmt.Errorf("invalid ANALYZE_TIMEOUT: %w", err)
-	}
-	cfg.AnalyzeTimeout = analyzeTimeout
-
-	pipelineTimeoutRaw := envString("PIPELINE_RUN_TIMEOUT", "2h")
-	pipelineTimeout, err := time.ParseDuration(pipelineTimeoutRaw)
-	if err != nil {
-		return Config{}, fmt.Errorf("invalid PIPELINE_RUN_TIMEOUT: %w", err)
-	}
-	cfg.PipelineRunTimeout = pipelineTimeout
-
-	if cfg.DatabaseURL == "" {
-		return Config{}, fmt.Errorf("DATABASE_URL is required")
-	}
-	if cfg.RedisURL == "" {
-		return Config{}, fmt.Errorf("REDIS_URL is required")
-	}
-
-	return cfg, nil
+	return LoadWithOptions(LoadOptions{})
 }
 
 func envString(key string, fallback string) string {

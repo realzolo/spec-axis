@@ -73,6 +73,7 @@ Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on si
 | Octokit | `^5.0.5` | GitHub API |
 | Anthropic SDK | `^0.78` | Claude AI, supports `ANTHROPIC_BASE_URL` |
 | Go | 1.24.0 | Runner service |
+| TOML | 1.6.0 | `github.com/BurntSushi/toml` for runner config |
 | Asynq | 0.26.0 | Redis-backed job queue (runner) |
 | sonner | ^2 | Toast notifications |
 | zod | `^4.3.6` | Runtime validation |
@@ -261,7 +262,39 @@ RUNNER_DATA_DIR=            # Local logs/artifacts root
 PIPELINE_LOG_RETENTION_DAYS=
 PIPELINE_ARTIFACT_RETENTION_DAYS=
 ```
-Environment files live under `apps/studio` (e.g. `apps/studio/.env`).
+**Runner config file (TOML, optional):**
+- Auto-detected: `apps/runner/config.toml` (repo root) or `config.toml` in current working directory
+- Override path via `RUNNER_CONFIG` or `-config`
+- Precedence: env vars > TOML > defaults
+
+Example config (tables, no redundant prefixes):
+```
+[runner]
+port = "8200"
+token = ""
+concurrency = 4
+queue = "analysis"
+analyze_timeout = "300s"
+data_dir = "data"
+
+[database]
+url = ""
+
+[redis]
+url = ""
+
+[pipeline]
+queue = "pipelines"
+concurrency = 4
+run_timeout = "2h"
+log_retention_days = 30
+artifact_retention_days = 30
+
+[security]
+encryption_key = ""
+```
+
+Environment files for Studio live under `apps/studio` (e.g. `apps/studio/.env`).
 
 **VCS and AI integrations** are configured via web UI at **Settings > Integrations** — NOT via env vars.
 - VCS: GitHub, GitLab, Generic Git
@@ -278,7 +311,7 @@ pnpm start   # Console production server
 pnpm lint    # Console ESLint
 pnpm codebase:cleanup   # Cleanup stale workspaces (uses TASK_RUNNER_TOKEN; optional STUDIO_BASE_URL)
 psql "$DATABASE_URL" -f docs/db/init.sql   # Initialize schema (fresh DB)
-cd apps/runner && go run ./cmd/runner   # Runner service
+cd apps/runner && go run ./cmd/runner   # Runner service (reads config.toml if present)
 ```
 
 `pnpm codebase:cleanup` uses `TASK_RUNNER_TOKEN` and optional `STUDIO_BASE_URL` (default `http://localhost:8109`).

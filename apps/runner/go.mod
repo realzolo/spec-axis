@@ -3,6 +3,7 @@ module spec-axis/runner
 go 1.24.0
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/hibiken/asynq v0.26.0
 	github.com/jackc/pgx/v5 v5.8.0
 )

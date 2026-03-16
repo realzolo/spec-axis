@@ -30,7 +30,7 @@
 - Settings > Integrations UI + onboarding checks
 
 ### 6. Documentation
-- `.env.example` uses `DATABASE_URL` and `ENCRYPTION_KEY`
+- `apps/studio/.env.example` uses `DATABASE_URL` and `ENCRYPTION_KEY`
 - `docs/vault-setup.md` describes encryption setup (no external vault)
 
 ## Notes

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -20,7 +21,12 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load()
+	configPath := flag.String("config", "", "path to runner TOML config")
+	flag.Parse()
+
+	cfg, err := config.LoadWithOptions(config.LoadOptions{
+		ConfigPath: *configPath,
+	})
 	if err != nil {
 		log.Fatalf("config error: %v", err)
 	}
