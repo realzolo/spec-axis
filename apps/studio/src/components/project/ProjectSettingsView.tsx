@@ -16,9 +16,9 @@ export default function ProjectSettingsView({
   return (
     <div className="flex flex-col h-full">
       <div className="px-6 py-4 border-b border-border bg-background shrink-0">
-        <div className="text-heading-md text-foreground">{dict.projects.projectConfig}</div>
+        <div className="text-[16px] font-semibold text-foreground">{dict.projects.projectConfig}</div>
         {project && (
-          <div className="text-copy-sm text-muted-foreground">{project.name}</div>
+          <div className="text-[13px] text-muted-foreground">{project.name}</div>
         )}
       </div>
       <div className="flex-1 overflow-auto p-8">

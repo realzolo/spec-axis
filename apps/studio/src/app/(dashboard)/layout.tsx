@@ -10,7 +10,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar locale={locale} dict={dict} />
+      <Sidebar dict={dict} />
       <main className="flex-1 overflow-hidden flex flex-col bg-background">
         <Topbar dict={dict} />
         <PageTransition>{children}</PageTransition>

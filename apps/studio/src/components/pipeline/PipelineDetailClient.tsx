@@ -491,7 +491,7 @@ export default function PipelineDetailClient({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-heading-md text-foreground truncate">
+              <span className="text-[16px] font-semibold text-foreground truncate">
                 {pipeline?.name ?? "Pipeline"}
               </span>
               {pipeline?.environment && (
@@ -510,7 +510,7 @@ export default function PipelineDetailClient({
               )}
             </div>
             {pipeline?.description && (
-              <div className="text-copy-sm text-muted-foreground truncate mt-0.5">
+              <div className="text-[13px] text-muted-foreground truncate mt-0.5">
                 {pipeline.description}
               </div>
             )}

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { ChevronDown, Check } from 'lucide-react';
+import Link from 'next/link';
+import { Check, ChevronDown } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,47 +19,6 @@ import { cn } from '@/lib/utils';
 interface Project {
   id: string;
   name: string;
-}
-
-interface BreadcrumbSegment {
-  label: string;
-  href?: string;
-  isProjectSwitcher?: boolean;
-}
-
-function usePageInfo(basePath: string, dict: Dictionary): BreadcrumbSegment[] {
-  const projectMatch = basePath.match(/^\/projects\/([^/]+)(\/(.+))?$/);
-
-  if (projectMatch) {
-    const tab = projectMatch[3] ?? 'commits';
-    const tabLabels: Record<string, string> = {
-      commits: dict.nav.project.commits,
-      reports: dict.nav.project.reports,
-      pipelines: dict.nav.project.pipelines,
-      codebase: dict.nav.project.codebase,
-      settings: dict.nav.project.settings,
-    };
-    // Segments: Projects > [Project switcher] > Tab
-    return [
-      { label: dict.nav.projects, href: 'projects' },
-      { label: '', isProjectSwitcher: true },
-      { label: tabLabels[tab.split('/')[0]] ?? tab },
-    ];
-  }
-
-  if (basePath.startsWith('/rules')) {
-    return [{ label: dict.nav.rules }];
-  }
-
-  if (basePath.startsWith('/settings')) {
-    return [{ label: dict.nav.settings }];
-  }
-
-  if (basePath === '/') {
-    return [{ label: dict.nav.home }];
-  }
-
-  return [];
 }
 
 function ProjectSwitcher({
@@ -99,28 +59,28 @@ function ProjectSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex items-center gap-1 text-sm font-medium text-foreground hover:text-foreground/80 transition-colors outline-none group">
+        <button className="flex items-center gap-1 text-[13px] font-medium text-foreground hover:text-foreground/80 transition-colors duration-100 outline-none">
           <span>{currentProject?.name ?? '...'}</span>
-          <ChevronDown className="size-3.5 text-muted-foreground group-hover:text-foreground/70 transition-colors" />
+          <ChevronDown className="size-3 text-[hsl(var(--ds-text-2))] mt-px" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+      <DropdownMenuContent align="start" className="w-[220px]">
+        <DropdownMenuLabel className="text-[11px] text-[hsl(var(--ds-text-2))] font-normal uppercase tracking-wider px-2 py-1.5">
           {dict.nav.project.switchProject}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {projects.length === 0 ? (
-          <DropdownMenuItem disabled>{dict.nav.project.noProjects}</DropdownMenuItem>
+          <DropdownMenuItem disabled className="text-[13px]">{dict.nav.project.noProjects}</DropdownMenuItem>
         ) : (
           projects.map(p => (
             <DropdownMenuItem
               key={p.id}
               onClick={() => navigateTo(p.id)}
-              className="gap-2"
+              className="gap-2 text-[13px]"
             >
               <span className="flex-1 truncate">{p.name}</span>
               {p.id === currentProjectId && (
-                <Check className="size-3.5 text-muted-foreground" />
+                <Check className="size-3.5 text-[hsl(var(--ds-text-2))]" />
               )}
             </DropdownMenuItem>
           ))
@@ -138,63 +98,53 @@ export default function Topbar({ dict }: { dict: Dictionary }) {
   const projectMatch = basePath.match(/^\/projects\/([^/]+)(\/|$)/);
   const currentProjectId = projectMatch?.[1] ?? null;
 
-  const segments = usePageInfo(basePath, dict);
+  // Determine current top-level section label
+  let sectionLabel: string | null = null;
+  let sectionHref: string | null = null;
 
-  if (segments.length === 0) return null;
+  if (basePath.startsWith('/projects')) {
+    sectionLabel = dict.nav.projects;
+    sectionHref = orgId ? `/o/${orgId}/projects` : '/projects';
+  } else if (basePath.startsWith('/rules')) {
+    sectionLabel = dict.nav.rules;
+  } else if (basePath.startsWith('/settings')) {
+    sectionLabel = dict.nav.settings;
+  } else if (basePath === '/') {
+    sectionLabel = dict.nav.home;
+  }
+
+  if (!sectionLabel) return null;
 
   return (
-    <header className="h-12 flex items-center gap-1.5 px-4 border-b border-border bg-background shrink-0">
-      {/* Org name — static, no link (org switching is in sidebar) */}
-      {/* Breadcrumb */}
-      {segments.map((seg, i) => {
-        const isLast = i === segments.length - 1;
-        const sep = i > 0 && (
-          <span key={`sep-${i}`} className="text-muted-foreground/40 text-sm select-none mx-0.5">
-            /
-          </span>
-        );
+    <header className="h-11 flex items-center gap-1 px-4 border-b border-border bg-[hsl(var(--ds-background-2))] shrink-0">
+      {/* Section breadcrumb */}
+      {sectionHref ? (
+        <Link
+          href={sectionHref}
+          className="text-[13px] text-[hsl(var(--ds-text-2))] hover:text-foreground transition-colors duration-100"
+        >
+          {sectionLabel}
+        </Link>
+      ) : (
+        <span className={cn(
+          'text-[13px]',
+          currentProjectId ? 'text-[hsl(var(--ds-text-2))]' : 'text-foreground font-medium',
+        )}>
+          {sectionLabel}
+        </span>
+      )}
 
-        if (seg.isProjectSwitcher && currentProjectId) {
-          return (
-            <span key="project-switcher" className="flex items-center gap-1.5">
-              {sep}
-              <ProjectSwitcher
-                currentProjectId={currentProjectId}
-                pathname={pathname}
-                dict={dict}
-              />
-            </span>
-          );
-        }
-
-        if (seg.href && !isLast) {
-          return (
-            <span key={seg.href} className="flex items-center gap-1.5">
-              {sep}
-              <a
-                href={orgId ? `/o/${orgId}/${seg.href}` : `/${seg.href}`}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {seg.label}
-              </a>
-            </span>
-          );
-        }
-
-        return (
-          <span key={`${seg.label}-${i}`} className="flex items-center gap-1.5">
-            {sep}
-            <span
-              className={cn(
-                'text-sm',
-                isLast ? 'text-foreground font-medium' : 'text-muted-foreground',
-              )}
-            >
-              {seg.label}
-            </span>
-          </span>
-        );
-      })}
+      {/* Project switcher segment */}
+      {currentProjectId && (
+        <>
+          <span className="text-[hsl(var(--ds-border-3))] text-sm select-none">/</span>
+          <ProjectSwitcher
+            currentProjectId={currentProjectId}
+            pathname={pathname}
+            dict={dict}
+          />
+        </>
+      )}
     </header>
   );
 }

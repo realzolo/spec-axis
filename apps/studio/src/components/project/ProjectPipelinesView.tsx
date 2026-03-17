@@ -19,7 +19,6 @@ import type { Dictionary } from '@/i18n';
 import type { PipelineSummary, PipelineRunStatus } from '@/services/pipelineTypes';
 import { durationLabel, ENV_LABELS, STATUS_VARIANTS } from '@/services/pipelineTypes';
 import { withOrgPrefix } from '@/lib/orgPath';
-import { useProject } from '@/lib/projectContext';
 import CreatePipelineWizard from '@/components/pipeline/CreatePipelineWizard';
 
 const STATUS_ICONS: Record<PipelineRunStatus, React.ReactNode> = {
@@ -45,7 +44,6 @@ export default function ProjectPipelinesView({
   projectId: string;
   dict: Dictionary;
 }) {
-  const { project } = useProject();
   const router = useRouter();
   const pathname = usePathname();
   const p = dict.pipelines;
@@ -97,19 +95,19 @@ export default function ProjectPipelinesView({
       <div className="px-6 py-4 border-b border-border bg-background shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-heading-md text-foreground">{p.title}</div>
-            <div className="text-copy-sm text-muted-foreground">
-              {project?.name} · {p.description}
+            <div className="text-[16px] font-semibold text-foreground">{p.title}</div>
+            <div className="text-[13px] text-[hsl(var(--ds-text-2))] mt-0.5">
+              {p.description}
             </div>
           </div>
-          <Button variant="default" size="sm" onClick={() => setWizardOpen(true)}>
+          <Button variant="default" size="sm" className="h-8 text-[13px]" onClick={() => setWizardOpen(true)}>
             {p.new}
           </Button>
         </div>
       </div>
 
       {/* Column headers */}
-      <div className="flex items-center px-6 py-2 border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground gap-4 shrink-0">
+      <div className="flex items-center px-6 py-2 border-b border-border bg-[hsl(var(--ds-surface-1))] text-[11px] font-medium text-[hsl(var(--ds-text-2))] uppercase tracking-wider gap-4 shrink-0">
         <div className="flex-1">{dict.common.name}</div>
         <div className="w-24 text-center">{p.environment}</div>
         <div className="w-20 text-center">{p.stages.source}</div>
@@ -149,7 +147,7 @@ export default function ProjectPipelinesView({
             return (
               <div
                 key={pipeline.id}
-                className="flex items-center px-6 py-4 gap-4 border-b border-border hover:bg-muted/30 cursor-pointer group"
+                className="flex items-center px-6 py-4 gap-4 border-b border-border hover:bg-[hsl(var(--ds-surface-1))] cursor-pointer group transition-colors duration-100"
                 onClick={() =>
                   router.push(
                     withOrgPrefix(pathname, `/projects/${projectId}/pipelines/${pipeline.id}`),
@@ -157,9 +155,9 @@ export default function ProjectPipelinesView({
                 }
               >
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-foreground truncate">{pipeline.name}</div>
+                  <div className="text-[13px] font-medium text-foreground truncate">{pipeline.name}</div>
                   {pipeline.description && (
-                    <div className="text-xs text-muted-foreground truncate">{pipeline.description}</div>
+                    <div className="text-[12px] text-[hsl(var(--ds-text-2))] truncate">{pipeline.description}</div>
                   )}
                 </div>
                 <div className="w-24 flex justify-center">

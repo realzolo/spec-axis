@@ -1,18 +1,23 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { useRouter, usePathname } from 'next/navigation';
+import { Plus, Search, Github, GitBranch, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useSearchParams } from 'next/navigation';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { FolderOpen } from 'lucide-react';
-import ProjectCard from '@/components/project/ProjectCard';
 import AddProjectModal from '@/components/project/AddProjectModal';
-import DashboardStats from '@/components/dashboard/DashboardStats';
-import { t } from '@/lib/i18n-utils';
+import EditProjectModal from '@/components/project/EditProjectModal';
 import type { Dictionary } from '@/i18n';
 import { useOrgRole } from '@/lib/useOrgRole';
+import { withOrgPrefix } from '@/lib/orgPath';
 
 type Project = {
   id: string; name: string; repo: string;
@@ -24,10 +29,10 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
   const [loading, setLoading] = useState(!initialProjects);
   const [loadError, setLoadError] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const searchParams = useSearchParams();
-  const search = searchParams.get('q') ?? '';
-  const view = searchParams.get('view') === 'list' ? 'list' : 'grid';
+  const [search, setSearch] = useState('');
   const { isAdmin } = useOrgRole();
+  const router = useRouter();
+  const pathname = usePathname();
 
   const filtered = useMemo(() => {
     if (!search.trim()) return projects;
@@ -80,138 +85,100 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
       }
     }
     load();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [initialProjects]);
-
-  if (loading) {
-    return (
-      <div className="flex-1 overflow-auto">
-        <div className="max-w-[1200px] mx-auto w-full px-6 py-6">
-          <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
-            <div className="space-y-6">
-              <div className="rounded-xl border border-border bg-card p-4 shadow-elevation-1 space-y-3">
-                <Skeleton className="h-3 w-24" />
-                <div className="grid grid-cols-2 gap-4">
-                  {Array.from({ length: 4 }).map((_, idx) => (
-                    <div key={`stats-skeleton-${idx}`} className="space-y-2">
-                      <Skeleton className="h-3 w-20" />
-                      <Skeleton className="h-5 w-16" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="rounded-xl border border-border bg-card p-4 shadow-elevation-1 space-y-3">
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-5/6" />
-                <Skeleton className="h-8 w-28 rounded-md" />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-4 w-20" />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                {Array.from({ length: 6 }).map((_, index) => (
-                  <div key={`project-skeleton-${index}`} className="rounded-xl border border-border bg-card p-4 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <Skeleton className="h-10 w-10 rounded-md" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-4 w-2/3" />
-                        <Skeleton className="h-3 w-1/2" />
-                      </div>
-                    </div>
-                    <Skeleton className="h-3 w-full" />
-                    <div className="flex gap-2">
-                      <Skeleton className="h-5 w-16 rounded-full" />
-                      <Skeleton className="h-5 w-20 rounded-full" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (loadError && projects.length === 0) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-3">
-        <div className="text-sm text-muted-foreground">{dict.common.error}</div>
-        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
-          {dict.common.refresh}
-        </Button>
-      </div>
-    );
-  }
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="max-w-[1200px] mx-auto w-full px-6 py-6">
-          {projects.length === 0 ? (
-            <div className="flex flex-col items-start justify-center gap-3 py-20">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                <FolderOpen className="h-5 w-5 text-muted-foreground" />
-              </div>
-              <div>
-                <h3 className="text-sm font-medium">{dict.projects.noProjectsEmpty}</h3>
-                <p className="text-sm text-muted-foreground mt-0.5">{dict.projects.noProjectsEmptyDescription}</p>
-              </div>
-              {isAdmin && (
-                <Button onClick={() => setShowAdd(true)} size="sm" className="gap-1.5 mt-1">
-                  <Plus className="h-4 w-4" />
-                  {dict.projects.addProject}
-                </Button>
-              )}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="py-20">
-              <p className="text-sm text-muted-foreground">{dict.projects.noMatchingProjects.replace('{{search}}', search)}</p>
-            </div>
-          ) : (
-            <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
-              <div className="space-y-6">
-                <div className="rounded-xl border border-border bg-card p-4 shadow-elevation-1">
-                  <div className="text-[12px] text-muted-foreground uppercase tracking-wide mb-2">{dict.projects.usage}</div>
-                  <DashboardStats dict={dict} />
-                </div>
-                <div className="rounded-xl border border-border bg-card p-4 shadow-elevation-1">
-                  <div className="text-[12px] text-muted-foreground uppercase tracking-wide mb-2">{dict.projects.alerts}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {dict.projects.alertsDescription}
-                  </div>
-                  <Button variant="outline" className="mt-3 h-8 text-sm">
-                    {dict.projects.upgradePlan}
-                  </Button>
-                </div>
-              </div>
+      <div className="max-w-[960px] mx-auto w-full px-6 py-8">
 
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-sm font-medium">{dict.projects.title}</div>
-                  <div className="text-sm text-muted-foreground">{t(dict.projects.projectsCount, { count: filtered.length })}</div>
-                </div>
-                {view === 'grid' ? (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {filtered.map(p => (
-                      <ProjectCard key={p.id} project={p} onDelete={handleDelete} onUpdate={handleUpdate} dict={dict} view="grid" canManage={isAdmin} />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-border bg-card divide-y divide-border">
-                    {filtered.map(p => (
-                      <ProjectCard key={p.id} project={p} onDelete={handleDelete} onUpdate={handleUpdate} dict={dict} view="list" canManage={isAdmin} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+        {/* Page header */}
+        <div className="flex items-center justify-between gap-4 mb-6">
+          <h1 className="text-[20px] font-semibold tracking-tight text-foreground">
+            {dict.nav.projects}
+          </h1>
+          {isAdmin && (
+            <Button
+              size="sm"
+              onClick={() => setShowAdd(true)}
+              className="gap-1.5 h-8 text-[13px]"
+            >
+              <Plus className="size-3.5" />
+              {dict.projects.addProject}
+            </Button>
           )}
+        </div>
+
+        {/* Search bar */}
+        <div className="relative mb-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-[hsl(var(--ds-text-2))]" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={dict.nav.searchPlaceholder}
+            className="w-full h-9 pl-9 pr-3 rounded-[6px] border border-border bg-[hsl(var(--ds-surface-1))] text-[13px] text-foreground placeholder:text-[hsl(var(--ds-text-2))] outline-none focus:ring-1 focus:ring-[hsl(var(--ds-accent-7))] transition-colors"
+          />
+        </div>
+
+        {/* Content */}
+        {loading ? (
+          <div className="rounded-[8px] border border-border overflow-hidden divide-y divide-border">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3.5">
+                <Skeleton className="size-8 rounded-[6px] shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-3.5 w-32" />
+                  <Skeleton className="h-3 w-48" />
+                </div>
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
+            ))}
+          </div>
+        ) : loadError && projects.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-20">
+            <div className="text-[13px] text-[hsl(var(--ds-text-2))]">{dict.common.error}</div>
+            <Button variant="outline" size="sm" className="h-8 text-[13px]" onClick={() => window.location.reload()}>
+              {dict.common.refresh}
+            </Button>
+          </div>
+        ) : filtered.length === 0 && search ? (
+          <div className="py-16 text-center">
+            <div className="text-[13px] text-[hsl(var(--ds-text-2))]">
+              {dict.projects.noMatchingProjects?.replace('{{search}}', search) ?? `No projects matching "${search}"`}
+            </div>
+          </div>
+        ) : projects.length === 0 ? (
+          <div className="flex flex-col items-start gap-3 py-16">
+            <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[hsl(var(--ds-surface-2))]">
+              <Github className="size-5 text-[hsl(var(--ds-text-2))]" />
+            </div>
+            <div>
+              <div className="text-[13px] font-medium text-foreground">{dict.projects.noProjectsEmpty}</div>
+              <div className="text-[13px] text-[hsl(var(--ds-text-2))] mt-0.5">{dict.projects.noProjectsEmptyDescription}</div>
+            </div>
+            {isAdmin && (
+              <Button onClick={() => setShowAdd(true)} size="sm" className="gap-1.5 h-8 text-[13px] mt-1">
+                <Plus className="size-3.5" />
+                {dict.projects.addProject}
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-[8px] border border-border overflow-hidden divide-y divide-border">
+            {filtered.map(p => (
+              <ProjectRow
+                key={p.id}
+                project={p}
+                dict={dict}
+                canManage={isAdmin}
+                onDelete={handleDelete}
+                onUpdate={handleUpdate}
+                onOpen={() => router.push(withOrgPrefix(pathname, `/projects/${p.id}/commits`))}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {isAdmin && (
@@ -223,5 +190,121 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
         />
       )}
     </div>
+  );
+}
+
+function ProjectRow({
+  project,
+  dict,
+  canManage,
+  onDelete,
+  onUpdate,
+  onOpen,
+}: {
+  project: Project;
+  dict: Dictionary;
+  canManage: boolean;
+  onDelete: (id: string) => void;
+  onUpdate: (p: Project) => void;
+  onOpen: () => void;
+}) {
+  const [showEdit, setShowEdit] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  return (
+    <>
+      <div
+        className="group flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--ds-surface-1))] cursor-pointer transition-colors duration-100"
+        onClick={onOpen}
+      >
+        {/* Icon */}
+        <div className="flex h-8 w-8 items-center justify-center rounded-[6px] bg-[hsl(var(--ds-surface-2))] border border-border shrink-0">
+          <Github className="size-3.5 text-[hsl(var(--ds-text-2))]" />
+        </div>
+
+        {/* Name + repo */}
+        <div className="flex-1 min-w-0">
+          <div className="text-[13px] font-medium text-foreground truncate">{project.name}</div>
+          <div className="text-[12px] text-[hsl(var(--ds-text-2))] truncate">{project.repo}</div>
+        </div>
+
+        {/* Branch badge */}
+        <div className="flex items-center gap-1.5 text-[12px] text-[hsl(var(--ds-text-2))] shrink-0">
+          <GitBranch className="size-3" />
+          {project.default_branch}
+        </div>
+
+        {/* Actions */}
+        <div
+          className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-100 shrink-0"
+          onClick={e => e.stopPropagation()}
+        >
+          {confirmDelete ? (
+            <>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="h-7 px-2.5 text-[12px]"
+                onClick={() => onDelete(project.id)}
+              >
+                {dict.projects.confirmDelete}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2.5 text-[12px]"
+                onClick={() => setConfirmDelete(false)}
+              >
+                {dict.common.cancel}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2.5 text-[12px] gap-1"
+                onClick={onOpen}
+              >
+                {dict.projects.review}
+              </Button>
+              {canManage && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="icon" variant="ghost" className="h-7 w-7">
+                      <MoreHorizontal className="size-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40">
+                    <DropdownMenuItem onClick={() => setShowEdit(true)} className="text-[13px] gap-2">
+                      <Pencil className="size-3.5" />
+                      {dict.common.edit}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => setConfirmDelete(true)}
+                      className="text-[13px] gap-2 text-danger focus:text-danger"
+                    >
+                      <Trash2 className="size-3.5" />
+                      {dict.common.delete}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {canManage && (
+        <EditProjectModal
+          project={project}
+          open={showEdit}
+          onClose={() => setShowEdit(false)}
+          onUpdated={updated => { onUpdate(updated); setShowEdit(false); }}
+          dict={dict}
+        />
+      )}
+    </>
   );
 }

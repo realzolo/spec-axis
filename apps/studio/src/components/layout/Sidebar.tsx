@@ -11,15 +11,9 @@ import {
   Shield,
   Settings,
   LogOut,
-  PanelLeftClose,
-  PanelLeftOpen,
-  GitCommit,
-  FileText,
-  GitBranch,
-  Code2,
-  Sliders,
+  User,
+  ChevronsUpDown,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,9 +22,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import ThemeToggle from '@/components/theme/ThemeToggle';
-import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
-import type { Locale } from '@/i18n/config';
 import type { Dictionary } from '@/i18n';
 import {
   extractOrgFromPath,
@@ -41,7 +32,6 @@ import {
 import { cn } from '@/lib/utils';
 
 interface SidebarProps {
-  locale: Locale;
   dict: Dictionary;
 }
 
@@ -52,65 +42,39 @@ interface Organization {
   is_personal: boolean;
 }
 
-interface Project {
-  id: string;
-  name: string;
-}
-
-const COLLAPSED_WIDTH = 52;
-const MIN_WIDTH = 200;
-const MAX_WIDTH = 280;
-
 function NavItem({
   href,
   active,
   icon: Icon,
   label,
-  compact,
 }: {
   href: string;
   active: boolean;
   icon: React.ElementType;
   label: string;
-  compact: boolean;
 }) {
   return (
     <Link
       href={href}
-      title={compact ? label : undefined}
       className={cn(
-        'group flex items-center gap-2 h-8 px-2 rounded-md text-sm w-full transition-colors',
-        compact ? 'justify-center' : '',
+        'group flex items-center gap-2.5 h-8 px-2.5 rounded-[6px] text-[13px] w-full transition-colors duration-100',
         active
-          ? 'bg-accent text-accent-foreground font-medium'
-          : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+          ? 'bg-[hsl(var(--ds-surface-2))] text-foreground font-medium'
+          : 'text-[hsl(var(--ds-text-2))] hover:text-foreground hover:bg-[hsl(var(--ds-surface-1))]',
       )}
       aria-current={active ? 'page' : undefined}
     >
-      <Icon className="size-4 shrink-0" />
-      {!compact && <span className="truncate">{label}</span>}
+      <Icon className={cn('size-[15px] shrink-0', active ? 'text-foreground' : 'text-[hsl(var(--ds-text-2))]')} />
+      <span className="truncate">{label}</span>
     </Link>
   );
 }
 
-function SectionLabel({ label, compact }: { label: string; compact: boolean }) {
-  if (compact) return <div className="h-px bg-border mx-2 my-1" />;
-  return (
-    <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
-      {label}
-    </div>
-  );
-}
-
-export default function Sidebar({ locale, dict }: SidebarProps) {
+export default function Sidebar({ dict }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(240);
-  const [dragging, setDragging] = useState(false);
-  const [currentProject, setCurrentProject] = useState<Project | null>(null);
 
   const { orgId: pathOrgId } = extractOrgFromPath(pathname);
   const basePath = stripOrgPrefix(pathname);
@@ -144,62 +108,9 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
     router.replace(replaceOrgInPath(pathname, activeOrgId));
   }, [activeOrgId, pathOrgId, pathname, router]);
 
-  // Fetch current project name when inside a project
-  useEffect(() => {
-    if (!currentProjectId) {
-      setCurrentProject(null);
-      return;
-    }
-    let alive = true;
-    fetch(`/api/projects/${currentProjectId}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (alive && data) setCurrentProject({ id: data.id, name: data.name });
-      })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [currentProjectId]);
-
-  // Persist sidebar state
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const w = Number(localStorage.getItem('sidebar-width'));
-    const c = localStorage.getItem('sidebar-collapsed');
-    if (!Number.isNaN(w) && w >= MIN_WIDTH && w <= MAX_WIDTH) setSidebarWidth(w);
-    if (c != null) setCollapsed(c === 'true');
-    else if (window.innerWidth < 1024) setCollapsed(true);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') localStorage.setItem('sidebar-width', String(sidebarWidth));
-  }, [sidebarWidth]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') localStorage.setItem('sidebar-collapsed', String(collapsed));
-  }, [collapsed]);
-
-  // Drag to resize
-  useEffect(() => {
-    if (!dragging) return;
-    const onMove = (e: MouseEvent) => setSidebarWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, e.clientX)));
-    const onUp = () => setDragging(false);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => {
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-  }, [dragging]);
-
   const activeOrg = orgs.find(o => o.id === activeOrgId) ?? orgs[0];
   const orgLabel = activeOrg?.name ?? dict.nav.workspaceDefault;
-  const orgInitial = orgLabel.slice(0, 1).toUpperCase();
-  const compact = collapsed;
-  const width = collapsed ? COLLAPSED_WIDTH : sidebarWidth;
+  const orgInitial = orgLabel.slice(0, 2).toUpperCase();
 
   async function switchOrg(orgId: string) {
     if (orgId === activeOrgId) return;
@@ -225,18 +136,12 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
     return withOrgPrefix(pathname, path);
   }
 
-  // Active state helpers
   const isActive = (base: string) => {
     if (base === '/') return basePath === '/';
-    // When inside a project, don't mark /projects as active for the top nav
     if (base === '/projects' && currentProjectId) return false;
     return basePath === base || basePath.startsWith(`${base}/`);
   };
 
-  const isProjectTabActive = (tab: string) =>
-    currentProjectId !== null && basePath === `/projects/${currentProjectId}/${tab}`;
-
-  // Org nav items (no Pipelines at org level — all pipelines belong to projects)
   const orgNav = [
     { base: '/', label: dict.nav.home, icon: Home },
     { base: '/projects', label: dict.nav.projects, icon: FolderOpen },
@@ -244,89 +149,53 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
     { base: '/settings', label: dict.nav.settings, icon: Settings },
   ];
 
-  // Project sub-nav items
-  const projectNav = currentProjectId
-    ? [
-        { tab: 'commits', label: dict.nav.project.commits, icon: GitCommit },
-        { tab: 'reports', label: dict.nav.project.reports, icon: FileText },
-        { tab: 'pipelines', label: dict.nav.project.pipelines, icon: GitBranch },
-        { tab: 'codebase', label: dict.nav.project.codebase, icon: Code2 },
-        { tab: 'settings', label: dict.nav.project.settings, icon: Sliders },
-      ]
-    : [];
-
-  const orgSwitcherTrigger = compact ? (
-    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
-      <span className="flex h-5 w-5 items-center justify-center rounded bg-foreground/10 text-[11px] font-semibold">
-        {orgInitial}
-      </span>
-    </Button>
-  ) : (
-    <button className="flex items-center gap-2 w-full min-w-0 text-left hover:opacity-80 transition-opacity outline-none">
-      <span className="flex h-6 w-6 items-center justify-center rounded bg-foreground/10 text-[11px] font-bold shrink-0">
-        {orgInitial}
-      </span>
-      <span className="flex-1 min-w-0">
-        <span className="block text-sm font-medium leading-none truncate">{orgLabel}</span>
-      </span>
-      <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
-    </button>
-  );
-
   return (
-    <div
-      className="relative h-screen flex flex-col shrink-0 border-r border-border bg-sidebar text-sidebar-foreground"
-      style={{ width, transition: dragging ? 'none' : 'width 150ms ease' }}
-    >
-      {/* Org header */}
-      <div className="flex items-center gap-1.5 px-2.5 h-12 border-b border-border shrink-0">
+    <div className="relative h-screen flex flex-col shrink-0 border-r border-border bg-[hsl(var(--ds-background-2))]" style={{ width: 240 }}>
+      {/* Org switcher */}
+      <div className="px-3 py-3 border-b border-border shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <div className="flex-1 min-w-0">{orgSwitcherTrigger}</div>
+            <button className="flex items-center gap-2 w-full h-9 px-2 rounded-[6px] hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100 outline-none group">
+              {/* Org avatar */}
+              <span className="flex h-[22px] w-[22px] items-center justify-center rounded-[4px] bg-[hsl(var(--ds-surface-3))] text-[10px] font-bold text-foreground shrink-0">
+                {orgInitial}
+              </span>
+              <span className="flex-1 min-w-0 text-left">
+                <span className="block text-[13px] font-medium leading-none truncate text-foreground">{orgLabel}</span>
+              </span>
+              <ChevronsUpDown className="size-3.5 text-[hsl(var(--ds-text-2))] shrink-0" />
+            </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+          <DropdownMenuContent align="start" className="w-[220px]">
+            <DropdownMenuLabel className="text-[11px] text-[hsl(var(--ds-text-2))] font-normal uppercase tracking-wider px-2 py-1.5">
               Organizations
             </DropdownMenuLabel>
-            <DropdownMenuSeparator />
             {orgs.map(org => (
               <DropdownMenuItem
                 key={org.id}
                 onClick={() => switchOrg(org.id)}
-                className="gap-2"
+                className="gap-2 text-[13px]"
               >
-                <span className="flex h-5 w-5 items-center justify-center rounded bg-foreground/10 text-[11px] font-bold shrink-0">
-                  {org.name.slice(0, 1).toUpperCase()}
+                <span className="flex h-5 w-5 items-center justify-center rounded-[3px] bg-[hsl(var(--ds-surface-3))] text-[10px] font-bold shrink-0">
+                  {org.name.slice(0, 2).toUpperCase()}
                 </span>
-                <span className="flex-1 truncate text-sm">{org.name}</span>
-                {org.id === activeOrg?.id && <Check className="size-3.5 text-muted-foreground" />}
+                <span className="flex-1 truncate">{org.name}</span>
+                {org.id === activeOrg?.id && <Check className="size-3.5 text-[hsl(var(--ds-text-2))]" />}
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push(orgHref('/settings/organizations'))}>
+            <DropdownMenuItem
+              onClick={() => router.push(orgHref('/settings/organizations'))}
+              className="text-[13px]"
+            >
               Manage organizations
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7 shrink-0"
-          onClick={() => setCollapsed(p => !p)}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? (
-            <PanelLeftOpen className="size-4" />
-          ) : (
-            <PanelLeftClose className="size-4" />
-          )}
-        </Button>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
-        {/* Org-level nav */}
+      <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5">
         {orgNav.map(item => (
           <NavItem
             key={item.base}
@@ -334,123 +203,40 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
             active={isActive(item.base)}
             icon={item.icon}
             label={item.label}
-            compact={compact}
           />
         ))}
-
-        {/* Project context section */}
-        {currentProjectId && (
-          <>
-            <div className="pt-3 pb-1">
-              <SectionLabel label={compact ? '' : 'Project'} compact={compact} />
-            </div>
-
-            {/* Project switcher */}
-            {!compact && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-2 w-full h-8 px-2 rounded-md text-sm text-foreground hover:bg-accent/50 transition-colors outline-none">
-                    <span className="flex-1 text-left truncate font-medium">
-                      {currentProject?.name ?? '...'}
-                    </span>
-                    <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56">
-                  <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
-                    {dict.nav.project.switchProject}
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <ProjectSwitcherItems
-                    currentProjectId={currentProjectId}
-                    orgHref={orgHref}
-                    noProjectsLabel={dict.nav.project.noProjects}
-                  />
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-
-            {/* Project sub-nav */}
-            {projectNav.map(item => (
-              <NavItem
-                key={item.tab}
-                href={orgHref(`/projects/${currentProjectId}/${item.tab}`)}
-                active={isProjectTabActive(item.tab)}
-                icon={item.icon}
-                label={item.label}
-                compact={compact}
-              />
-            ))}
-          </>
-        )}
       </nav>
 
-      {/* Footer */}
-      <div className="px-2 pb-3 pt-2 border-t border-border shrink-0 space-y-1">
-        <div className={cn('flex items-center', compact ? 'justify-center' : 'justify-between px-1')}>
-          {!compact && <span className="text-xs text-muted-foreground">{dict.settings.language}</span>}
-          <LanguageSwitcher currentLocale={locale} compact={compact} />
-        </div>
-        <div className={cn('flex items-center', compact ? 'justify-center' : 'justify-between px-1')}>
-          {!compact && <span className="text-xs text-muted-foreground">{dict.settings.theme}</span>}
-          <ThemeToggle />
-        </div>
-        <Button
-          variant="ghost"
-          onClick={handleSignOut}
-          className={cn('w-full gap-2 h-8 text-sm', compact ? 'justify-center px-0' : 'justify-start')}
-        >
-          <LogOut className="size-4" />
-          {!compact && dict.nav.logout}
-        </Button>
+      {/* Footer — user + sign out */}
+      <div className="px-3 py-3 border-t border-border shrink-0">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-2.5 w-full h-9 px-2 rounded-[6px] hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100 outline-none">
+              <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[hsl(var(--ds-surface-3))] shrink-0">
+                <User className="size-3 text-[hsl(var(--ds-text-2))]" />
+              </span>
+              <span className="flex-1 text-left text-[13px] text-foreground truncate">Account</span>
+              <ChevronDown className="size-3.5 text-[hsl(var(--ds-text-2))] shrink-0" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[200px]">
+            <DropdownMenuItem
+              onClick={() => router.push(orgHref('/settings'))}
+              className="text-[13px]"
+            >
+              {dict.nav.settings}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={handleSignOut}
+              className="text-[13px] text-danger focus:text-danger gap-2"
+            >
+              <LogOut className="size-3.5" />
+              {dict.nav.logout}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-
-      {/* Resize handle */}
-      {!collapsed && (
-        <div
-          className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-border/60 transition-colors"
-          onMouseDown={e => { e.preventDefault(); setDragging(true); }}
-        />
-      )}
     </div>
-  );
-}
-
-function ProjectSwitcherItems({
-  currentProjectId,
-  orgHref,
-  noProjectsLabel,
-}: {
-  currentProjectId: string;
-  orgHref: (path: string) => string;
-  noProjectsLabel: string;
-}) {
-  const router = useRouter();
-  const [projects, setProjects] = useState<Project[]>([]);
-
-  useEffect(() => {
-    fetch('/api/projects')
-      .then(r => r.ok ? r.json() : [])
-      .then(data => setProjects(Array.isArray(data) ? data : []))
-      .catch(() => {});
-  }, []);
-
-  const others = projects.filter(p => p.id !== currentProjectId);
-
-  if (others.length === 0) {
-    return <DropdownMenuItem disabled>{noProjectsLabel}</DropdownMenuItem>;
-  }
-
-  return (
-    <>
-      {others.map(p => (
-        <DropdownMenuItem
-          key={p.id}
-          onClick={() => router.push(orgHref(`/projects/${p.id}/commits`))}
-        >
-          {p.name}
-        </DropdownMenuItem>
-      ))}
-    </>
   );
 }

@@ -16,7 +16,7 @@ import {
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 import { withOrgPrefix } from '@/lib/orgPath';
-import { useProject } from '@/lib/projectContext';
+
 
 type Report = {
   id: string;
@@ -35,7 +35,6 @@ export default function ProjectReportsView({
   projectId: string;
   dict: Dictionary;
 }) {
-  const { project } = useProject();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -100,13 +99,13 @@ export default function ProjectReportsView({
       <div className="px-6 py-4 border-b border-border bg-background shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-heading-md text-foreground">{dict.reports.title}</div>
-            <div className="text-copy-sm text-muted-foreground">
-              {project?.name} · {dict.reports.description ?? 'AI code review reports'}
+            <div className="text-[16px] font-semibold text-foreground">{dict.reports.title}</div>
+            <div className="text-[13px] text-[hsl(var(--ds-text-2))] mt-0.5">
+              {dict.reports.description ?? 'AI code review reports'}
             </div>
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-40 h-8 text-sm">
+            <SelectTrigger className="w-36 h-8 text-[13px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -119,7 +118,7 @@ export default function ProjectReportsView({
       </div>
 
       {/* Column headers */}
-      <div className="flex items-center px-6 py-2 border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground gap-4 shrink-0">
+      <div className="flex items-center px-6 py-2 border-b border-border bg-[hsl(var(--ds-surface-1))] text-[11px] font-medium text-[hsl(var(--ds-text-2))] uppercase tracking-wider gap-4 shrink-0">
         <div className="flex-1">{dict.reports.commit}</div>
         <div className="w-20 text-center">{dict.reports.score}</div>
         <div className="w-24 text-center">{dict.common.status}</div>
@@ -157,15 +156,15 @@ export default function ProjectReportsView({
             return (
               <div
                 key={report.id}
-                className="flex items-center px-6 py-3 gap-4 border-b border-border hover:bg-muted/30 cursor-pointer group"
+                className="flex items-center px-6 py-3 gap-4 border-b border-border hover:bg-[hsl(var(--ds-surface-1))] cursor-pointer group transition-colors duration-100"
                 onClick={() => router.push(withOrgPrefix(pathname, `/projects/${projectId}/reports/${report.id}`))}
               >
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-foreground truncate">
+                  <div className="text-[13px] text-foreground truncate">
                     {firstCommit?.message ?? report.id.slice(0, 8)}
                   </div>
                   {firstCommit?.sha && (
-                    <div className="text-xs text-muted-foreground font-mono">
+                    <div className="text-[12px] text-[hsl(var(--ds-text-2))] font-mono">
                       {firstCommit.sha.slice(0, 7)}
                     </div>
                   )}

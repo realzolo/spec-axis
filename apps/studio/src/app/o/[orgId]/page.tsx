@@ -32,7 +32,6 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
     avgScoreRow,
     recentReports,
     recentRuns,
-    trendRows,
   ] = await Promise.all([
     queryOne<{ count: string }>(
       `select count(*)::text as count
@@ -72,7 +71,7 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
        join code_projects p on p.id = r.project_id
        where r.org_id = $1
        order by r.created_at desc
-       limit 10`,
+       limit 8`,
       [orgId]
     ),
     query<{
@@ -84,30 +83,17 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
       project_id: string | null;
       project_name: string | null;
       branch: string | null;
-      commit_sha: string | null;
     }>(
       `select r.id, r.status, r.created_at,
               r.pipeline_id, p.name as pipeline_name,
               r.project_id, cp.name as project_name,
-              r.branch, r.commit_sha
+              r.branch
        from pipeline_runs r
        join pipelines p on p.id = r.pipeline_id
        left join code_projects cp on cp.id = r.project_id
        where r.org_id = $1
        order by r.created_at desc
-       limit 5`,
-      [orgId]
-    ),
-    query<{ day: string; avg_score: number }>(
-      `select date_trunc('day', created_at)::date::text as day,
-              avg(score)::float as avg_score
-       from analysis_reports
-       where org_id = $1
-         and status = 'done'
-         and score is not null
-         and created_at >= (now() - interval '14 days')
-       group by 1
-       order by 1 asc`,
+       limit 8`,
       [orgId]
     ),
   ]);
@@ -116,10 +102,8 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
   const openIssues = Number(openIssuesRow?.count ?? 0);
   const activeRuns = Number(activeRunsRow?.count ?? 0);
   const averageScore = Math.round(avgScoreRow?.avg ?? 0);
-  const trendValues = trendRows.map(r => Math.round(r.avg_score));
 
   const dateFmt = new Intl.DateTimeFormat(locale, {
-    year: 'numeric',
     month: 'short',
     day: '2-digit',
     hour: '2-digit',
@@ -138,119 +122,95 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
     return 'text-danger';
   }
 
-  function runStatusBadgeVariant(status: string): 'success' | 'danger' | 'warning' | 'muted' {
+  function runStatusVariant(status: string): 'success' | 'danger' | 'warning' | 'muted' {
     if (status === 'success') return 'success';
     if (status === 'failed' || status === 'timed_out') return 'danger';
     if (status === 'running') return 'warning';
     return 'muted';
   }
 
-  function sparklinePath(values: number[], width: number, height: number) {
-    if (values.length < 2) return '';
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const range = Math.max(1, max - min);
-    const dx = width / (values.length - 1);
-    return values
-      .map((v, idx) => {
-        const x = idx * dx;
-        const t = (v - min) / range;
-        const y = height - t * height;
-        return `${idx === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
-      })
-      .join(' ');
-  }
-
-  const sparkPath = sparklinePath(trendValues, 220, 42);
+  const stats = [
+    { label: dict.dashboard.totalProjects, value: String(totalProjects) },
+    {
+      label: dict.dashboard.averageScore,
+      value: averageScore > 0 ? averageScore : '—',
+      className: averageScore > 0 ? scoreColor(averageScore) : undefined,
+      suffix: averageScore > 0 ? '/ 100' : undefined,
+    },
+    { label: dict.dashboard.openIssues, value: String(openIssues) },
+    { label: dict.dashboard.activeRuns, value: String(activeRuns) },
+  ];
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="max-w-[1200px] mx-auto w-full px-6 py-6 space-y-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-heading-24">{dict.dashboard.overview}</div>
-            <div className="text-copy-14 text-muted-foreground">{dict.dashboard.last14Days}</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link href={`/o/${orgId}/projects`} className="text-xs text-muted-foreground hover:text-foreground transition-soft">
-              {dict.nav.projects}
-            </Link>
-          </div>
+      <div className="max-w-[960px] mx-auto w-full px-6 py-8 space-y-8">
+
+        {/* Page heading */}
+        <div>
+          <h1 className="text-[20px] font-semibold tracking-tight text-foreground">
+            {dict.dashboard.overview}
+          </h1>
+          <p className="text-[13px] text-[hsl(var(--ds-text-2))] mt-0.5">
+            {dict.dashboard.last14Days}
+          </p>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
-          <aside className="space-y-6">
-            <div className="rounded-xl border border-border bg-card p-4 shadow-elevation-1 space-y-3">
-              <div className="text-sm font-medium">{dict.dashboard.overview}</div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">{dict.dashboard.totalProjects}</div>
-                  <div className="text-base font-semibold">{totalProjects}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">{dict.dashboard.averageScore}</div>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className={['text-base font-semibold', scoreColor(averageScore)].join(' ')}>{averageScore}</span>
-                    <span className="text-xs text-muted-foreground">/ 100</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">{dict.dashboard.openIssues}</div>
-                  <div className="text-base font-semibold">{openIssues}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">{dict.dashboard.activeRuns}</div>
-                  <div className="text-base font-semibold">{activeRuns}</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border bg-card p-4 shadow-elevation-1">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-medium">{dict.dashboard.averageScore}</div>
-                <Badge variant="muted" size="sm">{dict.dashboard.last14Days}</Badge>
-              </div>
-              <div className="mt-3">
-                {trendValues.length >= 2 ? (
-                  <svg viewBox="0 0 220 42" className="w-full h-[54px]" preserveAspectRatio="none" aria-label={dict.dashboard.averageScore}>
-                    <path d={sparkPath} fill="none" stroke="currentColor" strokeWidth="2" className="text-foreground/70" />
-                  </svg>
-                ) : (
-                  <div className="text-xs text-muted-foreground">{dict.reports.noReports}</div>
+        {/* Stat row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {stats.map((stat, i) => (
+            <div
+              key={i}
+              className="rounded-[8px] border border-border bg-[hsl(var(--ds-background-2))] px-4 py-4"
+            >
+              <div className="text-[12px] text-[hsl(var(--ds-text-2))] mb-1.5">{stat.label}</div>
+              <div className="flex items-baseline gap-1">
+                <span className={['text-[22px] font-semibold tracking-tight', stat.className].filter(Boolean).join(' ')}>
+                  {stat.value}
+                </span>
+                {stat.suffix && (
+                  <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{stat.suffix}</span>
                 )}
               </div>
             </div>
-          </aside>
+          ))}
+        </div>
 
-          <section className="space-y-6">
-            <div className="rounded-xl border border-border bg-card p-4 shadow-elevation-1">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-medium">{dict.dashboard.recentReports}</div>
-                <Link href={`/o/${orgId}/reports`} className="text-xs text-muted-foreground hover:text-foreground transition-soft">
-                  {dict.dashboard.viewAll}
-                </Link>
+        {/* Two-column activity */}
+        <div className="grid gap-4 lg:grid-cols-2">
+
+          {/* Recent reports */}
+          <div className="rounded-[8px] border border-border overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <span className="text-[13px] font-medium text-foreground">{dict.dashboard.recentReports}</span>
+              <Link
+                href={`/o/${orgId}/projects`}
+                className="text-[12px] text-[hsl(var(--ds-text-2))] hover:text-foreground transition-colors duration-100"
+              >
+                {dict.dashboard.viewAll}
+              </Link>
+            </div>
+            {recentReports.length === 0 ? (
+              <div className="px-4 py-6 text-[13px] text-[hsl(var(--ds-text-2))]">
+                {dict.reports.noReportsDescription}
               </div>
-
-              <div className="mt-3 divide-y divide-border">
-                {recentReports.length === 0 && (
-                  <div className="py-6 text-sm text-muted-foreground">{dict.reports.noReportsDescription}</div>
-                )}
-                {recentReports.map((r) => (
+            ) : (
+              <div className="divide-y divide-border">
+                {recentReports.map(r => (
                   <Link
                     key={r.id}
-                    href={`/o/${orgId}/reports/${r.id}`}
-                    className="flex items-center justify-between gap-3 py-3 hover:bg-muted/30 rounded-md px-2 -mx-2 transition-soft"
+                    href={`/o/${orgId}/projects/${r.project_id}/reports/${r.id}`}
+                    className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100"
                   >
                     <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">{r.project_name}</div>
-                      <div className="text-xs text-muted-foreground">{formatDateTime(r.created_at)}</div>
+                      <div className="text-[13px] font-medium text-foreground truncate">{r.project_name}</div>
+                      <div className="text-[12px] text-[hsl(var(--ds-text-2))]">{formatDateTime(r.created_at)}</div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <Badge variant="muted" size="sm">
                         {dict.reports.status[r.status]}
                       </Badge>
                       {r.status === 'done' && r.score != null && (
-                        <span className={['text-sm font-semibold tabular-nums', scoreColor(r.score)].join(' ')}>
+                        <span className={['text-[13px] font-semibold tabular-nums', scoreColor(r.score)].join(' ')}>
                           {r.score}
                         </span>
                       )}
@@ -258,45 +218,52 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
                   </Link>
                 ))}
               </div>
+            )}
+          </div>
+
+          {/* Recent pipeline runs */}
+          <div className="rounded-[8px] border border-border overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <span className="text-[13px] font-medium text-foreground">{dict.dashboard.recentRuns}</span>
+              <Link
+                href={`/o/${orgId}/projects`}
+                className="text-[12px] text-[hsl(var(--ds-text-2))] hover:text-foreground transition-colors duration-100"
+              >
+                {dict.dashboard.viewAll}
+              </Link>
             </div>
-
-            <div className="rounded-xl border border-border bg-card p-4 shadow-elevation-1">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-medium">{dict.dashboard.recentRuns}</div>
-                <Link href={`/o/${orgId}/pipelines`} className="text-xs text-muted-foreground hover:text-foreground transition-soft">
-                  {dict.dashboard.viewAll}
-                </Link>
+            {recentRuns.length === 0 ? (
+              <div className="px-4 py-6 text-[13px] text-[hsl(var(--ds-text-2))]">
+                {dict.pipelines.detail.noRuns}
               </div>
-
-              <div className="mt-3 divide-y divide-border">
-                {recentRuns.length === 0 && (
-                  <div className="py-6 text-sm text-muted-foreground">{dict.pipelines.detail.noRuns}</div>
-                )}
-                {recentRuns.map((run) => (
+            ) : (
+              <div className="divide-y divide-border">
+                {recentRuns.map(run => (
                   <Link
                     key={run.id}
-                    href={`/o/${orgId}/pipelines/${run.pipeline_id}?tab=runs&runId=${run.id}`}
-                    className="flex items-center justify-between gap-3 py-3 hover:bg-muted/30 rounded-md px-2 -mx-2 transition-soft"
+                    href={`/o/${orgId}/projects/${run.project_id}/pipelines/${run.pipeline_id}`}
+                    className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100"
                   >
                     <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">{run.pipeline_name}</div>
-                      <div className="text-xs text-muted-foreground truncate">
+                      <div className="text-[13px] font-medium text-foreground truncate">{run.pipeline_name}</div>
+                      <div className="text-[12px] text-[hsl(var(--ds-text-2))] truncate">
                         {(run.project_name ?? dict.reports.unknownProject) + ' · ' + formatDateTime(run.created_at)}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <Badge variant={runStatusBadgeVariant(run.status)} size="sm">
+                      <Badge variant={runStatusVariant(run.status)} size="sm">
                         {dict.pipelines.status[run.status] ?? run.status}
                       </Badge>
                       {run.branch && (
-                        <span className="text-xs text-muted-foreground">{run.branch}</span>
+                        <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{run.branch}</span>
                       )}
                     </div>
                   </Link>
                 ))}
               </div>
-            </div>
-          </section>
+            )}
+          </div>
+
         </div>
       </div>
     </div>
