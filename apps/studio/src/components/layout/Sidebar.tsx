@@ -2,24 +2,24 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Check,
   ChevronDown,
   Home,
-  GitBranch,
   FolderOpen,
-  FileText,
   Shield,
   Settings,
   LogOut,
-  Search,
   PanelLeftClose,
   PanelLeftOpen,
+  GitCommit,
+  FileText,
+  GitBranch,
+  Code2,
+  Sliders,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +32,13 @@ import ThemeToggle from '@/components/theme/ThemeToggle';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import type { Locale } from '@/i18n/config';
 import type { Dictionary } from '@/i18n';
-import { extractOrgFromPath, replaceOrgInPath, stripOrgPrefix, withOrgPrefix } from '@/lib/orgPath';
+import {
+  extractOrgFromPath,
+  replaceOrgInPath,
+  stripOrgPrefix,
+  withOrgPrefix,
+} from '@/lib/orgPath';
+import { cn } from '@/lib/utils';
 
 interface SidebarProps {
   locale: Locale;
@@ -46,105 +52,136 @@ interface Organization {
   is_personal: boolean;
 }
 
+interface Project {
+  id: string;
+  name: string;
+}
+
+const COLLAPSED_WIDTH = 52;
 const MIN_WIDTH = 200;
-const MAX_WIDTH = 320;
-const COLLAPSED_WIDTH = 64;
+const MAX_WIDTH = 280;
+
+function NavItem({
+  href,
+  active,
+  icon: Icon,
+  label,
+  compact,
+}: {
+  href: string;
+  active: boolean;
+  icon: React.ElementType;
+  label: string;
+  compact: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      title={compact ? label : undefined}
+      className={cn(
+        'group flex items-center gap-2 h-8 px-2 rounded-md text-sm w-full transition-colors',
+        compact ? 'justify-center' : '',
+        active
+          ? 'bg-accent text-accent-foreground font-medium'
+          : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+      )}
+      aria-current={active ? 'page' : undefined}
+    >
+      <Icon className="size-4 shrink-0" />
+      {!compact && <span className="truncate">{label}</span>}
+    </Link>
+  );
+}
+
+function SectionLabel({ label, compact }: { label: string; compact: boolean }) {
+  if (compact) return <div className="h-px bg-border mx-2 my-1" />;
+  return (
+    <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+      {label}
+    </div>
+  );
+}
 
 export default function Sidebar({ locale, dict }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [counts, setCounts] = useState<Record<string, number>>({});
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [dragging, setDragging] = useState(false);
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+
+  const { orgId: pathOrgId } = extractOrgFromPath(pathname);
   const basePath = stripOrgPrefix(pathname);
-  const pathOrgId = extractOrgFromPath(pathname).orgId;
 
-  const navItems = [
-    { base: '/',         href: withOrgPrefix(pathname, '/'),         label: dict.nav.home,     icon: Home,       countKey: null },
-    { base: '/projects', href: withOrgPrefix(pathname, '/projects'), label: dict.nav.projects, icon: FolderOpen, countKey: 'projects' as const },
-    { base: '/pipelines', href: withOrgPrefix(pathname, '/pipelines'), label: dict.nav.pipelines, icon: GitBranch, countKey: null },
-    { base: '/reports',  href: withOrgPrefix(pathname, '/reports'),  label: dict.nav.reports,  icon: FileText,   countKey: 'reports' as const },
-    { base: '/rules',    href: withOrgPrefix(pathname, '/rules'),    label: dict.nav.rules,    icon: Shield,     countKey: null },
-    { base: '/settings', href: withOrgPrefix(pathname, '/settings'), label: dict.nav.settings,  icon: Settings,   countKey: null },
-  ];
-
-  const activeBase =
-    basePath === '/'
-      ? '/'
-      : navItems.filter(item => item.base !== '/').find(item => basePath.startsWith(item.base))?.base ?? '/projects';
+  // Extract project id from /projects/:id/... paths
+  const projectMatch = basePath.match(/^\/projects\/([^/]+)(\/|$)/);
+  const currentProjectId = projectMatch?.[1] ?? null;
 
   useEffect(() => {
     let alive = true;
-
-    async function loadOrgs() {
-      try {
-        const [orgRes, activeRes] = await Promise.all([
-          fetch('/api/orgs'),
-          fetch('/api/orgs/active'),
-        ]);
-        const orgData = orgRes.ok ? await orgRes.json() : [];
-        const activeData = activeRes.ok ? await activeRes.json() : null;
-
+    Promise.all([fetch('/api/orgs'), fetch('/api/orgs/active')])
+      .then(([orgRes, activeRes]) =>
+        Promise.all([
+          orgRes.ok ? orgRes.json() : [],
+          activeRes.ok ? activeRes.json() : null,
+        ]),
+      )
+      .then(([orgData, activeData]) => {
         if (!alive) return;
-        setOrgs(Array.isArray(orgData) ? orgData : []);
-        setActiveOrgId(activeData?.orgId ?? orgData?.[0]?.id ?? null);
-      } catch {}
-    }
-
-    loadOrgs();
-    return () => {
-      alive = false;
-    };
+        const list = Array.isArray(orgData) ? orgData : [];
+        setOrgs(list);
+        setActiveOrgId(activeData?.orgId ?? list[0]?.id ?? null);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
   }, []);
 
+  // Sync org cookie when URL org changes
   useEffect(() => {
-    if (!activeOrgId) return;
-    Promise.all([
-      fetch('/api/projects').then(r => r.json()).then((d: unknown[]) => ({ projects: Array.isArray(d) ? d.length : 0 })).catch(() => ({ projects: 0 })),
-      fetch('/api/reports').then(r => r.json()).then((d: unknown[]) => ({ reports: Array.isArray(d) ? d.length : 0 })).catch(() => ({ reports: 0 })),
-    ]).then(([p, r]) => setCounts({ ...p, ...r }));
-  }, [activeOrgId]);
-
-  useEffect(() => {
-    if (!activeOrgId || !pathOrgId) return;
-    if (pathOrgId !== activeOrgId) {
-      router.replace(replaceOrgInPath(pathname, activeOrgId));
-    }
+    if (!activeOrgId || !pathOrgId || pathOrgId === activeOrgId) return;
+    router.replace(replaceOrgInPath(pathname, activeOrgId));
   }, [activeOrgId, pathOrgId, pathname, router]);
 
+  // Fetch current project name when inside a project
+  useEffect(() => {
+    if (!currentProjectId) {
+      setCurrentProject(null);
+      return;
+    }
+    let alive = true;
+    fetch(`/api/projects/${currentProjectId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (alive && data) setCurrentProject({ id: data.id, name: data.name });
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [currentProjectId]);
+
+  // Persist sidebar state
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const storedWidth = Number(localStorage.getItem('sidebar-width'));
-    const storedCollapsed = localStorage.getItem('sidebar-collapsed');
-    if (!Number.isNaN(storedWidth) && storedWidth >= MIN_WIDTH && storedWidth <= MAX_WIDTH) {
-      setSidebarWidth(storedWidth);
-    }
-    if (storedCollapsed != null) {
-      setCollapsed(storedCollapsed === 'true');
-    } else if (window.innerWidth < 1024) {
-      setCollapsed(true);
-    }
+    const w = Number(localStorage.getItem('sidebar-width'));
+    const c = localStorage.getItem('sidebar-collapsed');
+    if (!Number.isNaN(w) && w >= MIN_WIDTH && w <= MAX_WIDTH) setSidebarWidth(w);
+    if (c != null) setCollapsed(c === 'true');
+    else if (window.innerWidth < 1024) setCollapsed(true);
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem('sidebar-width', String(sidebarWidth));
+    if (typeof window !== 'undefined') localStorage.setItem('sidebar-width', String(sidebarWidth));
   }, [sidebarWidth]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem('sidebar-collapsed', String(collapsed));
+    if (typeof window !== 'undefined') localStorage.setItem('sidebar-collapsed', String(collapsed));
   }, [collapsed]);
 
+  // Drag to resize
   useEffect(() => {
     if (!dragging) return;
-    const onMove = (event: MouseEvent) => {
-      const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, event.clientX));
-      setSidebarWidth(next);
-    };
+    const onMove = (e: MouseEvent) => setSidebarWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, e.clientX)));
     const onUp = () => setDragging(false);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
@@ -158,20 +195,20 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
     };
   }, [dragging]);
 
-  const activeOrg = orgs.find((org) => org.id === activeOrgId) ?? orgs[0];
+  const activeOrg = orgs.find(o => o.id === activeOrgId) ?? orgs[0];
   const orgLabel = activeOrg?.name ?? dict.nav.workspaceDefault;
   const orgInitial = orgLabel.slice(0, 1).toUpperCase();
-  const orgSubLabel = activeOrg?.is_personal ? dict.nav.workspaceDefault : (activeOrg?.slug ?? dict.nav.planDefault);
+  const compact = collapsed;
+  const width = collapsed ? COLLAPSED_WIDTH : sidebarWidth;
 
-  async function setActiveOrg(orgId: string) {
+  async function switchOrg(orgId: string) {
     if (orgId === activeOrgId) return;
     try {
-      const res = await fetch('/api/orgs/active', {
+      await fetch('/api/orgs/active', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orgId }),
       });
-      if (!res.ok) throw new Error('Failed to switch org');
       setActiveOrgId(orgId);
       router.push(replaceOrgInPath(pathname, orgId));
       router.refresh();
@@ -184,162 +221,236 @@ export default function Sidebar({ locale, dict }: SidebarProps) {
     router.refresh();
   }
 
-  const width = collapsed ? COLLAPSED_WIDTH : sidebarWidth;
-  const compact = collapsed;
+  function orgHref(path: string) {
+    return withOrgPrefix(pathname, path);
+  }
 
-  const orgMenu = (trigger: ReactNode) => (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuLabel>Organizations</DropdownMenuLabel>
-        {orgs.length === 0 && (
-          <DropdownMenuItem disabled>No organizations</DropdownMenuItem>
-        )}
-        {orgs.map((org) => (
-          <DropdownMenuItem
-            key={org.id}
-            onClick={() => setActiveOrg(org.id)}
-            className="gap-2"
-          >
-            <span className="flex-1 truncate">{org.name}</span>
-            {org.id === activeOrg?.id && <Check className="size-3.5 text-muted-foreground" />}
-          </DropdownMenuItem>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => router.push(withOrgPrefix(pathname, '/settings/organizations'))}>
-          Manage organizations
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+  // Active state helpers
+  const isActive = (base: string) => {
+    if (base === '/') return basePath === '/';
+    // When inside a project, don't mark /projects as active for the top nav
+    if (base === '/projects' && currentProjectId) return false;
+    return basePath === base || basePath.startsWith(`${base}/`);
+  };
+
+  const isProjectTabActive = (tab: string) =>
+    currentProjectId !== null && basePath === `/projects/${currentProjectId}/${tab}`;
+
+  // Org nav items (no Pipelines at org level — all pipelines belong to projects)
+  const orgNav = [
+    { base: '/', label: dict.nav.home, icon: Home },
+    { base: '/projects', label: dict.nav.projects, icon: FolderOpen },
+    { base: '/rules', label: dict.nav.rules, icon: Shield },
+    { base: '/settings', label: dict.nav.settings, icon: Settings },
+  ];
+
+  // Project sub-nav items
+  const projectNav = currentProjectId
+    ? [
+        { tab: 'commits', label: dict.nav.project.commits, icon: GitCommit },
+        { tab: 'reports', label: dict.nav.project.reports, icon: FileText },
+        { tab: 'pipelines', label: dict.nav.project.pipelines, icon: GitBranch },
+        { tab: 'codebase', label: dict.nav.project.codebase, icon: Code2 },
+        { tab: 'settings', label: dict.nav.project.settings, icon: Sliders },
+      ]
+    : [];
+
+  const orgSwitcherTrigger = compact ? (
+    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+      <span className="flex h-5 w-5 items-center justify-center rounded bg-foreground/10 text-[11px] font-semibold">
+        {orgInitial}
+      </span>
+    </Button>
+  ) : (
+    <button className="flex items-center gap-2 w-full min-w-0 text-left hover:opacity-80 transition-opacity outline-none">
+      <span className="flex h-6 w-6 items-center justify-center rounded bg-foreground/10 text-[11px] font-bold shrink-0">
+        {orgInitial}
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-medium leading-none truncate">{orgLabel}</span>
+      </span>
+      <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
+    </button>
   );
 
   return (
     <div
-      className="relative h-screen flex flex-col shrink-0 border-r border-sidebar bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-out"
-      style={{ width }}
-      data-collapsed={collapsed ? 'true' : 'false'}
+      className="relative h-screen flex flex-col shrink-0 border-r border-border bg-sidebar text-sidebar-foreground"
+      style={{ width, transition: dragging ? 'none' : 'width 150ms ease' }}
     >
-      <div className="flex items-center gap-2 px-3 h-12 border-b border-sidebar shrink-0">
-        {compact ? (
-          orgMenu(
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[12px] font-semibold text-foreground">
-                {orgInitial}
-              </span>
-            </Button>
-          )
-        ) : (
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center shrink-0 text-[12px] font-semibold select-none">
-              {orgInitial}
-            </div>
-            {orgMenu(
-              <button className="flex items-center gap-2 text-left w-full transition-soft hover:text-foreground outline-none select-none">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <div className="text-sm font-medium leading-none truncate">
-                      {orgLabel}
-                    </div>
-                    <Badge variant="muted" size="sm" className="text-[12px] px-1.5">
-                      {dict.nav.planDefault}
-                    </Badge>
-                  </div>
-                </div>
-                <ChevronDown className="size-4 text-muted-foreground shrink-0" />
-              </button>
-            )}
-          </div>
-        )}
+      {/* Org header */}
+      <div className="flex items-center gap-1.5 px-2.5 h-12 border-b border-border shrink-0">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <div className="flex-1 min-w-0">{orgSwitcherTrigger}</div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+              Organizations
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {orgs.map(org => (
+              <DropdownMenuItem
+                key={org.id}
+                onClick={() => switchOrg(org.id)}
+                className="gap-2"
+              >
+                <span className="flex h-5 w-5 items-center justify-center rounded bg-foreground/10 text-[11px] font-bold shrink-0">
+                  {org.name.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="flex-1 truncate text-sm">{org.name}</span>
+                {org.id === activeOrg?.id && <Check className="size-3.5 text-muted-foreground" />}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => router.push(orgHref('/settings/organizations'))}>
+              Manage organizations
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <Button
           size="icon"
           variant="ghost"
-          className="h-8 w-8"
-          onClick={() => setCollapsed((prev) => !prev)}
+          className="h-7 w-7 shrink-0"
+          onClick={() => setCollapsed(p => !p)}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+          {collapsed ? (
+            <PanelLeftOpen className="size-4" />
+          ) : (
+            <PanelLeftClose className="size-4" />
+          )}
         </Button>
       </div>
 
-      <div className="px-3 py-3">
-        {compact ? (
-          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={dict.nav.searchPlaceholder}>
-            <Search className="size-4 text-muted-foreground" />
-          </Button>
-        ) : (
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <Input
-              placeholder={dict.nav.searchPlaceholder}
-              className="h-8 pl-8 pr-12 bg-muted/40 border-border text-sm"
-            />
-            <span className="keycap absolute right-2 top-1/2 -translate-y-1/2">F</span>
-          </div>
-        )}
-      </div>
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
+        {/* Org-level nav */}
+        {orgNav.map(item => (
+          <NavItem
+            key={item.base}
+            href={orgHref(item.base)}
+            active={isActive(item.base)}
+            icon={item.icon}
+            label={item.label}
+            compact={compact}
+          />
+        ))}
 
-      <nav className="flex-1 px-2 pb-3 space-y-0.5 overflow-y-auto">
-        {navItems.map(item => {
-          const active = activeBase === item.base;
-          const count = item.countKey ? counts[item.countKey] : null;
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.base}
-              href={item.href}
-              className={[
-                'group relative flex items-center gap-2.5 h-8 px-2.5 rounded-md text-sm w-full transition-soft',
-                compact ? 'justify-center' : '',
-                active
-                  ? 'bg-sidebar-muted text-foreground shadow-elevation-1'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/40',
-              ].join(' ')}
-              aria-current={active ? 'page' : undefined}
-              title={compact ? item.label : undefined}
-            >
-              <span
-                className={[
-                  'absolute left-0 top-1/2 -translate-y-1/2 h-4 w-0.5 rounded-full',
-                  active ? 'bg-foreground/80' : 'bg-transparent',
-                ].join(' ')}
+        {/* Project context section */}
+        {currentProjectId && (
+          <>
+            <div className="pt-3 pb-1">
+              <SectionLabel label={compact ? '' : 'Project'} compact={compact} />
+            </div>
+
+            {/* Project switcher */}
+            {!compact && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-2 w-full h-8 px-2 rounded-md text-sm text-foreground hover:bg-accent/50 transition-colors outline-none">
+                    <span className="flex-1 text-left truncate font-medium">
+                      {currentProject?.name ?? '...'}
+                    </span>
+                    <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+                    {dict.nav.project.switchProject}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <ProjectSwitcherItems
+                    currentProjectId={currentProjectId}
+                    orgHref={orgHref}
+                    noProjectsLabel={dict.nav.project.noProjects}
+                  />
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            {/* Project sub-nav */}
+            {projectNav.map(item => (
+              <NavItem
+                key={item.tab}
+                href={orgHref(`/projects/${currentProjectId}/${item.tab}`)}
+                active={isProjectTabActive(item.tab)}
+                icon={item.icon}
+                label={item.label}
+                compact={compact}
               />
-              <Icon className="size-3.5 shrink-0" />
-              {!compact && <span className="flex-1 text-left truncate">{item.label}</span>}
-              {!compact && count != null && count > 0 && (
-                <Badge variant={active ? 'secondary' : 'muted'} size="sm">{count}</Badge>
-              )}
-              {compact && count != null && count > 0 && (
-                <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-foreground/70" />
-              )}
-            </Link>
-          );
-        })}
+            ))}
+          </>
+        )}
       </nav>
 
-      <div className="p-3 border-t border-sidebar shrink-0 space-y-2">
-        <div className={['flex items-center', compact ? 'justify-center' : 'justify-between px-1'].join(' ')}>
-          {!compact && <span className="text-[12px] text-muted-foreground">{dict.settings.language}</span>}
+      {/* Footer */}
+      <div className="px-2 pb-3 pt-2 border-t border-border shrink-0 space-y-1">
+        <div className={cn('flex items-center', compact ? 'justify-center' : 'justify-between px-1')}>
+          {!compact && <span className="text-xs text-muted-foreground">{dict.settings.language}</span>}
           <LanguageSwitcher currentLocale={locale} compact={compact} />
         </div>
-        <div className={['flex items-center', compact ? 'justify-center' : 'justify-between px-1'].join(' ')}>
-          {!compact && <span className="text-[12px] text-muted-foreground">{dict.settings.theme}</span>}
+        <div className={cn('flex items-center', compact ? 'justify-center' : 'justify-between px-1')}>
+          {!compact && <span className="text-xs text-muted-foreground">{dict.settings.theme}</span>}
           <ThemeToggle />
         </div>
-        <Button variant="ghost" onClick={handleSignOut} className={['w-full gap-2 h-8 text-sm', compact ? 'justify-center px-0' : 'justify-start'].join(' ')}>
-          <LogOut className="size-3.5" />
+        <Button
+          variant="ghost"
+          onClick={handleSignOut}
+          className={cn('w-full gap-2 h-8 text-sm', compact ? 'justify-center px-0' : 'justify-start')}
+        >
+          <LogOut className="size-4" />
           {!compact && dict.nav.logout}
         </Button>
       </div>
 
+      {/* Resize handle */}
       {!collapsed && (
         <div
-          className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-border/70 transition-soft"
-          onMouseDown={(event) => {
-            event.preventDefault();
-            setDragging(true);
-          }}
+          className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-border/60 transition-colors"
+          onMouseDown={e => { e.preventDefault(); setDragging(true); }}
         />
       )}
     </div>
+  );
+}
+
+function ProjectSwitcherItems({
+  currentProjectId,
+  orgHref,
+  noProjectsLabel,
+}: {
+  currentProjectId: string;
+  orgHref: (path: string) => string;
+  noProjectsLabel: string;
+}) {
+  const router = useRouter();
+  const [projects, setProjects] = useState<Project[]>([]);
+
+  useEffect(() => {
+    fetch('/api/projects')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setProjects(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+
+  const others = projects.filter(p => p.id !== currentProjectId);
+
+  if (others.length === 0) {
+    return <DropdownMenuItem disabled>{noProjectsLabel}</DropdownMenuItem>;
+  }
+
+  return (
+    <>
+      {others.map(p => (
+        <DropdownMenuItem
+          key={p.id}
+          onClick={() => router.push(orgHref(`/projects/${p.id}/commits`))}
+        >
+          {p.name}
+        </DropdownMenuItem>
+      ))}
+    </>
   );
 }

@@ -175,10 +175,6 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
             <Link href={`/o/${orgId}/projects`} className="text-xs text-muted-foreground hover:text-foreground transition-soft">
               {dict.nav.projects}
             </Link>
-            <span className="text-muted-foreground/60">/</span>
-            <Link href={`/o/${orgId}/pipelines`} className="text-xs text-muted-foreground hover:text-foreground transition-soft">
-              {dict.nav.pipelines}
-            </Link>
           </div>
         </div>
 

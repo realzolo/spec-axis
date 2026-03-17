@@ -88,7 +88,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
     });
     const data = await res.json();
     if (!res.ok) { toast.error(data.error); setAnalyzing(false); return; }
-    router.push(withOrgPrefix(pathname, `/reports/${data.reportId}`));
+    router.push(withOrgPrefix(pathname, `/projects/${project.id}/reports/${data.reportId}`));
   }
 
   async function openCommitDetail(commit: Commit) {

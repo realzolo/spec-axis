@@ -33,13 +33,11 @@ import {
   createDefaultStep,
 } from "@/services/pipelineTypes";
 
-type Project = { id: string; name: string };
-
 type Props = {
   open: boolean;
   onClose: () => void;
   onCreated: (pipelineId: string) => void;
-  projects: Project[];
+  projectId: string;
   dict: Dictionary;
 };
 
@@ -83,7 +81,7 @@ export default function CreatePipelineWizard({
   open,
   onClose,
   onCreated,
-  projects,
+  projectId,
   dict,
 }: Props) {
   const p = dict.pipelines;
@@ -92,12 +90,9 @@ export default function CreatePipelineWizard({
   const [stageTab, setStageTab] = useState<StageTab>("source");
   const [submitting, setSubmitting] = useState(false);
 
-  // Basic info
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [projectId, setProjectId] = useState("");
-  const [environment, setEnvironment] =
-    useState<PipelineEnvironment>("production");
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [environment, setEnvironment] = useState<PipelineEnvironment>('production');
 
   // Config derived from createDefaultPipelineConfig but managed locally
   const [config, setConfig] = useState<PipelineConfig>(() =>
@@ -105,13 +100,12 @@ export default function CreatePipelineWizard({
   );
 
   function resetForm() {
-    setWizardStep("basic");
-    setStageTab("source");
-    setName("");
-    setDescription("");
-    setProjectId("");
-    setEnvironment("production");
-    setConfig(createDefaultPipelineConfig(""));
+    setWizardStep('basic');
+    setStageTab('source');
+    setName('');
+    setDescription('');
+    setEnvironment('production');
+    setConfig(createDefaultPipelineConfig(''));
   }
 
   function handleClose() {
@@ -122,7 +116,7 @@ export default function CreatePipelineWizard({
   // ── Step navigation ────────────────────────────────────────────────────────
 
   function canAdvanceBasic() {
-    return name.trim().length > 0 && projectId !== "";
+    return name.trim().length > 0;
   }
 
   function goNext() {
@@ -304,25 +298,6 @@ export default function CreatePipelineWizard({
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground">
-                  {p.basic.project}
-                  <span className="text-danger ml-0.5">*</span>
-                </label>
-                <Select value={projectId} onValueChange={setProjectId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={p.basic.projectPlaceholder} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {projects.map((proj) => (
-                      <SelectItem key={proj.id} value={proj.id}>
-                        {proj.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-foreground">
@@ -425,8 +400,7 @@ export default function CreatePipelineWizard({
                         {dict.projects.repository}
                       </div>
                       <div className="text-sm font-medium">
-                        {projects.find((p) => p.id === projectId)?.name ??
-                          "—"}
+                        {dict.nav.project.commits}
                       </div>
                       <div className="text-xs text-muted-foreground mt-2">
                         {p.basic.branch}

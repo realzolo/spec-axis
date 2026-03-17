@@ -91,7 +91,7 @@ export default function ProjectCard({ project: initialProject, onDelete, onUpdat
             <Button
               size="sm"
               variant="outline"
-              onClick={() => router.push(withOrgPrefix(pathname, `/projects/${project.id}`))}
+              onClick={() => router.push(withOrgPrefix(pathname, `/projects/${project.id}/commits`))}
               className="gap-1.5 h-7 px-2.5 text-xs"
             >
               {dict.projects.review}
@@ -161,7 +161,7 @@ export default function ProjectCard({ project: initialProject, onDelete, onUpdat
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => router.push(withOrgPrefix(pathname, `/projects/${project.id}`))}
+                onClick={() => router.push(withOrgPrefix(pathname, `/projects/${project.id}/commits`))}
                 className="gap-1.5 h-7 px-2.5 text-xs"
               >
                 {dict.projects.review}

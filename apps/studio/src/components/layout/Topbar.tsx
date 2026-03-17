@@ -1,145 +1,200 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { ChevronDown, LayoutGrid, List as ListIcon, MoreHorizontal, Plus, Search } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { usePathname, useRouter } from 'next/navigation';
+import { ChevronDown, Check } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { Dictionary } from '@/i18n';
-import { stripOrgPrefix } from '@/lib/orgPath';
-import { useOrgRole } from '@/lib/useOrgRole';
+import { extractOrgFromPath, stripOrgPrefix, withOrgPrefix } from '@/lib/orgPath';
+import { cn } from '@/lib/utils';
 
-function useQueryParamUpdater() {
+interface Project {
+  id: string;
+  name: string;
+}
+
+interface BreadcrumbSegment {
+  label: string;
+  href?: string;
+  isProjectSwitcher?: boolean;
+}
+
+function usePageInfo(basePath: string, dict: Dictionary): BreadcrumbSegment[] {
+  const projectMatch = basePath.match(/^\/projects\/([^/]+)(\/(.+))?$/);
+
+  if (projectMatch) {
+    const tab = projectMatch[3] ?? 'commits';
+    const tabLabels: Record<string, string> = {
+      commits: dict.nav.project.commits,
+      reports: dict.nav.project.reports,
+      pipelines: dict.nav.project.pipelines,
+      codebase: dict.nav.project.codebase,
+      settings: dict.nav.project.settings,
+    };
+    // Segments: Projects > [Project switcher] > Tab
+    return [
+      { label: dict.nav.projects, href: 'projects' },
+      { label: '', isProjectSwitcher: true },
+      { label: tabLabels[tab.split('/')[0]] ?? tab },
+    ];
+  }
+
+  if (basePath.startsWith('/rules')) {
+    return [{ label: dict.nav.rules }];
+  }
+
+  if (basePath.startsWith('/settings')) {
+    return [{ label: dict.nav.settings }];
+  }
+
+  if (basePath === '/') {
+    return [{ label: dict.nav.home }];
+  }
+
+  return [];
+}
+
+function ProjectSwitcher({
+  currentProjectId,
+  pathname,
+  dict,
+}: {
+  currentProjectId: string;
+  pathname: string;
+  dict: Dictionary;
+}) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
 
-  return (updates: Record<string, string | null>) => {
-    const params = new URLSearchParams(searchParams.toString());
-    Object.entries(updates).forEach(([key, value]) => {
-      if (!value) params.delete(key);
-      else params.set(key, value);
-    });
-    const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  };
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/projects')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { if (alive) setProjects(Array.isArray(data) ? data : []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/projects/${currentProjectId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (alive && data) setCurrentProject(data); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [currentProjectId]);
+
+  function navigateTo(projectId: string) {
+    router.push(withOrgPrefix(pathname, `/projects/${projectId}/commits`));
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="flex items-center gap-1 text-sm font-medium text-foreground hover:text-foreground/80 transition-colors outline-none group">
+          <span>{currentProject?.name ?? '...'}</span>
+          <ChevronDown className="size-3.5 text-muted-foreground group-hover:text-foreground/70 transition-colors" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+          {dict.nav.project.switchProject}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {projects.length === 0 ? (
+          <DropdownMenuItem disabled>{dict.nav.project.noProjects}</DropdownMenuItem>
+        ) : (
+          projects.map(p => (
+            <DropdownMenuItem
+              key={p.id}
+              onClick={() => navigateTo(p.id)}
+              className="gap-2"
+            >
+              <span className="flex-1 truncate">{p.name}</span>
+              {p.id === currentProjectId && (
+                <Check className="size-3.5 text-muted-foreground" />
+              )}
+            </DropdownMenuItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 export default function Topbar({ dict }: { dict: Dictionary }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const updateQuery = useQueryParamUpdater();
+  const { orgId } = extractOrgFromPath(pathname);
   const basePath = stripOrgPrefix(pathname);
-  const { isAdmin } = useOrgRole();
 
-  const isProjects = basePath.startsWith('/projects');
-  const isReports = basePath.startsWith('/reports');
-  const isRules = basePath.startsWith('/rules');
-  const isSettings = basePath.startsWith('/settings');
+  const projectMatch = basePath.match(/^\/projects\/([^/]+)(\/|$)/);
+  const currentProjectId = projectMatch?.[1] ?? null;
 
-  const title =
-    isProjects ? dict.projects.allProjects :
-    isReports ? dict.reports.title :
-    isRules ? dict.rules.title :
-    isSettings ? dict.settings.title :
-    dict.dashboard.overview;
+  const segments = usePageInfo(basePath, dict);
 
-
-  const q = searchParams.get('q') ?? '';
-  const view = searchParams.get('view') === 'list' ? 'list' : 'grid';
-  const [search, setSearch] = useState(q);
-
-  useEffect(() => {
-    setSearch(q);
-  }, [q]);
+  if (segments.length === 0) return null;
 
   return (
-    <div className="border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0">
-      <div className="px-6 h-12 flex items-center gap-4">
-        {isProjects ? (
-          <button className="flex items-center gap-2 text-sm font-medium text-foreground transition-soft hover:text-foreground/80">
-            {dict.projects.allProjects}
-            <ChevronDown className="size-3.5 text-muted-foreground" />
-          </button>
-        ) : (
-          <div className="text-sm font-medium text-foreground">{title}</div>
-        )}
+    <header className="h-12 flex items-center gap-1.5 px-4 border-b border-border bg-background shrink-0">
+      {/* Org name — static, no link (org switching is in sidebar) */}
+      {/* Breadcrumb */}
+      {segments.map((seg, i) => {
+        const isLast = i === segments.length - 1;
+        const sep = i > 0 && (
+          <span key={`sep-${i}`} className="text-muted-foreground/40 text-sm select-none mx-0.5">
+            /
+          </span>
+        );
 
-        <div className="mx-auto text-sm text-muted-foreground">
-          {isProjects ? dict.projects.overview : ''}
-        </div>
+        if (seg.isProjectSwitcher && currentProjectId) {
+          return (
+            <span key="project-switcher" className="flex items-center gap-1.5">
+              {sep}
+              <ProjectSwitcher
+                currentProjectId={currentProjectId}
+                pathname={pathname}
+                dict={dict}
+              />
+            </span>
+          );
+        }
 
-        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Open page menu">
-          <MoreHorizontal className="size-4 text-muted-foreground" />
-        </Button>
-      </div>
+        if (seg.href && !isLast) {
+          return (
+            <span key={seg.href} className="flex items-center gap-1.5">
+              {sep}
+              <a
+                href={orgId ? `/o/${orgId}/${seg.href}` : `/${seg.href}`}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {seg.label}
+              </a>
+            </span>
+          );
+        }
 
-      {isProjects && (
-        <div className="px-6 pb-3 flex items-center gap-3">
-          <div className="relative flex-1 max-w-[600px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <Input
-              placeholder={dict.projects.searchProjects}
-              value={search}
-              onChange={(e) => {
-                const value = e.target.value;
-                setSearch(value);
-                updateQuery({ q: value || null });
-              }}
-              className="pl-9 h-8 bg-muted/40 text-sm"
-            />
-          </div>
-
-          <div className="flex items-center gap-1 rounded-md border border-border bg-muted/40 p-1 transition-soft">
-            <button
-              onClick={() => updateQuery({ view: 'grid' })}
-              className={[
-                'h-7 w-7 rounded-md flex items-center justify-center transition-soft',
-                view === 'grid' ? 'bg-background text-foreground' : 'text-muted-foreground hover:text-foreground',
-              ].join(' ')}
+        return (
+          <span key={`${seg.label}-${i}`} className="flex items-center gap-1.5">
+            {sep}
+            <span
+              className={cn(
+                'text-sm',
+                isLast ? 'text-foreground font-medium' : 'text-muted-foreground',
+              )}
             >
-              <LayoutGrid className="size-4" />
-            </button>
-            <button
-              onClick={() => updateQuery({ view: 'list' })}
-              className={[
-                'h-7 w-7 rounded-md flex items-center justify-center transition-soft',
-                view === 'list' ? 'bg-background text-foreground' : 'text-muted-foreground hover:text-foreground',
-              ].join(' ')}
-            >
-              <ListIcon className="size-4" />
-            </button>
-          </div>
-
-          {isAdmin && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button className="gap-1.5 h-8 text-sm">
-                  <Plus className="h-4 w-4" />
-                  {dict.projects.addProject}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onClick={() => {
-                    if (typeof window !== 'undefined') {
-                      window.dispatchEvent(new CustomEvent('open-add-project'));
-                    }
-                  }}
-                >
-                  {dict.projects.addProject}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
-      )}
-    </div>
+              {seg.label}
+            </span>
+          </span>
+        );
+      })}
+    </header>
   );
 }

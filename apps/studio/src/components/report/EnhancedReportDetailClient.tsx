@@ -292,7 +292,8 @@ export default function EnhancedReportDetailClient({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => router.push(withOrgPrefix(pathname, '/reports'))}
+          onClick={() => router.push(withOrgPrefix(pathname, `/projects/${report?.project_id ?? ''}/reports`))}
+
         >
           {dict.common.back}
         </Button>
@@ -316,7 +317,7 @@ export default function EnhancedReportDetailClient({
     const data = await res.json();
     setRetrying(false);
     if (!res.ok) { toast.error(data.error ?? dict.reportDetail.retryFailed); return; }
-    router.push(withOrgPrefix(pathname, `/reports/${data.reportId}`));
+    router.push(withOrgPrefix(pathname, `/projects/${report.project_id}/reports/${data.reportId}`));
   }
 
   const allIssues = report.issues ?? [];
@@ -384,7 +385,7 @@ export default function EnhancedReportDetailClient({
       {/* Header */}
       <div className="border-b border-border shrink-0 bg-card">
         <div className="flex items-center gap-3 px-6 h-16 max-w-[1200px] mx-auto w-full">
-          <Link href={withOrgPrefix(pathname, '/reports')}>
+          <Link href={withOrgPrefix(pathname, `/projects/${report.project_id}/reports`)}>
             <Button size="icon" variant="ghost">
               <ArrowLeft className="size-4" />
             </Button>

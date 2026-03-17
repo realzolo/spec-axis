@@ -37,14 +37,21 @@
   "nav": {
     "home": "首页",
     "projects": "项目",
-    "pipelines": "流水线",
-    "reports": "报告",
     "rules": "规则",
     "settings": "设置",
     "logout": "退出",
     "workspaceDefault": "个人工作区",
     "planDefault": "Pro",
-    "searchPlaceholder": "查找..."
+    "searchPlaceholder": "查找...",
+    "project": {
+      "commits": "提交",
+      "reports": "报告",
+      "pipelines": "流水线",
+      "codebase": "代码库",
+      "settings": "设置",
+      "switchProject": "切换项目",
+      "noProjects": "暂无其他项目"
+    }
   },
   "auth": {
     "login": "登录",

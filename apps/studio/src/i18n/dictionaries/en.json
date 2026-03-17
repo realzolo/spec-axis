@@ -37,14 +37,21 @@
   "nav": {
     "home": "Home",
     "projects": "Projects",
-    "pipelines": "Pipelines",
-    "reports": "Reports",
     "rules": "Rules",
     "settings": "Settings",
     "logout": "Logout",
     "workspaceDefault": "Personal Workspace",
     "planDefault": "Pro",
-    "searchPlaceholder": "Find..."
+    "searchPlaceholder": "Find...",
+    "project": {
+      "commits": "Commits",
+      "reports": "Reports",
+      "pipelines": "Pipelines",
+      "codebase": "Codebase",
+      "settings": "Settings",
+      "switchProject": "Switch project",
+      "noProjects": "No other projects"
+    }
   },
   "auth": {
     "login": "Login",
