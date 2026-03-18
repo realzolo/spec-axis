@@ -272,7 +272,7 @@ export default function RuleSetDetailClient({
         ) : (
           <div className="max-w-[1200px] mx-auto w-full px-6 py-6 space-y-4">
             {CATEGORIES.map(cat => {
-              const catRules = grouped[cat];
+              const catRules = grouped[cat] ?? [];
               if (catRules.length === 0) return null;
               const catLabel = dict.rules.category[cat as keyof typeof dict.rules.category] ?? cat;
               return (

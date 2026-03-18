@@ -44,21 +44,23 @@ export const updateProjectSchema = z.object({
 
 export const createRuleSchema = z.object({
   ruleset_id: rulesetIdSchema,
-  category: z.string().min(1).max(50),
+  category: z.enum(['style', 'security', 'architecture', 'performance', 'maintainability']),
   name: z.string().min(1).max(100),
   prompt: z.string().min(1).max(5000),
-  weight: z.number().min(0).max(1).default(1),
-  severity: z.enum(['critical', 'high', 'medium', 'low', 'info']).default('medium'),
+  weight: z.number().int().min(0).max(100).default(20),
+  severity: z.enum(['error', 'warning', 'info']).default('warning'),
   is_enabled: z.boolean().default(true),
   sort_order: z.number().int().default(0),
 });
 
-// ─── Pipeline V2 schemas ───────────────────────────────────────────────────
+// ─── Pipeline schemas ──────────────────────────────────────────────────────
 
 const pipelineStepSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   script: z.string(),
+  type: z.enum(['shell', 'docker']).optional(),
+  dockerImage: z.string().min(1).optional(),
   continueOnError: z.boolean().optional(),
   timeoutSeconds: z.number().int().positive().optional(),
   env: z.record(z.string(), z.string()).optional(),
@@ -79,8 +81,6 @@ const pipelineReviewSchema = z.object({
 const pipelineBuildSchema = z.object({
   enabled: z.boolean().default(true),
   steps: z.array(pipelineStepSchema),
-  artifactPaths: z.array(z.string()).optional(),
-  cacheEnabled: z.boolean().optional(),
 });
 
 const pipelineDeploySchema = z.object({

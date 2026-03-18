@@ -3,7 +3,6 @@
  */
 
 import { resolveAIIntegration } from './integrations';
-import type { AIClient } from './integrations';
 import { detectLanguagesInDiff, getLanguageSpecificRules, LANGUAGE_CONFIGS } from './languages';
 
 export interface ReviewResult {
@@ -317,4 +316,3 @@ Return ONLY valid JSON (no markdown):
 
 All text fields must be in English.`;
 }
-

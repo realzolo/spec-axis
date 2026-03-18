@@ -31,7 +31,7 @@ export async function GET(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const data = await query<Record<string, any>>(
+  const data = await query<Record<string, unknown>>(
     `select * from org_invites where org_id = $1 order by created_at desc`,
     [orgId]
   );
@@ -70,7 +70,7 @@ export async function POST(
   const token = generateToken();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  const invite = await queryOne<Record<string, any>>(
+  const invite = await queryOne<Record<string, unknown>>(
     `insert into org_invites
       (org_id, email, role, token, expires_at, created_by, created_at)
      values ($1,$2,$3,$4,$5,$6,now())

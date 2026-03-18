@@ -86,10 +86,11 @@ export default function CodeEditor({
 }: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const languageCompartment = useRef(new Compartment()).current;
+  const languageCompartment = useMemo(() => new Compartment(), []);
   const onSelectionRef = useRef(onSelection);
   const onLineClickRef = useRef(onLineClick);
   const initialLanguageRef = useRef<Extension | null>(null);
+  const initialValueRef = useRef(value);
 
   useEffect(() => {
     onSelectionRef.current = onSelection;
@@ -156,7 +157,7 @@ export default function CodeEditor({
     });
 
     const state = EditorState.create({
-      doc: value,
+      doc: initialValueRef.current,
       extensions: [
         lineNumbers(),
         highlightActiveLineGutter(),

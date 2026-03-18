@@ -9,6 +9,21 @@ export const dynamic = 'force-dynamic';
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 
+type CountRow = {
+  count: number;
+};
+
+type IssueRow = {
+  severity?: string;
+};
+
+type ReportRow = {
+  status: string;
+  score: number | null;
+  issues: IssueRow[] | null;
+  created_at: string;
+};
+
 export async function GET(request: NextRequest) {
   const rateLimitResponse = rateLimiter(request);
   if (rateLimitResponse) return rateLimitResponse;
@@ -19,20 +34,20 @@ export async function GET(request: NextRequest) {
   const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
 
   const [projectCountRow, openIssuesRow, activeRunsRow] = await Promise.all([
-    query<Record<string, any>>(
+    query<CountRow>(
       `select count(*)::int as count
        from code_projects
        where org_id = $1`,
       [orgId]
     ).then((rows) => rows[0] ?? { count: 0 }),
-    query<Record<string, any>>(
+    query<CountRow>(
       `select count(*)::int as count
        from analysis_issues i
        join analysis_reports r on r.id = i.report_id
        where r.org_id = $1 and r.status = 'done' and i.status = 'open'`,
       [orgId]
     ).then((rows) => rows[0] ?? { count: 0 }),
-    query<Record<string, any>>(
+    query<CountRow>(
       `select count(*)::int as count
        from pipeline_runs
        where org_id = $1 and status in ('queued','running')`,
@@ -41,7 +56,7 @@ export async function GET(request: NextRequest) {
   ]);
 
   // Get all reports
-  const reports = await query<Record<string, any>>(
+  const reports = await query<ReportRow>(
     `select status, score, issues, created_at
      from analysis_reports
      where org_id = $1
@@ -82,7 +97,7 @@ export async function GET(request: NextRequest) {
     if (r.issues && Array.isArray(r.issues)) {
       totalIssues += r.issues.length;
       criticalIssues += r.issues.filter(
-        (i: Record<string, unknown>) => i.severity === 'critical' || i.severity === 'high'
+        (i) => i.severity === 'critical' || i.severity === 'high'
       ).length;
     }
   });

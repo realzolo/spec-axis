@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   }
 
   await requireReportAccess(reportId, user.id);
-  const data = await queryOne<Record<string, any>>(
+  const data = await queryOne<Record<string, unknown>>(
     `insert into quality_rule_feedback
       (rule_id, report_id, issue_file, issue_line, feedback_type, user_id, notes, created_at)
      values ($1,$2,$3,$4,$5,$6,$7,now())
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const data = await queryOne<Record<string, any>>(
+    const data = await queryOne<Record<string, unknown>>(
       `select * from quality_rule_stats where rule_id = $1`,
       [ruleId]
     );
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json([]);
   }
 
-  const data = await query<Record<string, any>>(
+  const data = await query<Record<string, unknown>>(
     `select *
      from quality_rule_stats
      where rule_id = any($1::uuid[])

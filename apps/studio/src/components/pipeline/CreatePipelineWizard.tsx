@@ -18,7 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Plus, Trash2, GripVertical, ChevronRight, ChevronLeft } from "lucide-react";
@@ -31,6 +30,7 @@ import type {
 import {
   createDefaultPipelineConfig,
   createDefaultStep,
+  newId,
 } from "@/services/pipelineTypes";
 
 type Props = {
@@ -122,13 +122,17 @@ export default function CreatePipelineWizard({
   function goNext() {
     const idx = WIZARD_STEPS.indexOf(wizardStep);
     if (idx < WIZARD_STEPS.length - 1) {
-      setWizardStep(WIZARD_STEPS[idx + 1]);
+      const next = WIZARD_STEPS[idx + 1];
+      if (next) setWizardStep(next);
     }
   }
 
   function goBack() {
     const idx = WIZARD_STEPS.indexOf(wizardStep);
-    if (idx > 0) setWizardStep(WIZARD_STEPS[idx - 1]);
+    if (idx > 0) {
+      const prev = WIZARD_STEPS[idx - 1];
+      if (prev) setWizardStep(prev);
+    }
   }
 
   // ── Config helpers ─────────────────────────────────────────────────────────
@@ -170,8 +174,9 @@ export default function CreatePipelineWizard({
   }
 
   function applyTemplate(template: keyof typeof BUILD_TEMPLATES) {
-    const { steps } = BUILD_TEMPLATES[template];
-    const { newId } = require("@/services/pipelineTypes") as typeof import("@/services/pipelineTypes");
+    const templateConfig = BUILD_TEMPLATES[template];
+    if (!templateConfig) return;
+    const { steps } = templateConfig;
     setConfig((prev) => ({
       ...prev,
       build: {
@@ -186,11 +191,12 @@ export default function CreatePipelineWizard({
   async function handleSubmit() {
     setSubmitting(true);
     try {
+      const trimmedDescription = description.trim();
       const finalConfig: PipelineConfig = {
         ...config,
         name: name.trim(),
-        description: description.trim() || undefined,
         source: { ...config.source },
+        ...(trimmedDescription ? { description: trimmedDescription } : {}),
       };
 
       const res = await fetch("/api/pipelines", {
@@ -199,7 +205,7 @@ export default function CreatePipelineWizard({
         body: JSON.stringify({
           projectId,
           name: name.trim(),
-          description: description.trim() || undefined,
+          ...(trimmedDescription ? { description: trimmedDescription } : {}),
           environment,
           config: finalConfig,
         }),
@@ -211,8 +217,7 @@ export default function CreatePipelineWizard({
       }
 
       const data = await res.json();
-      const id =
-        data?.pipeline?.id ?? data?.id ?? data?.pipeline?.ID;
+      const id = data?.pipeline?.id;
       toast.success(p.createSuccess);
       handleClose();
       if (id) onCreated(id);

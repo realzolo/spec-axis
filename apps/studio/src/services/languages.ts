@@ -131,10 +131,14 @@ export function detectLanguage(filename: string): SupportedLanguage | null {
 export function detectLanguagesInDiff(diff: string): SupportedLanguage[] {
   const filePattern = /^diff --git a\/(.+?) b\/.+$/gm;
   const languages = new Set<SupportedLanguage>();
-  let match;
+  let match: RegExpExecArray | null;
 
   while ((match = filePattern.exec(diff)) !== null) {
-    const lang = detectLanguage(match[1]);
+    const file = match[1];
+    if (!file) {
+      continue;
+    }
+    const lang = detectLanguage(file);
     if (lang) {
       languages.add(lang);
     }

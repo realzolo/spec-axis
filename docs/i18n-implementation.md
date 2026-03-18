@@ -188,7 +188,7 @@ The `LanguageSwitcher` component allows users to change language.
 'use client';
 
 import { useState } from 'react';
-import { Select, ListBox } from '@heroui/react';
+// UI library intentionally omitted: use local components from apps/studio/src/components/ui
 import { useRouter } from 'next/navigation';
 import { i18n, type Locale } from '@/i18n/config';
 

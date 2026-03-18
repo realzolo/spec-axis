@@ -31,7 +31,7 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
   if (p === 'console') {
     // Intentionally minimal to avoid leaking secrets into logs.
     // Useful for local development when no email provider is configured.
-    // eslint-disable-next-line no-console
+     
     console.log('[email:console]', { to: input.to, subject: input.subject });
     return;
   }

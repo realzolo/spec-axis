@@ -38,20 +38,32 @@ class Logger {
   }
 
   private formatEntry(level: LogLevel, message: string, error?: Error, duration?: number): LogEntry {
-    return {
+    const entry: LogEntry = {
       timestamp: new Date().toISOString(),
       level,
       message,
-      context: this.context,
-      ...(error && {
-        error: {
-          name: error.name,
-          message: error.message,
-          stack: error.stack,
-        },
-      }),
-      ...(duration !== undefined && { duration }),
     };
+
+    if (Object.keys(this.context).length > 0) {
+      entry.context = this.context;
+    }
+
+    if (error) {
+      const errorEntry: { name: string; message: string; stack?: string } = {
+        name: error.name,
+        message: error.message,
+      };
+      if (error.stack) {
+        errorEntry.stack = error.stack;
+      }
+      entry.error = errorEntry;
+    }
+
+    if (typeof duration === 'number') {
+      entry.duration = duration;
+    }
+
+    return entry;
   }
 
   private log(entry: LogEntry) {
@@ -91,7 +103,6 @@ class Logger {
       this.info(`${label} completed`, elapsed);
       return result;
     } catch (err) {
-      const elapsed = Date.now() - start;
       this.error(`${label} failed`, err instanceof Error ? err : new Error(String(err)));
       throw err;
     }

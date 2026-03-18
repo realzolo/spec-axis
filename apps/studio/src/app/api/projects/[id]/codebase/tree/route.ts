@@ -32,7 +32,7 @@ export async function GET(
     logger.setContext({ projectId });
 
     const project = await withRetry(() => requireProjectAccess(projectId, user.id));
-    const ref = request.nextUrl.searchParams.get('ref') || project.default_branch;
+    const ref = request.nextUrl.searchParams.get('ref') || project.default_branch || 'main';
     const path = request.nextUrl.searchParams.get('path') || '';
     const syncPolicy = resolveSyncPolicy(request.nextUrl.searchParams.get('sync'));
 

@@ -98,7 +98,7 @@ type PipelineJob struct {
 	StudioToken string `json:"studioToken,omitempty"`
 }
 
-// ── Legacy internal stage structure (used by graph/engine) ────────────────
+// ── Internal stage structure (used by graph/engine) ───────────────────────
 
 type PipelineStage struct {
 	ID     string   `json:"id"`

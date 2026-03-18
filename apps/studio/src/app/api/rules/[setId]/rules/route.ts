@@ -47,7 +47,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
   const body = await request.json();
   const validated = ruleSchema.parse(body);
-  const data = await upsertRule({ ...validated, ruleset_id: setId });
+  const payload = {
+    ruleset_id: setId,
+    category: validated.category,
+    name: validated.name,
+    prompt: validated.prompt,
+    ...(validated.id !== undefined ? { id: validated.id } : {}),
+    ...(validated.weight !== undefined ? { weight: validated.weight } : {}),
+    ...(validated.severity !== undefined ? { severity: validated.severity } : {}),
+    ...(validated.is_enabled !== undefined ? { is_enabled: validated.is_enabled } : {}),
+    ...(validated.sort_order !== undefined ? { sort_order: validated.sort_order } : {}),
+  };
+  const data = await upsertRule(payload);
   return NextResponse.json(data);
 }
 

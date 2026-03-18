@@ -8,8 +8,9 @@ export function extractOrgFromPath(pathname: string): { orgId: string | null; re
     return { orgId: null, restPath: pathname };
   }
 
+  const orgId = match[1] ?? null;
   const rest = match[2] || '/';
-  return { orgId: match[1], restPath: rest === '' ? '/' : rest };
+  return { orgId, restPath: rest === '' ? '/' : rest };
 }
 
 export function getOrgPrefix(pathname: string): string {

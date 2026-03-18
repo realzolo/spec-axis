@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"strings"
 
@@ -11,15 +12,15 @@ import (
 )
 
 type Server struct {
-	cfg        config.Config
-	client     *asynq.Client
+	cfg         config.Config
+	client      *asynq.Client
 	pipelineAPI *pipeline.API
 }
 
 func New(cfg config.Config, client *asynq.Client, pipelineService *pipeline.Service) *Server {
 	return &Server{
-		cfg:        cfg,
-		client:     client,
+		cfg:         cfg,
+		client:      client,
 		pipelineAPI: pipeline.NewAPI(pipelineService, func(r *http.Request) bool { return authorized(cfg.RunnerToken, r) }),
 	}
 }
@@ -55,5 +56,12 @@ func authorized(token string, r *http.Request) bool {
 		}
 	}
 
-	return headerToken != "" && headerToken == token
+	if headerToken == "" {
+		return false
+	}
+	// Constant-time compare to avoid leaking token length/prefix via timing.
+	if len(headerToken) != len(token) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(headerToken), []byte(token)) == 1
 }

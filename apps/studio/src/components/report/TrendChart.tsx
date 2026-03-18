@@ -70,7 +70,7 @@ export default function TrendChart({ projectId, dict }: { projectId: string; dic
     return <div className="text-[13px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.trendNoData}</div>;
   }
 
-  const latest = snapshots[snapshots.length - 1];
+  const latest = snapshots[snapshots.length - 1]!;
   const previous = snapshots[snapshots.length - 2];
   const scoreDiff = previous ? latest.score - previous.score : 0;
   const issuesDiff = previous ? latest.total_issues - previous.total_issues : 0;

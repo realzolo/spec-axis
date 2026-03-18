@@ -14,6 +14,12 @@ type RunnerEvent =
   | { type: 'pipeline.run.completed' | 'pipeline.run.failed'; runId: string }
   | { type: 'report.done'; reportId: string };
 
+type PipelineNotificationsConfig = {
+  channels?: string[];
+  onSuccess?: boolean;
+  onFailure?: boolean;
+};
+
 function ok() {
   return NextResponse.json({ ok: true });
 }
@@ -50,14 +56,14 @@ async function notifyPipelineRun(runId: string) {
   );
   if (!pipeline) return;
 
-  const version = await queryOne<{ config: any }>(
+  const version = await queryOne<{ config: { notifications?: PipelineNotificationsConfig } | null }>(
     `select config
      from pipeline_versions
      where id = (select version_id from pipeline_runs where id = $1)`,
     [runId]
   );
 
-  const notifyCfg = (version?.config as any)?.notifications ?? null;
+  const notifyCfg = version?.config?.notifications ?? null;
   const channels: string[] = Array.isArray(notifyCfg?.channels) ? notifyCfg.channels : [];
   const wantsEmail = channels.includes('email');
   const wantsSuccess = notifyCfg?.onSuccess !== false;
@@ -66,7 +72,7 @@ async function notifyPipelineRun(runId: string) {
   const isSuccess = run.status === 'success';
   const isFailure = run.status === 'failed' || run.status === 'timed_out' || run.status === 'canceled';
 
-  // Respect pipeline-level DB flags too (legacy fields already on pipelines table).
+  // Respect pipeline-level DB flags on pipelines table.
   if (isSuccess && !pipeline.notify_on_success) return;
   if (isFailure && !pipeline.notify_on_failure) return;
   if (isSuccess && !wantsSuccess) return;
@@ -182,7 +188,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = (await request.json().catch(() => null)) as RunnerEvent | null;
-    if (!body || typeof (body as any).type !== 'string') {
+    if (!body || typeof body.type !== 'string') {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
@@ -208,4 +214,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error }, { status: statusCode });
   }
 }
-

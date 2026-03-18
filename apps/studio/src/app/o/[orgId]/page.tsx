@@ -29,7 +29,6 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
   const [
     projectCountRow,
     openIssuesRow,
-    activeRunsRow,
     avgScoreRow,
     // Previous 14-day period for trends
     prevOpenIssuesRow,
@@ -50,12 +49,6 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
        from analysis_issues i
        join analysis_reports r on r.id = i.report_id
        where r.org_id = $1 and r.status = 'done' and i.status = 'open'`,
-      [orgId]
-    ),
-    queryOne<{ count: string }>(
-      `select count(*)::text as count
-       from pipeline_runs
-       where org_id = $1 and status in ('queued','running')`,
       [orgId]
     ),
     queryOne<{ avg: number | null }>(
@@ -146,7 +139,6 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
 
   const totalProjects = Number(projectCountRow?.count ?? 0);
   const openIssues = Number(openIssuesRow?.count ?? 0);
-  const activeRuns = Number(activeRunsRow?.count ?? 0);
   const averageScore = Math.round(avgScoreRow?.avg ?? 0);
   const prevOpenIssues = Number(prevOpenIssuesRow?.count ?? 0);
   const prevAvgScore = Math.round(prevAvgScoreRow?.avg ?? 0);
@@ -465,4 +457,3 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
     </div>
   );
 }
-

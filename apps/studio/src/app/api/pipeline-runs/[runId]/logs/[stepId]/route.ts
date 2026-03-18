@@ -22,8 +22,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
     if (!orgId) return unauthorized();
     const runData = await getPipelineRun(runId);
-    const run = (runData as any)?.run ?? (runData as any)?.Run;
-    if (run?.org_id && run.org_id !== orgId) {
+    const run = runData.run;
+    if (run.org_id && run.org_id !== orgId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     const offset = Number(request.nextUrl.searchParams.get('offset') ?? 0);

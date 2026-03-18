@@ -32,8 +32,6 @@ export type PipelineReviewStage = {
 export type PipelineBuildStage = {
   enabled: boolean;
   steps: PipelineStep[];
-  artifactPaths?: string[];   // paths to preserve between build → deploy
-  cacheEnabled?: boolean;
 };
 
 export type PipelineDeployStage = {

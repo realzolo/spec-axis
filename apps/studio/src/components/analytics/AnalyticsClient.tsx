@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { BarChart3, TrendingUp, TrendingDown, Minus, CheckCircle2, XCircle } from 'lucide-react';
-import { withOrgPrefix, extractOrgFromPath } from '@/lib/orgPath';
+import { BarChart3, CheckCircle2, XCircle } from 'lucide-react';
+import { withOrgPrefix } from '@/lib/orgPath';
 import type { Dictionary } from '@/i18n';
 
 type ProjectScore = {
@@ -85,7 +85,6 @@ function ScoreBar({ score }: { score: number }) {
 
 export default function AnalyticsClient({ dict }: { dict: Dictionary }) {
   const pathname = usePathname();
-  const { orgId } = extractOrgFromPath(pathname);
   const [days, setDays] = useState<7 | 30 | 90>(30);
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,7 +104,8 @@ export default function AnalyticsClient({ dict }: { dict: Dictionary }) {
 
   useEffect(() => { void load(days); }, [days, load]);
 
-  const categoryLabels: Record<string, string> = (dict.reports as any)?.categories ?? {};
+  const reportsDict = dict.reports as { categories?: Record<string, string> };
+  const categoryLabels: Record<string, string> = reportsDict.categories ?? {};
 
   return (
     <div className="flex flex-col h-full">
@@ -195,7 +195,7 @@ export default function AnalyticsClient({ dict }: { dict: Dictionary }) {
                   ) : (
                     <div className="rounded-[8px] border border-border overflow-hidden">
                       {data.issueCategoryBreakdown.map((cat, i) => {
-                        const maxCount = Number(data.issueCategoryBreakdown[0].count);
+                        const maxCount = Number(data.issueCategoryBreakdown[0]?.count ?? 0);
                         const widthPct = maxCount > 0 ? Math.round((Number(cat.count) / maxCount) * 100) : 0;
                         const label = categoryLabels[cat.category] ?? cat.category;
                         return (

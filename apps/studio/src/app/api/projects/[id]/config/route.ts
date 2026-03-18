@@ -24,7 +24,7 @@ export async function GET(
 
   const { id } = await params;
   await requireProjectAccess(id, user.id);
-  const data = await queryOne<Record<string, any>>(
+  const data = await queryOne<Record<string, unknown>>(
     `select ignore_patterns, quality_threshold, auto_analyze, webhook_url
      from code_projects
      where id = $1`,
@@ -70,7 +70,7 @@ export async function PATCH(
 
   const fields = Object.keys(updateData);
   if (fields.length === 0) {
-    const existing = await queryOne<Record<string, any>>(
+    const existing = await queryOne<Record<string, unknown>>(
       `select * from code_projects where id = $1`,
       [id]
     );
@@ -87,7 +87,7 @@ export async function PATCH(
     [id, ...values]
   );
 
-  const data = await queryOne<Record<string, any>>(
+  const data = await queryOne<Record<string, unknown>>(
     `select * from code_projects where id = $1`,
     [id]
   );

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 
-import { query, queryOne, withTransaction } from '@/lib/db';
+import { query, withTransaction } from '@/lib/db';
 import { logger } from '@/services/logger';
 import { projectIdSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
@@ -65,7 +65,7 @@ export async function GET(
     }
 
     const comments = await withRetry(async () => {
-      const params: any[] = [projectId, project.org_id, project.repo, path];
+      const params: unknown[] = [projectId, project.org_id, project.repo, path];
       let sql = `
         select c.*,
                coalesce(
@@ -98,7 +98,7 @@ export async function GET(
 
       sql += ` group by c.id order by c.created_at asc`;
 
-      return query<Record<string, any>>(sql, params);
+      return query<Record<string, unknown>>(sql, params);
     });
 
     return NextResponse.json(comments);
@@ -191,7 +191,7 @@ export async function POST(
               userRows.rows.map((row) => [row.id, row.email ?? null])
             );
 
-            const values: any[] = [];
+            const values: unknown[] = [];
             const placeholders = allowedIds.map((id, idx) => {
               const base = idx * 3;
               values.push(inserted.id, id, emailMap.get(id) ?? null);

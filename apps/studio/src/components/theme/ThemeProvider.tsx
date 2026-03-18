@@ -19,24 +19,23 @@ export function ThemeProvider({
   children: React.ReactNode;
   defaultTheme?: ThemeMode;
 }) {
-  const [theme, setTheme] = useState<ThemeMode>(defaultTheme);
-  const [isResolved, setIsResolved] = useState(false);
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem('theme') as ThemeMode | null;
-    if (stored === 'light' || stored === 'dark') {
-      setTheme(stored);
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    if (typeof window === 'undefined') {
+      return defaultTheme;
     }
-    setIsResolved(true);
-  }, []);
+    const stored = window.localStorage.getItem('theme');
+    if (stored === 'light' || stored === 'dark') {
+      return stored;
+    }
+    return defaultTheme;
+  });
 
   useEffect(() => {
-    if (!isResolved) return;
     const root = document.documentElement;
     root.setAttribute('data-theme', theme);
     root.classList.toggle('dark', theme === 'dark');
     window.localStorage.setItem('theme', theme);
-  }, [theme, isResolved]);
+  }, [theme]);
 
   const value = useMemo(
     () => ({

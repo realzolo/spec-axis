@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     logger.setContext({ userId });
 
     const data = await withRetry(async () => {
-      return query<Record<string, any>>(
+      return query<Record<string, unknown>>(
         `select *
          from analysis_saved_filters
          where user_id = $1
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const created = await queryOne<Record<string, any>>(
+      const created = await queryOne<Record<string, unknown>>(
         `insert into analysis_saved_filters
           (user_id, name, filter_config, is_default, created_at)
          values ($1,$2,$3,$4,now())

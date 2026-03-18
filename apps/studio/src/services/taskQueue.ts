@@ -3,7 +3,7 @@
  * Uses Postgres as a queue store with concurrency control
  */
 
-import { exec, query, queryOne } from '@/lib/db';
+import { exec, queryOne } from '@/lib/db';
 import { logger } from './logger';
 
 export interface QueuedTask {
@@ -24,6 +24,22 @@ export interface QueuedTask {
 
 const MAX_CONCURRENT_TASKS = 3;
 const MAX_RETRIES = 3;
+
+type TaskRow = {
+  id: string;
+  type: QueuedTask['type'];
+  project_id: string;
+  report_id: string | null;
+  payload: unknown;
+  status: QueuedTask['status'];
+  priority: number;
+  attempts: number;
+  max_attempts: number;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+};
 
 class TaskQueue {
   private processingTasks = new Map<string, Promise<void>>();
@@ -80,7 +96,7 @@ class TaskQueue {
   }
 
   private async fetchNextTask(): Promise<QueuedTask | null> {
-    const row = await queryOne<Record<string, any>>(
+    const row = await queryOne<TaskRow>(
       `select *
        from analysis_tasks
        where status = 'pending'
@@ -90,7 +106,7 @@ class TaskQueue {
 
     if (!row) return null;
 
-    const updated = await queryOne<Record<string, any>>(
+    const updated = await queryOne<TaskRow>(
       `update analysis_tasks
        set status = 'processing', started_at = now(), updated_at = now()
        where id = $1 and status = 'pending'
@@ -146,7 +162,7 @@ class TaskQueue {
   }
 
   async getTaskStatus(taskId: string): Promise<QueuedTask | null> {
-    const row = await queryOne<Record<string, any>>(
+    const row = await queryOne<TaskRow>(
       `select * from analysis_tasks where id = $1`,
       [taskId]
     );
@@ -156,20 +172,39 @@ class TaskQueue {
 
 export const taskQueue = new TaskQueue();
 
-function mapTask(row: Record<string, any>): QueuedTask {
-  return {
+function mapTask(row: TaskRow): QueuedTask {
+  const task: QueuedTask = {
     id: row.id,
     type: row.type,
     projectId: row.project_id,
-    reportId: row.report_id ?? undefined,
-    payload: typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload ?? {},
+    payload: parseTaskPayload(row.payload),
     status: row.status,
     priority: row.priority,
     attempts: row.attempts,
     maxAttempts: row.max_attempts,
-    error: row.error ?? undefined,
     createdAt: row.created_at,
-    startedAt: row.started_at ?? undefined,
-    completedAt: row.completed_at ?? undefined,
   };
+
+  if (row.report_id) task.reportId = row.report_id;
+  if (row.error) task.error = row.error;
+  if (row.started_at) task.startedAt = row.started_at;
+  if (row.completed_at) task.completedAt = row.completed_at;
+
+  return task;
+}
+
+function parseTaskPayload(payload: unknown): Record<string, unknown> {
+  if (typeof payload === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(payload);
+      return isRecord(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return isRecord(payload) ? payload : {};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

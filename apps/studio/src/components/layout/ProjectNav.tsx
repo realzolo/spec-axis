@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { GitCommit, FileText, GitBranch, Code2, Sliders } from 'lucide-react';
 import type { Dictionary } from '@/i18n';
-import { extractOrgFromPath, stripOrgPrefix, withOrgPrefix } from '@/lib/orgPath';
+import { stripOrgPrefix, withOrgPrefix } from '@/lib/orgPath';
 import { cn } from '@/lib/utils';
 
 interface TabItem {

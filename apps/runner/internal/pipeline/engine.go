@@ -72,6 +72,9 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 	if err != nil {
 		return err
 	}
+	if run.Status == string(StatusCanceled) {
+		return nil
+	}
 
 	var cfg PipelineConfig
 	if err := version.DecodeConfig(&cfg); err != nil {
@@ -148,6 +151,31 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Cancellation watcher: if an external request marks this run as canceled in DB,
+	// cancel the execution context so running steps can exit.
+	stopWatch := make(chan struct{})
+	defer close(stopWatch)
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopWatch:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				checkCtx, checkCancel := context.WithTimeout(context.Background(), 2*time.Second)
+				canceled, err := e.Store.IsPipelineRunCanceled(checkCtx, runID)
+				checkCancel()
+				if err == nil && canceled {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+
 	type jobResult struct {
 		jobKey string
 		err    error
@@ -175,6 +203,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 	inFlight := 0
 	completed := 0
 	failed := false
+	canceled := false
 
 	startJob := func(jobID string) {
 		inFlight++
@@ -200,6 +229,15 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 		completed++
 
 		if result.err != nil && !failed {
+			checkCtx, checkCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			canceledInDB, checkErr := e.Store.IsPipelineRunCanceled(checkCtx, runID)
+			checkCancel()
+			if checkErr == nil && canceledInDB {
+				canceled = true
+				cancel()
+				_ = e.cancelPendingJobs(ctx, runID, jobIndex, jobMap)
+				break
+			}
 			failed = true
 			cancel()
 			_ = e.cancelPendingJobs(ctx, runID, jobIndex, jobMap)
@@ -215,6 +253,12 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 				mu.Unlock()
 			}
 		}
+	}
+
+	if canceled {
+		// Ensure run is marked canceled (idempotent if already canceled by API).
+		_ = e.Store.MarkPipelineRunCanceled(context.Background(), runID, "canceled")
+		return nil
 	}
 
 	if failed {
@@ -237,6 +281,15 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 		})
 		e.postStudioEvent(ctx, "pipeline.run.failed", map[string]any{"runId": runID})
 		return fmt.Errorf("pipeline run stalled")
+	}
+
+	// If a cancellation request raced with completion, treat it as canceled.
+	checkCtx, checkCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	canceledInDB, checkErr := e.Store.IsPipelineRunCanceled(checkCtx, runID)
+	checkCancel()
+	if checkErr == nil && canceledInDB {
+		_ = e.Store.MarkPipelineRunCanceled(context.Background(), runID, "canceled")
+		return nil
 	}
 
 	_ = e.Store.MarkPipelineRunSuccess(ctx, runID)

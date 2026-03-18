@@ -4,7 +4,10 @@
 
 import { query, queryOne, exec, withTransaction } from '@/lib/db';
 import { storeSecret, updateSecret, deleteSecret } from '@/lib/vault';
-import type { Integration, IntegrationType, Provider } from './types';
+import { logger } from '@/services/logger';
+import type { Integration, IntegrationType, Provider, IntegrationConfig } from './types';
+
+type IntegrationRow = Omit<Integration, 'config'> & { config: string | IntegrationConfig | null };
 
 export interface CreateIntegrationInput {
   userId: string;
@@ -12,14 +15,14 @@ export interface CreateIntegrationInput {
   type: IntegrationType;
   provider: Provider;
   name: string;
-  config: Record<string, any>;
+  config: IntegrationConfig;
   secret: string; // token or apiKey
   isDefault?: boolean;
 }
 
 export interface UpdateIntegrationInput {
   name?: string;
-  config?: Record<string, any>;
+  config?: IntegrationConfig;
   secret?: string;
   isDefault?: boolean;
 }
@@ -60,12 +63,9 @@ export async function createIntegration(input: CreateIntegrationInput): Promise<
       throw new Error('Failed to create integration');
     }
 
-    const config =
-      typeof result.rows[0].config === 'string'
-        ? JSON.parse(result.rows[0].config)
-        : result.rows[0].config;
-
-    return { ...result.rows[0], config } as Integration;
+    const created = result.rows[0] as IntegrationRow;
+    const config = typeof created.config === 'string' ? (JSON.parse(created.config) as IntegrationConfig) : (created.config ?? {});
+    return { ...created, config };
   });
 }
 
@@ -88,9 +88,9 @@ export async function updateIntegration(
       throw new Error('Integration not found');
     }
 
-    const existing = existingResult.rows[0] as Integration;
+    const existing = existingResult.rows[0] as IntegrationRow;
 
-    // If promoting to default, clear old default first
+    // If promoting to default, clear the current default first
     if (input.isDefault === true && !existing.is_default) {
       await client.query(
         `update org_integrations set is_default = false where org_id = $1 and type = $2`,
@@ -98,7 +98,7 @@ export async function updateIntegration(
       );
     }
 
-    const updateData: Record<string, any> = {};
+    const updateData: Record<string, unknown> = {};
     if (input.name !== undefined) updateData.name = input.name;
     if (input.config !== undefined) updateData.config = JSON.stringify(input.config);
     if (input.isDefault !== undefined) updateData.is_default = input.isDefault;
@@ -109,9 +109,8 @@ export async function updateIntegration(
 
     const fields = Object.keys(updateData);
     if (fields.length === 0) {
-      const config =
-        typeof existing.config === 'string' ? JSON.parse(existing.config) : existing.config;
-      return { ...existing, config } as Integration;
+      const config = typeof existing.config === 'string' ? (JSON.parse(existing.config) as IntegrationConfig) : (existing.config ?? {});
+      return { ...existing, config };
     }
 
     const assignments = fields.map((key, idx) => `${key} = $${idx + 3}`);
@@ -129,12 +128,9 @@ export async function updateIntegration(
       throw new Error('Failed to update integration');
     }
 
-    const config =
-      typeof updated.rows[0].config === 'string'
-        ? JSON.parse(updated.rows[0].config)
-        : updated.rows[0].config;
-
-    return { ...updated.rows[0], config } as Integration;
+    const row = updated.rows[0] as IntegrationRow;
+    const config = typeof row.config === 'string' ? (JSON.parse(row.config) as IntegrationConfig) : (row.config ?? {});
+    return { ...row, config };
   });
 }
 
@@ -142,7 +138,7 @@ export async function updateIntegration(
  * Delete an integration
  */
 export async function deleteIntegration(integrationId: string, orgId: string): Promise<void> {
-  const integration = await queryOne<Integration>(
+  const integration = await queryOne<IntegrationRow>(
     `select * from org_integrations where id = $1 and org_id = $2`,
     [integrationId, orgId]
   );
@@ -181,7 +177,7 @@ export async function deleteIntegration(integrationId: string, orgId: string): P
   try {
     await deleteSecret(integration.vault_secret_name);
   } catch (error) {
-    console.error('Failed to delete secret from vault:', error);
+    logger.error('Failed to delete secret from vault', error instanceof Error ? error : undefined);
   }
 }
 

@@ -112,9 +112,13 @@ export async function PUT(
       }
     }
 
-    const data = await withRetry(() =>
-      updateProject(projectId, { name, description, ruleset_id: ruleset_id || null })
-    );
+    const updatePayload: { name?: string; description?: string; ruleset_id?: string | null } = {
+      ...(name !== undefined ? { name } : {}),
+      ...(description !== undefined ? { description } : {}),
+      ...(ruleset_id !== undefined ? { ruleset_id: ruleset_id || null } : {}),
+    };
+
+    const data = await withRetry(() => updateProject(projectId, updatePayload));
 
     // Audit log
     const clientInfo = extractClientInfo(request);

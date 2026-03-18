@@ -44,7 +44,7 @@ export async function GET(
 
     const data = await withRetry(async () => {
       await requireReportAccess(reportId, user.id);
-      const row = await queryOne<Record<string, any>>(
+      const row = await queryOne<Record<string, unknown>>(
         `select i.*,
                 coalesce(
                   jsonb_agg(c.* order by c.created_at) filter (where c.id is not null),
@@ -108,7 +108,7 @@ export async function PATCH(
       const assignments = fields.map((field, idx) => `${field} = $${idx + 3}`);
       const values = fields.map((field) => updateData[field]);
 
-      const updated = await queryOne<Record<string, any>>(
+      const updated = await queryOne<Record<string, unknown>>(
         `update analysis_issues
          set ${assignments.join(', ')}
          where id = $1 and report_id = $2
@@ -167,7 +167,7 @@ export async function POST(
 
     const data = await withRetry(async () => {
       await requireReportAccess(reportId, user.id);
-      const created = await queryOne<Record<string, any>>(
+      const created = await queryOne<Record<string, unknown>>(
         `insert into analysis_issue_comments
           (issue_id, author_id, author, content, created_at)
          values ($1,$2,$3,$4,now())

@@ -41,9 +41,11 @@ export default function EditProjectModal({ project, open, onClose, onUpdated, di
 
   useEffect(() => {
     if (open) {
-      setName(project.name);
-      setDescription(project.description ?? '');
-      setRulesetId(project.ruleset_id ?? 'none');
+      queueMicrotask(() => {
+        setName(project.name);
+        setDescription(project.description ?? '');
+        setRulesetId(project.ruleset_id ?? 'none');
+      });
       fetch('/api/rules/sets').then(r => r.json()).then(setRuleSets).catch(() => {});
     }
   }, [open, project]);

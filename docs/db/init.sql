@@ -135,7 +135,7 @@ create table org_integrations (
   org_id uuid not null references organizations(id) on delete cascade,
   user_id uuid not null references auth_users(id) on delete cascade,
   type text not null check (type in ('vcs','ai')),
-  provider text not null check (provider in ('github','gitlab','git','openai-compatible')),
+  provider text not null check (provider in ('github','gitlab','git','openai-api')),
   name text not null,
   is_default boolean not null default false,
   config jsonb not null default '{}',
@@ -594,7 +594,7 @@ create table pipelines (
   description text,
   is_active boolean not null default true,
   current_version_id uuid,
-  -- v2 fields
+  -- Pipeline execution fields
   environment text not null default 'production'
     check (environment in ('development', 'staging', 'production')),
   auto_trigger boolean not null default false,

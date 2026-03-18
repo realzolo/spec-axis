@@ -19,14 +19,23 @@ export function startCodebaseWorker() {
   const worker = new Worker<CodebaseAnalyzeJob>(
     'codebase-analyze',
     async (job) => {
+      const codebaseRef: {
+        orgId: string;
+        projectId: string;
+        repo: string;
+        ref?: string;
+      } = {
+        orgId: job.data.orgId,
+        projectId: job.data.projectId,
+        repo: job.data.repo,
+      };
+      if (job.data.ref) {
+        codebaseRef.ref = job.data.ref;
+      }
+
       const workspace = await codebaseService.prepareWorkspace(
-        {
-          orgId: job.data.orgId,
-          projectId: job.data.projectId,
-          repo: job.data.repo,
-          ref: job.data.ref,
-        },
-        { forceSync: job.data.forceSync }
+        codebaseRef,
+        job.data.forceSync === undefined ? {} : { forceSync: job.data.forceSync }
       );
 
       try {
@@ -63,14 +72,24 @@ function getRedisConnection(): ConnectionOptions {
   const port = parsed.port ? Number(parsed.port) : 6379;
   const db = parsed.pathname ? Number(parsed.pathname.replace('/', '')) : undefined;
 
-  return {
+  const connection: ConnectionOptions = {
     host: parsed.hostname,
     port: Number.isFinite(port) ? port : 6379,
-    username: parsed.username || undefined,
-    password: parsed.password || undefined,
-    db: Number.isFinite(db) ? db : undefined,
-    tls: parsed.protocol === 'rediss:' ? {} : undefined,
   };
+  if (parsed.username) {
+    connection.username = parsed.username;
+  }
+  if (parsed.password) {
+    connection.password = parsed.password;
+  }
+  if (Number.isFinite(db)) {
+    connection.db = db;
+  }
+  if (parsed.protocol === 'rediss:') {
+    connection.tls = {};
+  }
+
+  return connection;
 }
 
 function readNumberEnv(name: string, fallback: number) {

@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const params: any[] = [orgId, limit];
+      const params: unknown[] = [orgId, limit];
       const sql = `select id, org_id, repo
                    from code_projects
                    where org_id = $1

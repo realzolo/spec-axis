@@ -177,12 +177,10 @@ function ReportCard({ report, label }: { report: Report; label: string }) {
 export default function ReportCompareClient({
   reportIdA,
   reportIdB,
-  projectId,
   dict,
 }: {
   reportIdA: string;
   reportIdB: string;
-  projectId: string;
   dict: Dictionary;
 }) {
   const router = useRouter();
@@ -195,8 +193,11 @@ export default function ReportCompareClient({
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    setError(null);
+    queueMicrotask(() => {
+      if (!alive) return;
+      setLoading(true);
+      setError(null);
+    });
 
     Promise.all([
       fetch(`/api/reports/${reportIdA}`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
@@ -233,7 +234,10 @@ export default function ReportCompareClient({
             <div className="text-[16px] font-semibold text-foreground">{dict.reports.compare.title}</div>
           </div>
           {!loading && reportA && reportB && (
-            <ScoreDelta scoreA={reportA.score} scoreB={reportB.score} />
+            <ScoreDelta
+              {...(typeof reportA.score === 'number' ? { scoreA: reportA.score } : {})}
+              {...(typeof reportB.score === 'number' ? { scoreB: reportB.score } : {})}
+            />
           )}
         </div>
       </div>

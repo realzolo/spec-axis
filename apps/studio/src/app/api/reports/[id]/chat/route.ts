@@ -19,6 +19,17 @@ interface ReportRow {
   project_repo: string | null;
 }
 
+type ConversationMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp?: string;
+};
+
+type ConversationRow = {
+  id: string;
+  messages: unknown;
+};
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -63,16 +74,16 @@ export async function POST(
   const score = typeof reportRow.score === 'number' ? reportRow.score : 0;
 
   // Get or create conversation
-  let conversation: Record<string, any> | null = null;
+  let conversation: ConversationRow | null = null;
   if (conversationId) {
-    conversation = await queryOne<Record<string, any>>(
+    conversation = await queryOne<ConversationRow>(
       `select * from analysis_conversations where id = $1`,
       [conversationId]
     );
   }
 
   if (!conversation) {
-    conversation = await queryOne<Record<string, any>>(
+    conversation = await queryOne<ConversationRow>(
       `insert into analysis_conversations
         (report_id, issue_id, messages, created_at, updated_at)
        values ($1,$2,'[]'::jsonb,now(),now())
@@ -85,7 +96,7 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 });
   }
 
-  const messages = conversation.messages || [];
+  const messages = normalizeConversationMessages(conversation.messages);
 
   // Build context
   let context = `You are a senior code reviewer assisting a developer with code quality questions.
@@ -107,7 +118,7 @@ ${summary}
   if (issueId) {
     let issue: Record<string, unknown> | null = null;
     if (isUuid(issueId)) {
-      issue = await queryOne<Record<string, any>>(
+      issue = await queryOne<Record<string, unknown>>(
         `select * from analysis_issues where id = $1`,
         [issueId]
       );
@@ -154,7 +165,8 @@ Suggestion: ${issue.suggestion ?? 'None'}
     messages: apiMessages
   });
 
-  const assistantMessage = response.content[0].type === 'text' ? response.content[0].text : '';
+  const firstContent = response.content[0];
+  const assistantMessage = firstContent && firstContent.type === 'text' ? firstContent.text : '';
 
   // Update conversation
   const updatedMessages = [
@@ -196,7 +208,7 @@ export async function GET(
   await requireReportAccess(reportId, user.id);
 
   if (conversationId) {
-    const data = await queryOne<Record<string, any>>(
+    const data = await queryOne<ConversationRow>(
       `select * from analysis_conversations where id = $1`,
       [conversationId]
     );
@@ -209,7 +221,7 @@ export async function GET(
   }
 
   // Get all conversations for this report
-  const data = await query<Record<string, any>>(
+  const data = await query<Record<string, unknown>>(
     `select * from analysis_conversations
      where report_id = $1
      order by created_at desc`,
@@ -222,4 +234,25 @@ export async function GET(
 function isUuid(value?: string | null) {
   if (!value) return false;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function normalizeConversationMessages(value: unknown): ConversationMessage[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item): ConversationMessage | null => {
+      if (!item || typeof item !== 'object') return null;
+      const role = (item as { role?: unknown }).role;
+      const content = (item as { content?: unknown }).content;
+      if ((role !== 'user' && role !== 'assistant') || typeof content !== 'string') {
+        return null;
+      }
+      const timestampValue = (item as { timestamp?: unknown }).timestamp;
+      return {
+        role,
+        content,
+        ...(typeof timestampValue === 'string' ? { timestamp: timestampValue } : {}),
+      };
+    })
+    .filter((item): item is ConversationMessage => item !== null);
 }

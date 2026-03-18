@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Save, Trash2, Star } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -32,7 +32,7 @@ export default function SavedFilters({ userId, currentFilter, onApplyFilter, dic
 
   useEffect(() => {
     if (userId) {
-      setResolvedUserId(userId);
+      queueMicrotask(() => setResolvedUserId(userId));
       return;
     }
     fetch('/api/auth/me')
@@ -43,15 +43,22 @@ export default function SavedFilters({ userId, currentFilter, onApplyFilter, dic
       .catch(() => setResolvedUserId(null));
   }, [userId]);
 
+  const loadFilters = useCallback(async (uid: string) => {
+    const res = await fetch(`/api/filters?userId=${uid}`);
+    if (res.ok) {
+      setFilters(await res.json());
+    }
+  }, []);
+
   useEffect(() => {
     if (!resolvedUserId) return;
-    loadFilters(resolvedUserId);
+    fetch(`/api/filters?userId=${resolvedUserId}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        setFilters(Array.isArray(data) ? data : []);
+      })
+      .catch(() => setFilters([]));
   }, [resolvedUserId]);
-
-  async function loadFilters(uid: string) {
-    const res = await fetch(`/api/filters?userId=${uid}`);
-    if (res.ok) setFilters(await res.json());
-  }
 
   async function handleSave() {
     if (!filterName.trim()) { toast.error(dict.reports.filterNameRequired); return; }
@@ -74,14 +81,14 @@ export default function SavedFilters({ userId, currentFilter, onApplyFilter, dic
     toast.success(dict.reports.saveFilterSuccess);
     setDialogOpen(false);
     setFilterName('');
-    if (resolvedUserId) loadFilters(resolvedUserId);
+    if (resolvedUserId) void loadFilters(resolvedUserId);
   }
 
   async function handleDelete(filterId: string) {
     const res = await fetch(`/api/filters?filterId=${filterId}`, { method: 'DELETE' });
     if (!res.ok) { toast.error(dict.reports.deleteFilterFailed); return; }
     toast.success(dict.reports.deleteFilterSuccess);
-    if (resolvedUserId) loadFilters(resolvedUserId);
+    if (resolvedUserId) void loadFilters(resolvedUserId);
   }
 
   return (

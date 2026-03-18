@@ -27,6 +27,7 @@ export default function ProjectConfigPanel({ projectId, dict }: { projectId: str
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [ignoreText, setIgnoreText] = useState('');
+  const loadConfigFailed = dict.projects.loadConfigFailed;
 
   useEffect(() => {
     fetch(`/api/projects/${projectId}/config`)
@@ -37,10 +38,10 @@ export default function ProjectConfigPanel({ projectId, dict }: { projectId: str
         setLoading(false);
       })
       .catch(() => {
-        toast.error(dict.projects.loadConfigFailed);
+        toast.error(loadConfigFailed);
         setLoading(false);
       });
-  }, [projectId]);
+  }, [projectId, loadConfigFailed]);
 
   async function handleSave() {
     setSaving(true);

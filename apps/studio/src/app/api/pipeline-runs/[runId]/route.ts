@@ -22,8 +22,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
     if (!orgId) return unauthorized();
     const data = await getPipelineRun(runId);
-    const run = (data as any)?.run ?? (data as any)?.Run;
-    if (run?.org_id && run.org_id !== orgId) {
+    const run = data.run;
+    if (run.org_id && run.org_id !== orgId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     return NextResponse.json(data);

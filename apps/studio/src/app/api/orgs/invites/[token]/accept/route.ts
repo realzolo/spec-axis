@@ -10,6 +10,15 @@ export const dynamic = 'force-dynamic';
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 
+type InviteRow = {
+  id: string;
+  org_id: string;
+  role: string;
+  email: string | null;
+  expires_at: string;
+  accepted_at: string | null;
+};
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
@@ -21,7 +30,7 @@ export async function POST(
   if (!user) return unauthorized();
 
   const { token } = await params;
-  const invite = await queryOne<Record<string, any>>(
+  const invite = await queryOne<InviteRow>(
     `select * from org_invites where token = $1`,
     [token]
   );

@@ -24,7 +24,7 @@ export async function GET(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const members = await query<Record<string, any>>(
+  const members = await query<Record<string, unknown>>(
     `select m.user_id, m.role, m.status, m.created_at, u.email
      from org_members m
      left join auth_users u on u.id = m.user_id
@@ -84,7 +84,7 @@ export async function PATCH(
     [nextRole, orgId, userId]
   );
 
-  const updated = await queryOne<Record<string, any>>(
+  const updated = await queryOne<Record<string, unknown>>(
     `select m.user_id, m.role, m.status, m.created_at, u.email
      from org_members m
      left join auth_users u on u.id = m.user_id

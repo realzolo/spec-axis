@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { requireUser, unauthorized } from '@/services/auth';
 import { getActiveOrgId } from '@/services/orgs';
-import { query, queryOne } from '@/lib/db';
+import { query } from '@/lib/db';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { formatErrorResponse } from '@/services/retry';
 

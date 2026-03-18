@@ -36,8 +36,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       org_id: orgId,
     }) as { id: string };
 
-    for (let i = 0; i < template.rules.length; i++) {
-      const rule = template.rules[i];
+    for (const [i, rule] of template.rules.entries()) {
       await upsertRule({
         ruleset_id: ruleSet.id,
         name: rule.name,

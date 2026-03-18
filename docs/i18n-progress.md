@@ -44,7 +44,7 @@
 - ✅ `EditProjectModal.tsx` - Edit project modal
 - ✅ `ProjectCard.tsx` - Project card
 - ✅ `DashboardStats.tsx` - Dashboard statistics
-- ✅ `EnhancedProjectDetail.tsx` - Project detail
+- ✅ `ProjectDetail.tsx` - Project detail
 - ✅ `CommitsClient.tsx` - Commits list
 - ✅ `ReportsClient.tsx` - Reports list
 
@@ -67,14 +67,14 @@ The following components still contain hardcoded Chinese text:
 
 #### High Priority (User-facing)
 - `src/app/(dashboard)/reports/[id]/ReportDetailClient.tsx`
-- `src/app/(dashboard)/reports/[id]/EnhancedReportDetailClient.tsx`
+- `src/app/(dashboard)/reports/[id]/ReportDetailClient.tsx`
 - `src/app/(dashboard)/rules/RulesClient.tsx`
 - `src/app/(dashboard)/rules/[id]/RuleSetDetailClient.tsx`
 - `src/app/(dashboard)/settings/page.tsx`
 - `src/components/project/ProjectConfigPanel.tsx`
 
 #### Medium Priority (Functional Components)
-- `src/components/report/EnhancedIssueCard.tsx`
+- `src/components/report/IssueCard.tsx`
 - `src/components/report/AIChat.tsx`
 - `src/components/report/TrendChart.tsx`
 - `src/components/report/ExportButton.tsx`

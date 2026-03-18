@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getProjects, createProject } from '@/services/db';
-import { getRepoBranches } from '@/services/github';
 import { logger } from '@/services/logger';
 import { createProjectSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
@@ -128,25 +127,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Repository not accessible' }, { status: 400 });
     }
 
+    const createPayload: {
+      name: string;
+      repo: string;
+      default_branch: string;
+      user_id: string;
+      org_id: string;
+      vcs_integration_id: string;
+      ai_integration_id: string;
+      description?: string;
+      ruleset_id?: string;
+    } = {
+      name,
+      repo,
+      default_branch: default_branch || 'main',
+      user_id: user.id,
+      org_id: orgId,
+      vcs_integration_id: vcsIntegration.id,
+      ai_integration_id: aiIntegration.id,
+      ...(description !== undefined ? { description } : {}),
+      ...(ruleset_id !== undefined ? { ruleset_id } : {}),
+    };
+
     // Create project first to get projectId
     const tempProject = await withRetry(() =>
-      createProject({
-        name,
-        repo,
-        description,
-        default_branch: default_branch || 'main',
-        ruleset_id,
-        user_id: user.id,
-        org_id: orgId,
-        vcs_integration_id: vcsIntegration.id,
-        ai_integration_id: aiIntegration.id,
-      })
+      createProject(createPayload)
     );
 
-    // Fetch branches (now we have projectId)
-    const branches = await withRetry(() => getRepoBranches(repo, tempProject.id)).catch(() => [tempProject.default_branch]);
-
-    // Update project with correct branch if needed
     const project = tempProject;
 
     enqueueInitialCodebaseSync(project);

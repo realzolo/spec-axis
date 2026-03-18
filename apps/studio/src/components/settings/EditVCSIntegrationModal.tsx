@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -11,7 +11,7 @@ interface Integration {
   id: string;
   name: string;
   provider: string;
-  config: Record<string, any>;
+  config: Record<string, unknown>;
   is_default: boolean;
 }
 
@@ -30,8 +30,8 @@ interface FieldDef {
   help?: string;
 }
 
-// Fallback field definitions per provider if API call fails
-const FALLBACK_FIELDS: Record<string, FieldDef[]> = {
+// Default field definitions per provider used before provider metadata is loaded.
+const DEFAULT_PROVIDER_FIELDS: Record<string, FieldDef[]> = {
   github: [
     { key: 'baseUrl', label: 'Base URL (for Enterprise)', type: 'text', required: false, placeholder: 'https://github.company.com/api/v3', help: 'Leave empty for GitHub.com' },
     { key: 'org', label: 'Default Organization', type: 'text', required: false, placeholder: 'my-org' },
@@ -46,18 +46,21 @@ const FALLBACK_FIELDS: Record<string, FieldDef[]> = {
 };
 
 export default function EditVCSIntegrationModal({ integration, onClose, onSuccess }: Props) {
-  const [fields, setFields] = useState<FieldDef[]>(FALLBACK_FIELDS[integration.provider] ?? []);
+  const [fields, setFields] = useState<FieldDef[]>(DEFAULT_PROVIDER_FIELDS[integration.provider] ?? []);
   const [name, setName] = useState(integration.name);
-  const [config, setConfig] = useState<Record<string, string>>(integration.config);
+  const [config, setConfig] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      Object.entries(integration.config).map(([key, value]) => [
+        key,
+        typeof value === 'string' ? value : value == null ? '' : String(value),
+      ])
+    )
+  );
   const [secret, setSecret] = useState('');
   const [isDefault, setIsDefault] = useState(integration.is_default);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    loadProviderFields();
-  }, []);
-
-  async function loadProviderFields() {
+  const loadProviderFields = useCallback(async () => {
     try {
       const res = await fetch('/api/integrations/providers');
       const data = await res.json();
@@ -67,9 +70,13 @@ export default function EditVCSIntegrationModal({ integration, onClose, onSucces
         setFields(providerCfg.fields.filter((f: FieldDef) => f.key !== 'token'));
       }
     } catch {
-      // keep fallback fields already set
+      // Keep current field definitions.
     }
-  }
+  }, [integration.provider]);
+
+  useEffect(() => {
+    void loadProviderFields();
+  }, [loadProviderFields]);
 
   async function handleSubmit() {
     if (!name.trim()) {
@@ -79,7 +86,7 @@ export default function EditVCSIntegrationModal({ integration, onClose, onSucces
 
     setLoading(true);
     try {
-      const body: any = { name, config, isDefault };
+      const body: Record<string, unknown> = { name, config, isDefault };
       if (secret) body.secret = secret;
 
       const res = await fetch(`/api/integrations/${integration.id}`, {

@@ -24,7 +24,8 @@ const store: RateLimitStore = {};
 setInterval(() => {
   const now = Date.now();
   for (const key in store) {
-    if (store[key].resetTime < now) {
+    const entry = store[key];
+    if (entry && entry.resetTime < now) {
       delete store[key];
     }
   }
@@ -45,6 +46,9 @@ export function createRateLimiter(config: RateLimitConfig) {
     }
 
     const record = store[key];
+    if (!record) {
+      return null;
+    }
 
     // Check window
     if (now > record.resetTime) {

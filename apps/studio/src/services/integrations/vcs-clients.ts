@@ -11,6 +11,39 @@ import type {
   VCSProvider,
 } from './types';
 
+type GitHubRepoLite = {
+  owner?: { login?: string } | string;
+  name: string;
+  full_name?: string;
+  default_branch?: string;
+  description?: string | null;
+  html_url: string;
+};
+
+type GitLabProjectLite = {
+  namespace: { path: string };
+  path: string;
+  path_with_namespace: string;
+  default_branch: string;
+  description?: string | null;
+  web_url: string;
+};
+
+type GitLabCommitLite = {
+  id: string;
+  message: string;
+  author_name: string;
+  author_email: string;
+  created_at: string;
+  web_url: string;
+};
+
+type GitLabDiffLite = {
+  old_path: string;
+  new_path: string;
+  diff: string;
+};
+
 /**
  * GitHub VCS Client
  */
@@ -43,14 +76,28 @@ export class GitHubClient implements VCSClient {
       const configOwner = typeof this.config.org === 'string' ? this.config.org.trim() : undefined;
       const targetOwner = ownerInput || configOwner;
 
-      const mapRepo = (repo: any): Repository => ({
-        owner: repo.owner?.login ?? repo.owner,
-        name: repo.name,
-        fullName: repo.full_name ?? `${repo.owner?.login ?? repo.owner}/${repo.name}`,
-        defaultBranch: repo.default_branch || 'main',
-        description: repo.description || undefined,
-        url: repo.html_url,
-      });
+      const mapRepo = (repo: GitHubRepoLite): Repository => {
+        const ownerName = (
+          typeof repo.owner === 'string' ? repo.owner : repo.owner?.login
+        ) ?? repo.full_name?.split('/')[0];
+        if (!ownerName) {
+          throw new Error(`Invalid GitHub repository payload: missing owner for "${repo.name}"`);
+        }
+
+        const mapped: Repository = {
+          owner: ownerName,
+          name: repo.name,
+          fullName: repo.full_name ?? `${ownerName}/${repo.name}`,
+          defaultBranch: repo.default_branch || 'main',
+          url: repo.html_url,
+        };
+
+        if (repo.description) {
+          mapped.description = repo.description;
+        }
+
+        return mapped;
+      };
 
       const listForUser = async () =>
         this.octokit.paginate(this.octokit.rest.repos.listForAuthenticatedUser, {
@@ -58,7 +105,7 @@ export class GitHubClient implements VCSClient {
           sort: 'updated',
           visibility: 'all',
           affiliation: 'owner,collaborator,organization_member',
-        });
+        }) as Promise<GitHubRepoLite[]>;
 
       if (targetOwner) {
         try {
@@ -67,7 +114,7 @@ export class GitHubClient implements VCSClient {
             per_page: 100,
             sort: 'updated',
             type: 'all',
-          });
+          }) as GitHubRepoLite[];
 
           if (orgRepos.length > 0) {
             return orgRepos.map(mapRepo);
@@ -77,9 +124,10 @@ export class GitHubClient implements VCSClient {
         }
 
         const userRepos = await listForUser();
-        const filtered = userRepos.filter(
-          (repo) => repo.owner?.login?.toLowerCase() === targetOwner.toLowerCase()
-        );
+        const filtered = userRepos.filter((repo) => {
+          const repoOwner = typeof repo.owner === 'string' ? repo.owner : repo.owner?.login;
+          return repoOwner?.toLowerCase() === targetOwner.toLowerCase();
+        });
 
         if (filtered.length > 0) {
           return filtered.map(mapRepo);
@@ -138,6 +186,34 @@ export class GitHubClient implements VCSClient {
       throw new Error('Failed to fetch commit diff from GitHub');
     }
   }
+
+  async getAuthenticatedUser(): Promise<{
+    login: string;
+    name: string | null;
+    avatar_url: string;
+    public_repos: number;
+    total_private_repos: number;
+    html_url: string;
+  }> {
+    const { data } = await this.octokit.rest.users.getAuthenticated();
+    return {
+      login: data.login,
+      name: data.name ?? null,
+      avatar_url: data.avatar_url,
+      public_repos: data.public_repos,
+      total_private_repos: (data as Record<string, unknown>).total_private_repos as number ?? 0,
+      html_url: data.html_url,
+    };
+  }
+
+  async listBranches(owner: string, repo: string): Promise<string[]> {
+    const { data } = await this.octokit.rest.repos.listBranches({
+      owner,
+      repo,
+      per_page: 50,
+    });
+    return data.map((b) => b.name);
+  }
 }
 
 /**
@@ -184,16 +260,23 @@ export class GitLabClient implements VCSClient {
   async getRepositories(owner?: string): Promise<Repository[]> {
     try {
       const endpoint = owner ? `/groups/${owner}/projects` : '/projects';
-      const data = await this.fetch(`${endpoint}?per_page=100&order_by=updated_at`);
+      const data = (await this.fetch(`${endpoint}?per_page=100&order_by=updated_at`)) as GitLabProjectLite[];
 
-      return data.map((project: any) => ({
-        owner: project.namespace.path,
-        name: project.path,
-        fullName: project.path_with_namespace,
-        defaultBranch: project.default_branch,
-        description: project.description || undefined,
-        url: project.web_url,
-      }));
+      return data.map((project) => {
+        const mapped: Repository = {
+          owner: project.namespace.path,
+          name: project.path,
+          fullName: project.path_with_namespace,
+          defaultBranch: project.default_branch,
+          url: project.web_url,
+        };
+
+        if (project.description) {
+          mapped.description = project.description;
+        }
+
+        return mapped;
+      });
     } catch (error) {
       console.error('Failed to get repositories:', error);
       throw new Error('Failed to fetch repositories from GitLab');
@@ -203,11 +286,11 @@ export class GitLabClient implements VCSClient {
   async getCommits(owner: string, repo: string, branch: string, limit = 50): Promise<Commit[]> {
     try {
       const projectPath = encodeURIComponent(`${owner}/${repo}`);
-      const data = await this.fetch(
+      const data = (await this.fetch(
         `/projects/${projectPath}/repository/commits?ref_name=${branch}&per_page=${limit}`
-      );
+      )) as GitLabCommitLite[];
 
-      return data.map((commit: any) => ({
+      return data.map((commit) => ({
         sha: commit.id,
         message: commit.message,
         author: {
@@ -226,11 +309,11 @@ export class GitLabClient implements VCSClient {
   async getCommitDiff(owner: string, repo: string, sha: string): Promise<string> {
     try {
       const projectPath = encodeURIComponent(`${owner}/${repo}`);
-      const data = await this.fetch(`/projects/${projectPath}/repository/commits/${sha}/diff`);
+      const data = (await this.fetch(`/projects/${projectPath}/repository/commits/${sha}/diff`)) as GitLabDiffLite[];
 
       // Convert GitLab diff format to unified diff
       return data
-        .map((diff: any) => {
+        .map((diff) => {
           return `diff --git a/${diff.old_path} b/${diff.new_path}\n${diff.diff}`;
         })
         .join('\n');

@@ -94,9 +94,9 @@ export async function GET() {
       },
     },
     ai: {
-      'openai-compatible': {
-        name: 'OpenAI-Compatible API',
-        description: 'Anthropic, OpenAI, DeepSeek, and other compatible APIs',
+      'openai-api': {
+        name: 'OpenAI API Format',
+        description: 'Anthropic, OpenAI, DeepSeek, and other providers',
         fields: [
           {
             key: 'apiKey',

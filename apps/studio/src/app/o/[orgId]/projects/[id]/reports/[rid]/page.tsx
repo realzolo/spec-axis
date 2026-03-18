@@ -1,6 +1,6 @@
 import { getLocale } from '@/lib/locale';
 import { getDictionary } from '@/i18n';
-import EnhancedReportDetailClient from '@/components/report/EnhancedReportDetailClient';
+import ReportDetailClient from '@/components/report/ReportDetailClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,5 +13,5 @@ export default async function ProjectReportDetailPage({
   const locale = await getLocale();
   const dict = await getDictionary(locale);
 
-  return <EnhancedReportDetailClient reportId={rid} dict={dict} />;
+  return <ReportDetailClient reportId={rid} dict={dict} />;
 }

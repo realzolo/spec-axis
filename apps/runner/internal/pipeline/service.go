@@ -82,7 +82,7 @@ func (s *Service) CreatePipeline(ctx context.Context, input CreatePipelineInput)
 		return nil, nil, err
 	}
 
-	// Keep metadata columns in sync with config for v2 pipelines.
+	// Keep metadata columns in sync with the current pipeline config schema.
 	input.AutoTrigger = input.Config.Source.AutoTrigger
 	input.TriggerBranch = input.Config.Source.Branch
 	input.QualityGateEnabled = input.Config.Review.QualityGateEnabled
@@ -299,4 +299,23 @@ func (s *Service) ReadLog(ctx context.Context, stepID string, offset int64, limi
 		return nil, 0, fmt.Errorf("log not found")
 	}
 	return s.Storage.ReadLog(*step.LogPath, offset, limit)
+}
+
+func (s *Service) CancelRun(ctx context.Context, runID string) error {
+	if strings.TrimSpace(runID) == "" {
+		return errors.New("runId is required")
+	}
+	ok, err := s.Store.CancelPipelineRun(ctx, runID, "canceled_by_user")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("run cannot be canceled")
+	}
+	_ = s.Store.AppendRunEvent(ctx, runID, "run.canceled", map[string]any{
+		"runId":     runID,
+		"status":    StatusCanceled,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	})
+	return nil
 }

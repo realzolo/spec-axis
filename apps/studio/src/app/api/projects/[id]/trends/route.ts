@@ -47,7 +47,7 @@ export async function GET(
     // Query trend data with retry
     const data = await withRetry(async () => {
       await requireProjectAccess(projectId, user.id);
-      return query<Record<string, any>>(
+      return query<Record<string, unknown>>(
         `select *
          from analysis_quality_snapshots
          where project_id = $1 and snapshot_date >= $2

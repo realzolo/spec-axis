@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* eslint-disable no-console */
+ 
 
 const args = process.argv.slice(2);
 const baseUrl = (process.env.STUDIO_BASE_URL || 'http://localhost:8109').replace(/\/+$/, '');

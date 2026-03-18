@@ -34,7 +34,6 @@ export default function AddVCSIntegrationModal({ onClose, onSuccess }: Props) {
   const [secret, setSecret] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     loadProviders();
@@ -45,7 +44,7 @@ export default function AddVCSIntegrationModal({ onClose, onSuccess }: Props) {
       const res = await fetch('/api/integrations/providers');
       const data = await res.json();
       setProviders(data.vcs);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load providers');
     }
   }

@@ -6,7 +6,6 @@ import crypto from 'crypto';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
-const AUTH_TAG_LENGTH = 16;
 const SALT_LENGTH = 64;
 
 /**
@@ -73,7 +72,7 @@ export function decrypt(encryptedData: string): string {
     throw new Error('Invalid encrypted data format. Please re-create this integration.');
   }
 
-  const [ivHex, authTagHex, saltHex, encryptedHex] = parts;
+  const [ivHex, authTagHex, , encryptedHex] = parts;
 
   // Validate hex strings
   if (!ivHex || !authTagHex || !encryptedHex) {

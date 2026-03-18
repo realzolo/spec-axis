@@ -26,7 +26,7 @@ const dict = await getDictionary(locale);
 
 ## Project Overview
 
-AI code review + CI/CD platform: Next.js 16 + React 19 + TypeScript + HeroUI v3 (beta) + Tailwind CSS v4.
+AI code review + CI/CD platform: Next.js 16 + React 19 + TypeScript + Tailwind CSS v4.
 Multi-GitHub project management, commit selection, Claude AI analysis, configurable rule sets, quality report scoring, and pipeline DAG builder.
 Backend: PostgreSQL for core data, Go runner executes analysis jobs and pipeline runs via Redis queue; status updates stream via SSE with polling fallback.
 Monorepo layout: `apps/studio` (Next.js), `apps/runner` (Go runner), `packages/*` (shared contracts).
@@ -72,8 +72,7 @@ Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on si
 |------|---------|-------|
 | Next.js | 16.1.6 | App Router, Turbopack |
 | React | 19.2.3 | — |
-| HeroUI | 3.0.0-beta.8 | `@heroui/react` |
-| Tailwind CSS | v4.2.1 | `@import "@heroui/styles"` in globals.css |
+| Tailwind CSS | v4.2.1 | Design tokens live in `apps/studio/src/app/globals.css` |
 | Geist Font | 1.7.x | Geist Sans/Mono via `geist` package |
 | Radix UI Primitives | ^2.1.4 | `@radix-ui/react-primitive` (Radix Select/Popper dependency) |
 | CodeMirror | 6.x | Read-only codebase editor preview |
@@ -88,76 +87,43 @@ Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on si
 | zod | `^4.3.6` | Runtime validation |
 | lucide-react | ^0.577 | Icons |
 
-## HeroUI v3 Configuration
+## Engineering Constraints
 
-- **globals.css**: `@import "@heroui/styles";` — do NOT use `heroui()` tailwind plugin
-- **No** `HeroUIProvider` wrapper needed
-- **.npmrc**: `public-hoist-pattern[]=*@heroui/*` (required for correct hoisting)
-- **No Progress component** — use Tailwind: `<div className="h-1 rounded-full bg-muted overflow-hidden"><div className="h-full rounded-full bg-success" style={{ width: `${v}%` }} /></div>`
+- **No compatibility design/code paths**: Do not add dual-field parsing (`foo ?? Foo`), legacy aliases, or fallback branches for stale response shapes.
+- **No compatibility naming**: Do not introduce `legacy*`, `compat*`, `polyfill*`, or similar identifiers.
+- **Single contract source**: Runner HTTP contracts are defined in `packages/contracts/src/runner.ts` and consumed by Studio.
+- **Type safety baseline**: `apps/studio/tsconfig.json` enforces strict type checks (`allowJs: false`, `skipLibCheck: false`, `exactOptionalPropertyTypes: true`, `noUncheckedIndexedAccess: true`).
+- **Schema requirement**: migrations must be applied before runtime. Missing required columns (for example `pipelines.concurrency_mode`) are treated as errors, not tolerated with fallback logic.
+- **Canonical provider IDs only**: Use a single provider identifier per integration type (current AI provider key is `openai-api`). Do not add alias keys.
+- **Fail-fast on unsupported providers**: Provider switch statements must throw on unknown values; no silent fallback client selection.
 
-## HeroUI v3 Component API
+## Naming & Design Rules
 
-```tsx
-// Card
-<Card><Card.Header><Card.Title /></Card.Header><Card.Content className="p-4" /></Card>
+- Prefer domain names over technical workaround names (`pipelineRun`, `rulesetSnapshot`, `integrationConfig`).
+- Use final-state naming only. Do not use transitional prefixes/suffixes like `Enhanced*`, `New*`, `Old*`, `V2*`, `Temp*`, or `*Legacy`.
+- Optional fields must be modeled as truly optional fields; never assign `undefined` to an explicitly present property under `exactOptionalPropertyTypes`.
+- External API payload parsing must be schema-first (`zod` contract parse before business logic).
+- Do not add transitional adapter layers for old payloads or old naming; update all callers to the canonical contract in one change set.
 
-// Modal
-<Modal state={modalState}>
-  <Modal.Backdrop isDismissable>
-    <Modal.Container size="md"> {/* xs|sm|md|lg|full|cover */}
-      <Modal.Dialog>
-        <Modal.Header><Modal.Heading>Title</Modal.Heading></Modal.Header>
-        <Modal.Body /><Modal.Footer />
-      </Modal.Dialog>
-    </Modal.Container>
-  </Modal.Backdrop>
-</Modal>
+## Quality Gates
 
-// Modal state
-const modalState = useOverlayState({ isOpen: show, onOpenChange: (v) => { if (!v) setShow(false); } });
+- Studio CI baseline must be green on every change set:
+  - `pnpm -C apps/studio lint` returns 0 errors and 0 warnings.
+  - `pnpm -C apps/studio build` succeeds.
+- Runner backend baseline must compile:
+  - `cd apps/runner && GOCACHE=/tmp/spec-axis-go-cache go build ./...`
 
-// Tabs — NEVER use <Tabs.Indicator /> (causes SharedElement runtime error)
-<Tabs defaultSelectedKey="tab1">
-  <Tabs.ListContainer className="border-b border-border px-4">
-    <Tabs.List><Tabs.Tab id="tab1">Tab</Tabs.Tab></Tabs.List>
-  </Tabs.ListContainer>
-  <Tabs.Panel id="tab1">Content</Tabs.Panel>
-</Tabs>
+## UI Components
 
-// Select
-<Select selectedKey={value} onSelectionChange={(key) => setValue(key as string)}>
-  <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
-  <Select.Popover>
-    <ListBox items={items}>{(item) => <ListBox.Item id={item.id}>{item.label}</ListBox.Item>}</ListBox>
-  </Select.Popover>
-</Select>
+This project does **not** use HeroUI. UI is built from:
+- Local reusable components under `apps/studio/src/components/ui/*`
+- Radix primitives where needed
+- Tailwind CSS tokens defined in `apps/studio/src/app/globals.css`
 
-// Tooltip
-<Tooltip><Tooltip.Trigger><Button /></Tooltip.Trigger><Tooltip.Content>text</Tooltip.Content></Tooltip>
-
-// Input with icon (no startContent prop)
-<InputGroup>
-  <InputGroup.Prefix><Search className="size-4" /></InputGroup.Prefix>
-  <InputGroup.Input placeholder="..." value={v} onChange={e => setV(e.target.value)} />
-</InputGroup>
-```
-
-### API Limitations
-
-| Component | Limitation |
-|-----------|------------|
-| `Modal.Container` | `size`: `xs\|sm\|md\|lg\|full\|cover` only |
-| `Input` | No `startContent`, no `isDisabled` — use HTML `disabled` |
-| `Button` | No `isLoading` — use `isDisabled` + conditional text |
-| `Card` | No `onPress` — use `onClick` |
-| `Select.Value` | No `placeholder` — use children |
-| `Switch` | `onChange` receives `boolean`, not event |
-| `Tabs.Indicator` | **Forbidden** — SharedElement runtime error |
-| `Separator` | Replaces v2 `Divider` |
-
-**Button variants:** `primary | outline | ghost | secondary | tertiary | danger | danger-soft`
-**Chip variants:** `primary | secondary | tertiary | soft`
-**Chip colors:** `default | primary | accent | success | warning | danger`
+Rules:
+- Prefer `components/ui/*` wrappers over direct Radix usage to keep styling and behavior consistent.
+- Do not introduce compatibility props or dual APIs (for example `foo` vs `Foo`, `onPress` vs `onClick`). Pick one naming and enforce it.
+- Do not add framework-specific naming that implies legacy support (for example `legacy*`, `compat*`, `polyfill*`).
 
 ## UI Design Guidelines
 
@@ -187,7 +153,7 @@ Avoid custom font sizes unless a new token is added.
 ## Next.js 16 Special Configuration
 
 - **Middleware**: file is `apps/studio/middleware.ts` (Next.js middleware). It handles `/o/:orgId` rewrites and org redirects.
-- `apps/studio/src/proxy.ts` is legacy and currently unused.
+- `apps/studio/src/proxy.ts` is currently unused.
 - **Dynamic pages**: any dashboard page that depends on auth/session or database reads must use `export const dynamic = 'force-dynamic'`
 - **Dynamic route params**: in pages and route handlers, `params` is async — `const { id } = await params` (avoid sync dynamic APIs errors)
 - **Vercel timeout**: analyze route configured for 300s in `vercel.json`
@@ -220,7 +186,7 @@ apps/
               commits/          # CommitsClient
               reports/
                 page.tsx        # ProjectReportsView (with multi-select + compare)
-                [rid]/          # EnhancedReportDetailClient
+                [rid]/          # ReportDetailClient
                 compare/        # ReportCompareClient (?a=reportId&b=reportId)
               pipelines/
                 page.tsx        # ProjectPipelinesView
@@ -246,7 +212,7 @@ apps/
         layout/Sidebar.tsx, Topbar.tsx
         project/ProjectCard, ProjectCommitsView, ProjectReportsView, ProjectPipelinesView
                 ProjectCodebaseView, ProjectSettingsView
-        report/EnhancedIssueCard, AIChat, TrendChart, ExportButton, ReportCompareClient
+        report/IssueCard, AIChat, TrendChart, ExportButton, ReportCompareClient
         pipeline/PipelineDetailClient  # Builder, runs, concurrency mode, docker step editor
         dashboard/DashboardStats.tsx
         common/LanguageSwitcher.tsx
@@ -263,7 +229,7 @@ apps/
         db.ts github.ts claude.ts taskQueue.ts analyzeTask.ts
         pipelineTypes.ts        # PipelineStep (type/dockerImage), PipelineSummary (concurrency_mode)
         runnerClient.ts         # cancelPipelineRun() + other runner proxy functions
-      proxy.ts                  # Legacy auth middleware (unused)
+      proxy.ts                  # Unused auth middleware
     middleware.ts               # Org cookie sync + dashboard redirect (Next.js middleware)
   runner/
     cmd/runner/                 # Go runner entrypoint
@@ -278,7 +244,7 @@ docs/
     migrations/
       add_concurrency_mode.sql  # ALTER TABLE pipelines ADD COLUMN concurrency_mode
 packages/
-  contracts/                    # Shared API/contracts (future)
+  contracts/                    # Shared API/contracts (active)
 ```
 
 ## Environment Variables
@@ -352,7 +318,7 @@ Environment files for Studio live under `apps/studio` (e.g. `apps/studio/.env`).
 
 **VCS and AI integrations** are configured via web UI at **Settings > Integrations** — NOT via env vars.
 - VCS: GitHub, GitLab, Generic Git
-- AI: Any OpenAI-compatible API (Claude, GPT-4, DeepSeek, etc.)
+- AI: Any OpenAI API-format provider (Claude, GPT-4, DeepSeek, etc.)
 - Non-sensitive config → `org_integrations` table; secrets → encrypted in `vault_secret_name`
 - Priority: project-specific > org default (no env var fallback)
 
@@ -453,6 +419,7 @@ toast.success('...'); toast.error('...'); toast.warning('...');
 - Project detail tabs support deep links via query params: `?tab=commits|codebase|stats|config`. Codebase supports `ref`, `path`, `line` for jump-to-location.
 - `PATCH /api/pipelines/[id]` updates `concurrency_mode` in Studio DB (requires `add_concurrency_mode.sql` migration applied)
 - `POST /api/pipelines/[id]/runs` enforces concurrency gate before calling runner (409 if `queue` mode and run active)
+- Studio server calls Runner `POST /v1/pipeline-runs/{runId}/cancel` and expects `{ ok: true }` (used by `cancel_previous` concurrency mode)
 - `GET /api/rules/templates` returns static template list; `POST /api/rules/templates/[id]/import` is admin-only
 - Report compare page: `/o/:orgId/projects/:id/reports/compare?a=reportIdA&b=reportIdB`
 
@@ -470,6 +437,6 @@ psql "$DATABASE_URL" -f docs/db/migrations/add_concurrency_mode.sql
 
 ## FAQ
 
-**TypeScript build errors?** Run `pnpm build`. Common: use `disabled` not `isDisabled` on Input; `onClick` not `onPress` on Card; Modal size only `xs|sm|md|lg|full|cover`. If type errors persist after dict changes, run `rm -rf .next`.
+**TypeScript build errors?** Run `pnpm build`. Common causes: contract mismatch between Runner and Studio, dictionary key mismatch between `en.json` and `zh.json`, or stale type cache (`rm -rf .next`).
 
-**Dark mode?** Add `dark` class to `html` tag — HeroUI v3 CSS variables adapt automatically.
+**Dark mode?** Theme is controlled via `data-theme` on `:root` (see `apps/studio/src/app/globals.css`). Prefer token-driven styling instead of per-component theme conditionals.

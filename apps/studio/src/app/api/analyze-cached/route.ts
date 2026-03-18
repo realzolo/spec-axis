@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
       timestamp: Date.now(),
     });
 
-    // Clean old cache entries
+    // Clean expired cache entries
     cleanCache();
   }
 

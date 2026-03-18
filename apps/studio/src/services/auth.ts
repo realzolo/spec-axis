@@ -174,7 +174,10 @@ export async function authenticateUser(
   const rateLimit = await checkLoginRateLimit(email, ip ?? null);
   if (!rateLimit.allowed) {
     await recordLoginAttempt(null, email, ip ?? null, userAgent ?? null, false, 'rate_limited');
-    return { error: 'RATE_LIMITED', retryAfter: rateLimit.retryAfter };
+    if (typeof rateLimit.retryAfter === 'number') {
+      return { error: 'RATE_LIMITED', retryAfter: rateLimit.retryAfter };
+    }
+    return { error: 'RATE_LIMITED' };
   }
 
   const row = await queryOne<{
@@ -561,7 +564,7 @@ async function recordLoginAttempt(
 
 async function checkLoginRateLimit(email: string, ip: string | null) {
   const windowStart = new Date(Date.now() - LOGIN_FAILURE_WINDOW_MINUTES * 60 * 1000);
-  const params: any[] = [windowStart.toISOString(), email];
+  const params: unknown[] = [windowStart.toISOString(), email];
   let sql =
     `select count(*)::int as count
      from auth_login_attempts

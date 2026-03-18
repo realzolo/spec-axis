@@ -25,12 +25,16 @@ class PerformanceMonitor {
       this.metrics.set(key, []);
     }
 
-    this.metrics.get(key)!.push({
+    const metric: PerformanceMetric = {
       reportId,
       name,
       value,
-      unit,
-    });
+    };
+    if (unit) {
+      metric.unit = unit;
+    }
+
+    this.metrics.get(key)!.push(metric);
 
     logger.debug(`Metric recorded: ${name}=${value}${unit ? ` ${unit}` : ''}`);
   }
@@ -66,7 +70,7 @@ class PerformanceMonitor {
 
     try {
       const columns = ['report_id', 'metric_name', 'metric_value', 'unit'];
-      const values: any[] = [];
+      const values: unknown[] = [];
       const placeholders = metrics.map((metric, index) => {
         const base = index * columns.length;
         values.push(metric.reportId, metric.name, metric.value, metric.unit ?? null);
@@ -123,7 +127,7 @@ export async function measurePerformance<T>(
  */
 export async function getKeyMetrics(reportId: string) {
   try {
-    const data = await query(
+    const data = await query<{ metric_name: string; metric_value: number; unit: string | null }>(
       `select metric_name, metric_value, unit
        from analysis_metrics
        where report_id = $1`,
@@ -132,12 +136,10 @@ export async function getKeyMetrics(reportId: string) {
 
     // Group by metric name
     const grouped: Record<string, number[]> = {};
-    (data || []).forEach((m: Record<string, unknown>) => {
-      const metricName = m.metric_name as string;
-      if (!grouped[metricName]) {
-        grouped[metricName] = [];
-      }
-      grouped[metricName].push(m.metric_value as number);
+    data.forEach((m) => {
+      const metricName = m.metric_name;
+      const bucket = grouped[metricName] ?? (grouped[metricName] = []);
+      bucket.push(m.metric_value);
     });
 
     // Calculate stats

@@ -10,6 +10,14 @@ export const dynamic = 'force-dynamic';
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 
+type OrgRow = {
+  id: string;
+  name: string;
+  slug: string;
+  is_personal: boolean;
+  owner_id: string | null;
+};
+
 function slugify(input: string) {
   return input
     .toLowerCase()
@@ -46,7 +54,7 @@ export async function POST(request: NextRequest) {
   const baseSlug = slugify(body?.slug || name) || `org-${user.id.slice(0, 8)}`;
   const slug = `${baseSlug}-${Date.now().toString(36)}`;
 
-  const org = await queryOne<Record<string, any>>(
+  const org = await queryOne<OrgRow>(
     `insert into organizations
       (name, slug, is_personal, owner_id, created_at, updated_at)
      values ($1,$2,false,$3,now(),now())

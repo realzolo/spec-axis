@@ -101,10 +101,13 @@ All text fields must be in English.`;
 function extractChangedFiles(diff: string): string[] {
   const filePattern = /^diff --git a\/(.+?) b\/.+$/gm;
   const files = new Set<string>();
-  let match;
+  let match: RegExpExecArray | null;
 
   while ((match = filePattern.exec(diff)) !== null) {
-    files.add(match[1]);
+    const file = match[1];
+    if (file) {
+      files.add(file);
+    }
   }
 
   return Array.from(files);
@@ -123,8 +126,8 @@ export function shouldUseIncrementalAnalysis(
   if (!recentReports || recentReports.length === 0) return false;
   if (commits.length >= 5) return false;
 
-  const latestReport = recentReports[0];
-  if (!latestReport.created_at) return false;
+  const latestReport = recentReports.at(0);
+  if (!latestReport?.created_at) return false;
 
   const age = Date.now() - new Date(latestReport.created_at).getTime();
   const sevenDays = 7 * 24 * 60 * 60 * 1000;

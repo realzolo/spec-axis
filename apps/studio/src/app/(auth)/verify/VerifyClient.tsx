@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -17,15 +17,7 @@ export default function VerifyClient({ dict }: { dict: Dictionary }) {
   const [message, setMessage] = useState(dict.auth.verifyEmailRequired);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const tokenParam = params.get('token');
-    if (tokenParam && tokenParam !== token) {
-      setToken(tokenParam);
-      void handleVerify(tokenParam);
-    }
-  }, [params, token]);
-
-  async function handleVerify(value?: string) {
+  const handleVerify = useCallback(async (value?: string) => {
     const tokenValue = (value ?? token).trim();
     if (!tokenValue) {
       setStatus('error');
@@ -56,7 +48,15 @@ export default function VerifyClient({ dict }: { dict: Dictionary }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [dict.auth.verifyEmailInProgress, dict.auth.verifyEmailInvalid, dict.auth.verifyEmailSuccess, token]);
+
+  useEffect(() => {
+    const tokenParam = params.get('token');
+    if (tokenParam && tokenParam !== token) {
+      setToken(tokenParam);
+      void handleVerify(tokenParam);
+    }
+  }, [handleVerify, params, token]);
 
   return (
     <div className="auth-page">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -12,9 +12,16 @@ interface Integration {
   id: string;
   name: string;
   provider: string;
-  config: Record<string, any>;
+  config: AIConfigForm;
   is_default: boolean;
 }
+
+type AIConfigForm = Record<string, unknown> & {
+  model?: string;
+  baseUrl?: string;
+  maxTokens?: number;
+  temperature?: number;
+};
 
 interface Props {
   integration: Integration;
@@ -40,16 +47,12 @@ interface ProviderConfig {
 export default function EditAIIntegrationModal({ integration, onClose, onSuccess }: Props) {
   const [providerConfig, setProviderConfig] = useState<ProviderConfig | null>(null);
   const [name, setName] = useState(integration.name);
-  const [config, setConfig] = useState<Record<string, any>>(integration.config);
+  const [config, setConfig] = useState<AIConfigForm>(integration.config);
   const [secret, setSecret] = useState('');
   const [isDefault, setIsDefault] = useState(integration.is_default);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    loadProviderConfig();
-  }, []);
-
-  async function loadProviderConfig() {
+  const loadProviderConfig = useCallback(async () => {
     try {
       const res = await fetch('/api/integrations/providers');
       const data = await res.json();
@@ -58,7 +61,11 @@ export default function EditAIIntegrationModal({ integration, onClose, onSuccess
     } catch {
       // non-fatal: fall back to basic fields
     }
-  }
+  }, [integration.provider]);
+
+  useEffect(() => {
+    void loadProviderConfig();
+  }, [loadProviderConfig]);
 
   function setConfigValue(key: string, value: string | number | undefined) {
     setConfig((prev) => {
@@ -71,20 +78,25 @@ export default function EditAIIntegrationModal({ integration, onClose, onSuccess
     });
   }
 
+  function asString(value: unknown): string | undefined {
+    return typeof value === 'string' ? value : undefined;
+  }
+
   async function handleSubmit() {
     if (!name.trim()) {
       toast.error('Name is required');
       return;
     }
 
-    if (!config.model?.trim()) {
+    const model = typeof config.model === 'string' ? config.model.trim() : '';
+    if (!model) {
       toast.error('Model is required');
       return;
     }
 
     setLoading(true);
     try {
-      const body: any = { name, config, isDefault };
+      const body: Record<string, unknown> = { name, config, isDefault };
       if (secret) body.secret = secret;
 
       const res = await fetch(`/api/integrations/${integration.id}`, {
@@ -147,37 +159,60 @@ export default function EditAIIntegrationModal({ integration, onClose, onSuccess
                   {field.required && ' *'}
                 </label>
                 {field.type === 'select' && field.options ? (
-                  <Select
-                    value={config[field.key] || undefined}
-                    onValueChange={(value) => setConfigValue(field.key, value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={field.placeholder} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {field.options.map((opt) => (
-                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  (() => {
+                    const selectedValue = asString(config[field.key]);
+                    return (
+                      <Select
+                        {...(selectedValue ? { value: selectedValue } : {})}
+                        onValueChange={(value) => setConfigValue(field.key, value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={field.placeholder} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {field.options.map((opt) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    );
+                  })()
                 ) : field.type === 'number' ? (
-                  <Input
-                    type="number"
-                    step={field.key === 'temperature' ? '0.1' : '1'}
-                    placeholder={field.placeholder}
-                    value={config[field.key] ?? ''}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value);
-                      setConfigValue(field.key, Number.isNaN(v) ? undefined : v);
-                    }}
-                  />
+                  (() => {
+                    const fieldValue = config[field.key];
+                    return (
+                      <Input
+                        type="number"
+                        step={field.key === 'temperature' ? '0.1' : '1'}
+                        placeholder={field.placeholder}
+                        value={
+                          typeof fieldValue === 'number' || typeof fieldValue === 'string'
+                            ? fieldValue
+                            : ''
+                        }
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          setConfigValue(field.key, Number.isNaN(v) ? undefined : v);
+                        }}
+                      />
+                    );
+                  })()
                 ) : (
-                  <Input
-                    type={field.type}
-                    placeholder={field.placeholder}
-                    value={config[field.key] || ''}
-                    onChange={(e) => setConfigValue(field.key, e.target.value)}
-                  />
+                  (() => {
+                    const textValue = config[field.key];
+                    return (
+                      <Input
+                        type={field.type}
+                        placeholder={field.placeholder}
+                        value={
+                          typeof textValue === 'string' || typeof textValue === 'number'
+                            ? textValue
+                            : ''
+                        }
+                        onChange={(e) => setConfigValue(field.key, e.target.value)}
+                      />
+                    );
+                  })()
                 )}
                 {field.help && (
                   <p className="text-[12px] text-[hsl(var(--ds-text-2))] mt-1">{field.help}</p>

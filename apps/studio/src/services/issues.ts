@@ -46,7 +46,7 @@ export async function syncReportIssues(reportId: string, issues: IssueInput[]) {
   for (let i = 0; i < issues.length; i += INSERT_CHUNK_SIZE) {
     const chunk = issues.slice(i, i + INSERT_CHUNK_SIZE);
     const updatedAt = new Date();
-    const values: any[] = [];
+    const values: unknown[] = [];
     const placeholders = chunk.map((issue, rowIndex) => {
       const base = rowIndex * paramsPerRow;
       values.push(

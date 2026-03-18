@@ -92,8 +92,8 @@ func ResolveAIClient(ctx context.Context, st *store.Store, project *store.Projec
 	}
 
 	switch integration.Provider {
-	case "openai-compatible":
-		return NewOpenAICompatibleClient(config), nil
+	case "openai-api":
+		return NewOpenAIAPIClient(config), nil
 	default:
 		return nil, fmt.Errorf("unsupported AI provider: %s", integration.Provider)
 	}
@@ -328,23 +328,23 @@ func splitRepo(repo string) (string, string, error) {
 
 // ───────────────────────── AI Clients ─────────────────────────
 
-type OpenAICompatibleClient struct {
+type OpenAIAPIClient struct {
 	config AIConfig
 	client *http.Client
 }
 
-func NewOpenAICompatibleClient(config AIConfig) *OpenAICompatibleClient {
-	return &OpenAICompatibleClient{
+func NewOpenAIAPIClient(config AIConfig) *OpenAIAPIClient {
+	return &OpenAIAPIClient{
 		config: config,
 		client: &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
-func (c *OpenAICompatibleClient) Model() string {
+func (c *OpenAIAPIClient) Model() string {
 	return c.config.ModelName
 }
 
-func (c *OpenAICompatibleClient) Analyze(prompt string, code string, timeout time.Duration) (domain.ReviewResult, error) {
+func (c *OpenAIAPIClient) Analyze(prompt string, code string, timeout time.Duration) (domain.ReviewResult, error) {
 	if strings.TrimSpace(c.config.BaseURL) == "" {
 		return domain.ReviewResult{}, fmt.Errorf("AI baseUrl is required")
 	}
@@ -354,7 +354,7 @@ func (c *OpenAICompatibleClient) Analyze(prompt string, code string, timeout tim
 	return c.analyzeOpenAI(prompt, code, timeout)
 }
 
-func (c *OpenAICompatibleClient) analyzeAnthropic(prompt string, code string, timeout time.Duration) (domain.ReviewResult, error) {
+func (c *OpenAIAPIClient) analyzeAnthropic(prompt string, code string, timeout time.Duration) (domain.ReviewResult, error) {
 	fullPrompt := buildClientPrompt(prompt, code, true)
 	body := map[string]any{
 		"model":       c.config.ModelName,
@@ -408,7 +408,7 @@ func (c *OpenAICompatibleClient) analyzeAnthropic(prompt string, code string, ti
 	return parseReviewResult(text)
 }
 
-func (c *OpenAICompatibleClient) analyzeOpenAI(prompt string, code string, timeout time.Duration) (domain.ReviewResult, error) {
+func (c *OpenAIAPIClient) analyzeOpenAI(prompt string, code string, timeout time.Duration) (domain.ReviewResult, error) {
 	fullPrompt := buildClientPrompt(prompt, code, false)
 	body := map[string]any{
 		"model": c.config.ModelName,
@@ -438,7 +438,7 @@ func (c *OpenAICompatibleClient) analyzeOpenAI(prompt string, code string, timeo
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return domain.ReviewResult{}, fmt.Errorf("openai-compatible error: %s", resp.Status)
+		return domain.ReviewResult{}, fmt.Errorf("openai-api error: %s", resp.Status)
 	}
 
 	raw, err := readAll(resp)

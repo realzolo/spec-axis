@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -12,18 +12,11 @@ type Status = 'idle' | 'loading' | 'success' | 'error';
 export default function ResetClient({ dict }: { dict: Dictionary }) {
   const router = useRouter();
   const params = useSearchParams();
-  const [token, setToken] = useState('');
+  const [token, setToken] = useState(() => params.get('token') ?? '');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState(dict.auth.resetPasswordPrompt);
-
-  useEffect(() => {
-    const tokenParam = params.get('token');
-    if (tokenParam && tokenParam !== token) {
-      setToken(tokenParam);
-    }
-  }, [params, token]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

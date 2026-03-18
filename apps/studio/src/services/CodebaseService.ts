@@ -236,15 +236,19 @@ export class CodebaseService {
       }
 
       const now = new Date().toISOString();
-      await this.writeJson<MirrorMeta>(paths.metaPath, {
+      const nextLastSyncAt = shouldSync ? now : meta?.lastSyncAt;
+      const mirrorMeta: MirrorMeta = {
         orgId: ref.orgId,
         projectId: ref.projectId,
         repo: ref.repo,
         provider,
         remoteUrl: sanitizeUrl(remoteUrl),
         createdAt: meta?.createdAt ?? now,
-        lastSyncAt: shouldSync ? now : meta?.lastSyncAt,
-      });
+      };
+      if (nextLastSyncAt) {
+        mirrorMeta.lastSyncAt = nextLastSyncAt;
+      }
+      await this.writeJson<MirrorMeta>(paths.metaPath, mirrorMeta);
 
       return {
         mirrorPath: paths.mirrorPath,
@@ -258,7 +262,10 @@ export class CodebaseService {
   }
 
   async prepareWorkspace(ref: CodebaseRef, options: PrepareWorkspaceOptions = {}): Promise<PreparedWorkspace> {
-    const mirror = await this.ensureMirror(ref, { forceSync: options.forceSync });
+    const mirror = await this.ensureMirror(
+      ref,
+      options.forceSync === undefined ? {} : { forceSync: options.forceSync }
+    );
     const workspaceId = options.workspaceId ?? randomUUID();
     const workspacePath = this.getWorkspacePath(ref.orgId, ref.projectId, ref.repo, workspaceId);
     const targetRef = await this.resolveRef(mirror.mirrorPath, ref.ref);
@@ -985,12 +992,15 @@ function parseLsTree(output: string, basePath: string): TreeEntry[] {
     const size = type === 'blob' && sizeRaw && sizeRaw !== '-' ? Number(sizeRaw) : undefined;
     const entryPath = basePath ? `${basePath}/${name}` : name;
 
-    entries.push({
+    const entry: TreeEntry = {
       name,
       path: entryPath,
       type: type === 'tree' ? 'tree' : 'blob',
-      ...(Number.isFinite(size) ? { size } : {}),
-    });
+    };
+    if (typeof size === 'number' && Number.isFinite(size)) {
+      entry.size = size;
+    }
+    entries.push(entry);
   }
 
   return entries.sort((a, b) => {

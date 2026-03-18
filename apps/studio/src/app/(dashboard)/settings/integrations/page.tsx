@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Settings, Trash2, Check, X, Edit } from 'lucide-react';
+import { Edit, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import AddVCSIntegrationModal from '@/components/settings/AddVCSIntegrationModal';
 import AddAIIntegrationModal from '@/components/settings/AddAIIntegrationModal';
@@ -20,7 +20,7 @@ interface Integration {
   provider: string;
   name: string;
   is_default: boolean;
-  config: Record<string, any>;
+  config: { baseUrl?: string; model?: string } & Record<string, unknown>;
   created_at: string;
 }
 
@@ -131,7 +131,7 @@ export default function IntegrationsPage() {
       if (aiRes.ok) {
         setAiIntegrations(await aiRes.json());
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to load integrations');
     } finally {
       setLoading(false);
@@ -159,14 +159,14 @@ export default function IntegrationsPage() {
     }
   }
 
-  async function handleSetDefault(id: string, type: 'vcs' | 'ai') {
+  async function handleSetDefault(id: string) {
     try {
       const res = await fetch(`/api/integrations/${id}/set-default`, { method: 'POST' });
       if (!res.ok) throw new Error('Failed to set default');
 
       toast.success('Default integration updated');
       await loadIntegrations();
-    } catch (error) {
+    } catch {
       toast.error('Failed to set default integration');
     }
   }
@@ -182,7 +182,7 @@ export default function IntegrationsPage() {
       } else {
         toast.error(data.error || 'Connection test failed');
       }
-    } catch (error) {
+    } catch {
       toast.error('Connection test failed');
     } finally {
       setTestingId(null);
@@ -247,7 +247,7 @@ export default function IntegrationsPage() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => handleSetDefault(integration.id, type)}
+                    onClick={() => handleSetDefault(integration.id)}
                   >
                     Set Default
                   </Button>

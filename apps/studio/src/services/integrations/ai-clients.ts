@@ -24,16 +24,21 @@ function supportsTemperature(model: string): boolean {
   return true;
 }
 
-function isAsyncIterable(value: unknown): value is AsyncIterable<any> {
-  return Boolean(value && typeof (value as any)[Symbol.asyncIterator] === 'function');
+function isAsyncIterable<T = unknown>(value: unknown): value is AsyncIterable<T> {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      Symbol.asyncIterator in value &&
+      typeof (value as Record<symbol, unknown>)[Symbol.asyncIterator] === 'function'
+  );
 }
 
 /**
- * OpenAI-compatible AI Client
- * Supports: Anthropic, OpenAI, DeepSeek, and other OpenAI-compatible APIs
+ * OpenAI API-format AI client.
+ * Supports Anthropic, OpenAI, DeepSeek, and other providers with `/chat/completions`.
  */
-export class OpenAICompatibleClient implements AIClient {
-  provider: AIProvider = 'openai-compatible';
+export class OpenAIAPIClient implements AIClient {
+  provider: AIProvider = 'openai-api';
   private config: AIConfigWithSecret;
   private isAnthropic: boolean;
   private anthropicClient: Anthropic | null = null;
@@ -61,7 +66,7 @@ export class OpenAICompatibleClient implements AIClient {
         return !!response;
       }
 
-      // For all OpenAI-compatible providers: send a minimal chat completion
+      // Send a minimal chat completion for health checks
       // (more reliable than GET /models which many providers don't implement)
       const body: Record<string, unknown> = {
         model: this.config.model,

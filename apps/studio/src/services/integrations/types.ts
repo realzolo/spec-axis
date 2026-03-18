@@ -5,7 +5,7 @@
 export type IntegrationType = 'vcs' | 'ai';
 
 export type VCSProvider = 'github' | 'gitlab' | 'git';
-export type AIProvider = 'openai-compatible';
+export type AIProvider = 'openai-api';
 
 export type Provider = VCSProvider | AIProvider;
 
@@ -20,11 +20,15 @@ export interface Integration {
   provider: Provider;
   name: string;
   is_default: boolean;
-  config: Record<string, any>;
+  config: IntegrationConfig;
   vault_secret_name: string;
   created_at: string;
   updated_at: string;
 }
+
+export type IntegrationConfig =
+  | VCSConfig
+  | AIConfig;
 
 /**
  * VCS configuration (non-sensitive)

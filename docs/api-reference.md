@@ -196,9 +196,9 @@ Get configuration templates for all supported providers.
     }
   },
   "ai": {
-    "openai-compatible": {
-      "name": "OpenAI-Compatible API",
-      "description": "Anthropic, OpenAI, DeepSeek, and other compatible APIs",
+    "openai-api": {
+      "name": "OpenAI API Format",
+      "description": "Anthropic, OpenAI, DeepSeek, and other providers",
       "fields": [...],
       "presets": [
         {
@@ -231,7 +231,7 @@ Get configuration templates for all supported providers.
 ### AI Integration
 
 **Supported Providers**:
-- `openai-compatible`: OpenAI-compatible API
+- `openai-api`: OpenAI API format
 
 **Configuration Fields**:
 - `apiKey` (required): API key
@@ -288,7 +288,7 @@ const response = await fetch('/api/integrations', {
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
     type: 'ai',
-    provider: 'openai-compatible',
+    provider: 'openai-api',
     name: 'Claude Sonnet 4.6',
     config: {
       baseUrl: 'https://api.anthropic.com',

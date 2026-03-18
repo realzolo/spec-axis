@@ -42,7 +42,7 @@ function timeAgo(value: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-export default function EnhancedIssueCard({
+export default function IssueCard({
   issue,
   issueId,
   reportId,

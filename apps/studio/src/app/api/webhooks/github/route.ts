@@ -11,6 +11,31 @@ import { codebaseService } from '@/services/CodebaseService';
 
 export const dynamic = 'force-dynamic';
 
+type WebhookProject = {
+  id: string;
+  org_id: string | null;
+  repo: string;
+  ruleset_id: string | null;
+};
+
+type PullRequestPayload = {
+  number?: number;
+  title?: string;
+  html_url?: string;
+  state?: string;
+  merged?: boolean;
+  user?: { login?: string };
+  head?: { sha?: string };
+  base?: { sha?: string };
+};
+
+type GitHubWebhookPayload = {
+  action?: string;
+  ref?: string;
+  repository?: { full_name?: string };
+  pull_request?: PullRequestPayload;
+};
+
 function verifySignature(payload: string, signature: string, secret: string) {
   const hmac = crypto.createHmac('sha256', secret);
   const digest = `sha256=${hmac.update(payload, 'utf8').digest('hex')}`;
@@ -31,34 +56,34 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
   }
 
-  let payload: any;
+  let payload: GitHubWebhookPayload;
   try {
-    payload = JSON.parse(rawBody);
+    payload = JSON.parse(rawBody) as GitHubWebhookPayload;
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
   if (event === 'push') {
-    const repoFullName = payload?.repository?.full_name as string | undefined;
+    const repoFullName = payload.repository?.full_name;
     if (!repoFullName) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('project_id');
-    let projects: Record<string, any>[] = [];
+    let projects: WebhookProject[] = [];
 
     if (projectId) {
-      const project = await getProjectById(projectId).catch(() => null);
+      const project = (await getProjectById(projectId).catch(() => null)) as WebhookProject | null;
       if (!project) {
         return NextResponse.json({ error: 'Project not found' }, { status: 404 });
       }
       if (project.repo !== repoFullName) {
         return NextResponse.json({ error: 'Project repository mismatch' }, { status: 400 });
       }
-      projects = [project as Record<string, any>];
+      projects = [project];
     } else {
-      projects = (await listProjectsByRepo(repoFullName).catch(() => [])) as Record<string, any>[];
+      projects = (await listProjectsByRepo(repoFullName).catch(() => [])) as WebhookProject[];
     }
 
     if (projects.length === 0) {
@@ -68,7 +93,7 @@ export async function POST(request: NextRequest) {
     let synced = 0;
     let failed = 0;
     let pipelinesTriggered = 0;
-    const pushedBranch = (payload?.ref as string | undefined)?.replace('refs/heads/', '') ?? '';
+    const pushedBranch = payload.ref?.replace('refs/heads/', '') ?? '';
     const orgIds = new Set<string>();
 
     for (const project of projects) {
@@ -97,7 +122,7 @@ export async function POST(request: NextRequest) {
     if (pushedBranch) {
       for (const orgId of orgIds) {
         try {
-          const allPipelines = (await listPipelines(orgId)) as any[];
+          const allPipelines = await listPipelines(orgId);
           if (!Array.isArray(allPipelines)) continue;
           for (const p of allPipelines) {
             if (!p.auto_trigger) continue;
@@ -106,7 +131,7 @@ export async function POST(request: NextRequest) {
             try {
               await createPipelineRun(p.id, {
                 triggerType: 'webhook',
-                metadata: { ref: payload?.ref, pushedBranch, repo: repoFullName },
+                metadata: { ref: payload.ref, pushedBranch, repo: repoFullName },
               });
               pipelinesTriggered += 1;
             } catch (err) {
@@ -127,22 +152,22 @@ export async function POST(request: NextRequest) {
   }
 
   const action = payload.action;
-  if (!['opened', 'reopened', 'synchronize'].includes(action)) {
+  if (typeof action !== 'string' || !['opened', 'reopened', 'synchronize'].includes(action)) {
     return NextResponse.json({ ok: true });
   }
 
-  const repoFullName = payload?.repository?.full_name as string | undefined;
-  const pr = payload?.pull_request;
+  const repoFullName = payload.repository?.full_name;
+  const pr = payload.pull_request;
   if (!repoFullName || !pr) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
   const { searchParams } = new URL(request.url);
   const projectId = searchParams.get('project_id');
-  let project: Record<string, any> | null = null;
+  let project: WebhookProject | null = null;
 
   if (projectId) {
-    project = await getProjectById(projectId).catch(() => null);
+    project = (await getProjectById(projectId).catch(() => null)) as WebhookProject | null;
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
@@ -150,7 +175,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Project repository mismatch' }, { status: 400 });
     }
   } else {
-    const projects = await listProjectsByRepo(repoFullName).catch(() => []);
+    const projects = (await listProjectsByRepo(repoFullName).catch(() => [])) as WebhookProject[];
     if (projects.length === 0) {
       return NextResponse.json({ ok: true });
     }
@@ -160,7 +185,10 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       );
     }
-    project = projects[0] as Record<string, any>;
+    project = projects[0] ?? null;
+  }
+  if (!project) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
   if (!project.org_id) {
     return NextResponse.json({ error: 'Project is not associated with an organization' }, { status: 400 });
@@ -192,7 +220,7 @@ export async function POST(request: NextRequest) {
     });
 
     const prStatus = pr.state === 'closed' ? (pr.merged ? 'merged' : 'closed') : 'open';
-    const prRow = await queryOne<Record<string, any>>(
+    const prRow = await queryOne<{ id: string }>(
       `insert into pull_requests
         (project_id, provider, repo_full_name, number, title, author, url, base_sha, head_sha, status, created_at, updated_at)
        values ($1,'github',$2,$3,$4,$5,$6,$7,$8,$9,now(),now())

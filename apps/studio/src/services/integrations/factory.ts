@@ -6,6 +6,7 @@ import { query, queryOne } from '@/lib/db';
 import { readSecret } from '@/lib/vault';
 import type {
   Integration,
+  IntegrationConfig,
   VCSClient,
   AIClient,
   VCSConfigWithSecret,
@@ -15,12 +16,27 @@ import type {
   AIProvider,
 } from './types';
 import { GitHubClient, GitLabClient, GenericGitClient } from './vcs-clients';
-import { OpenAICompatibleClient } from './ai-clients';
+import { OpenAIAPIClient } from './ai-clients';
 
-function normalizeIntegration(row: any): Integration {
-  if (!row) return row as Integration;
-  const config = typeof row.config === 'string' ? JSON.parse(row.config) : row.config;
-  return { ...row, config } as Integration;
+type IntegrationRow = Omit<Integration, 'config'> & { config: string | IntegrationConfig | null };
+
+function parseIntegrationConfig(raw: IntegrationRow['config']): IntegrationConfig {
+  if (typeof raw === 'string') {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === 'object') {
+      return parsed as IntegrationConfig;
+    }
+    return {};
+  }
+  if (raw && typeof raw === 'object') {
+    return raw;
+  }
+  return {};
+}
+
+function normalizeIntegration(row: IntegrationRow): Integration {
+  const config = parseIntegrationConfig(row.config);
+  return { ...row, config };
 }
 
 /**
@@ -28,7 +44,7 @@ function normalizeIntegration(row: any): Integration {
  */
 export function createVCSClient(integration: Integration, token: string): VCSClient {
   const config: VCSConfigWithSecret = {
-    ...integration.config,
+    ...(integration.config as VCSConfigWithSecret),
     token,
   };
 
@@ -54,8 +70,8 @@ export function createAIClient(integration: Integration, apiKey: string): AIClie
   };
 
   switch (integration.provider as AIProvider) {
-    case 'openai-compatible':
-      return new OpenAICompatibleClient(config);
+    case 'openai-api':
+      return new OpenAIAPIClient(config);
     default:
       throw new Error(`Unsupported AI provider: ${integration.provider}`);
   }
@@ -82,7 +98,7 @@ export async function resolveVCSIntegration(projectId: string): Promise<{
 
   // 1. Try project-specific integration
   if (project.vcs_integration_id) {
-    const integrationRow = await queryOne(
+    const integrationRow = await queryOne<IntegrationRow>(
       `select * from org_integrations where id = $1`,
       [project.vcs_integration_id]
     );
@@ -100,7 +116,7 @@ export async function resolveVCSIntegration(projectId: string): Promise<{
 
   // 2. Try org default integration
   if (project.org_id) {
-    const defaultIntegrationRow = await queryOne(
+    const defaultIntegrationRow = await queryOne<IntegrationRow>(
       `select * from org_integrations
        where org_id = $1 and type = 'vcs' and is_default = true`,
       [project.org_id]
@@ -140,7 +156,7 @@ export async function resolveAIIntegration(projectId: string): Promise<{
 
   // 1. Try project-specific integration
   if (project.ai_integration_id) {
-    const integrationRow = await queryOne(
+    const integrationRow = await queryOne<IntegrationRow>(
       `select * from org_integrations where id = $1`,
       [project.ai_integration_id]
     );
@@ -158,7 +174,7 @@ export async function resolveAIIntegration(projectId: string): Promise<{
 
   // 2. Try org default integration
   if (project.org_id) {
-    const defaultIntegrationRow = await queryOne(
+    const defaultIntegrationRow = await queryOne<IntegrationRow>(
       `select * from org_integrations
        where org_id = $1 and type = 'ai' and is_default = true`,
       [project.org_id]
@@ -184,7 +200,7 @@ export async function getOrgIntegrations(
   orgId: string,
   type?: 'vcs' | 'ai'
 ): Promise<Integration[]> {
-  const rows = await query(
+  const rows = await query<IntegrationRow>(
     `select * from org_integrations
      where org_id = $1
      ${type ? `and type = $2` : ''}
@@ -199,7 +215,7 @@ export async function getOrgIntegrations(
  * Get a specific integration by ID
  */
 export async function getIntegration(integrationId: string, orgId?: string): Promise<Integration> {
-  const row = await queryOne(
+  const row = await queryOne<IntegrationRow>(
     `select * from org_integrations
      where id = $1 ${orgId ? 'and org_id = $2' : ''}`,
     orgId ? [integrationId, orgId] : [integrationId]

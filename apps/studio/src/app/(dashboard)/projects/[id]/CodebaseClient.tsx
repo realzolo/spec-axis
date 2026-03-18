@@ -1,6 +1,6 @@
 'use client';
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { EditorView } from '@codemirror/view';
@@ -168,30 +168,14 @@ export default function CodebaseClient({
   useEffect(() => {
     if (!branches.length) return;
     if (!branches.includes(branch) && !isCommitSha(branch)) {
-      setBranch(branches[0]);
+      const defaultBranch = branches[0];
+      if (defaultBranch) setBranch(defaultBranch);
     }
   }, [branches, branch]);
 
   const deepLinkPath = searchParams.get('path');
   const deepLinkRef = searchParams.get('ref');
   const deepLinkLine = searchParams.get('line');
-
-  // Deep link support: open a file (optionally at a specific ref + line).
-  useEffect(() => {
-    if (!deepLinkPath) return;
-    const targetPath = deepLinkPath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
-    if (!targetPath) return;
-
-    const refOverride = deepLinkRef?.trim() || undefined;
-
-    const parsedLine = deepLinkLine ? Number(deepLinkLine) : Number.NaN;
-    pendingScrollLineRef.current = Number.isFinite(parsedLine)
-      ? Math.max(1, Math.trunc(parsedLine))
-      : null;
-
-    setCurrentPath(parentDir(targetPath));
-    void loadFile(targetPath, false, refOverride);
-  }, [deepLinkPath, deepLinkRef, deepLinkLine]);
 
   useEffect(() => {
     if (!project.org_id) return;
@@ -220,6 +204,81 @@ export default function CodebaseClient({
     };
   }, [project.org_id]);
 
+  const loadFile = useCallback(async (path: string, forceSync?: boolean, refOverride?: string) => {
+    const requestId = ++fileRequestId.current;
+    setFileLoading(true);
+    setFileError(null);
+    setFilePath(path);
+    setFileData(null);
+    try {
+      const effectiveRef = refOverride?.trim() || branch;
+      if (refOverride && refOverride !== branch) {
+        setBranch(refOverride);
+      }
+      const params = new URLSearchParams();
+      params.set('ref', effectiveRef);
+      const shouldForceSync = forceSync ? true : forceSyncUntil > Date.now();
+      params.set('sync', shouldForceSync ? '1' : '0');
+      params.set('path', path);
+      const res = await fetch(`/api/projects/${project.id}/codebase/file?${params.toString()}`);
+      if (!res.ok) throw new Error('file_fetch_failed');
+      const data = (await res.json()) as FileResponse;
+      if (fileRequestId.current !== requestId) return;
+      setFileData(data);
+      setComments([]);
+      setDraftSelection(null);
+      setDraftBody('');
+      setAssigneeIds([]);
+      setCommentError(null);
+    } catch (err) {
+      if (fileRequestId.current !== requestId) return;
+      setFileError(err instanceof Error ? err.message : 'file_fetch_failed');
+    } finally {
+      if (fileRequestId.current !== requestId) return;
+      setFileLoading(false);
+    }
+  }, [branch, forceSyncUntil, project.id]);
+
+  const loadComments = useCallback(async (path: string, commit?: string | null) => {
+    const requestId = ++commentRequestId.current;
+    setCommentsLoading(true);
+    setCommentError(null);
+    try {
+      const params = new URLSearchParams();
+      params.set('ref', branch);
+      if (commit) params.set('commit', commit);
+      params.set('path', path);
+      const res = await fetch(`/api/projects/${project.id}/codebase/comments?${params.toString()}`);
+      if (!res.ok) throw new Error('comments_fetch_failed');
+      const data = (await res.json()) as CodebaseComment[];
+      if (commentRequestId.current !== requestId) return;
+      setComments(Array.isArray(data) ? data : []);
+    } catch (err) {
+      if (commentRequestId.current !== requestId) return;
+      setCommentError(err instanceof Error ? err.message : 'comments_fetch_failed');
+    } finally {
+      if (commentRequestId.current !== requestId) return;
+      setCommentsLoading(false);
+    }
+  }, [branch, project.id]);
+
+  // Deep link support: open a file (optionally at a specific ref + line).
+  useEffect(() => {
+    if (!deepLinkPath) return;
+    const targetPath = deepLinkPath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
+    if (!targetPath) return;
+
+    const refOverride = deepLinkRef?.trim() || undefined;
+
+    const parsedLine = deepLinkLine ? Number(deepLinkLine) : Number.NaN;
+    pendingScrollLineRef.current = Number.isFinite(parsedLine)
+      ? Math.max(1, Math.trunc(parsedLine))
+      : null;
+
+    setCurrentPath(parentDir(targetPath));
+    void loadFile(targetPath, false, refOverride);
+  }, [deepLinkLine, deepLinkPath, deepLinkRef, loadFile]);
+
   useEffect(() => {
     const requestId = ++treeRequestId.current;
     let active = true;
@@ -247,11 +306,11 @@ export default function CodebaseClient({
       }
     }
 
-    loadTree();
+    void loadTree();
     return () => {
       active = false;
     };
-  }, [branch, currentPath, project.id, refreshKey]);
+  }, [branch, currentPath, forceSyncUntil, project.id, refreshKey]);
 
   useEffect(() => {
     if (!draftSelection) return;
@@ -342,64 +401,6 @@ export default function CodebaseClient({
     void loadFile(entry.path);
   };
 
-  const loadFile = async (path: string, forceSync?: boolean, refOverride?: string) => {
-    const requestId = ++fileRequestId.current;
-    setFileLoading(true);
-    setFileError(null);
-    setFilePath(path);
-    setFileData(null);
-    try {
-      const effectiveRef = refOverride?.trim() || branch;
-      if (refOverride && refOverride !== branch) {
-        setBranch(refOverride);
-      }
-      const params = new URLSearchParams();
-      params.set('ref', effectiveRef);
-      const shouldForceSync = forceSync ? true : forceSyncUntil > Date.now();
-      params.set('sync', shouldForceSync ? '1' : '0');
-      params.set('path', path);
-      const res = await fetch(`/api/projects/${project.id}/codebase/file?${params.toString()}`);
-      if (!res.ok) throw new Error('file_fetch_failed');
-      const data = (await res.json()) as FileResponse;
-      if (fileRequestId.current !== requestId) return;
-      setFileData(data);
-      setComments([]);
-      setDraftSelection(null);
-      setDraftBody('');
-      setAssigneeIds([]);
-      setCommentError(null);
-    } catch (err) {
-      if (fileRequestId.current !== requestId) return;
-      setFileError(err instanceof Error ? err.message : 'file_fetch_failed');
-    } finally {
-      if (fileRequestId.current !== requestId) return;
-      setFileLoading(false);
-    }
-  };
-
-  const loadComments = async (path: string, commit?: string | null) => {
-    const requestId = ++commentRequestId.current;
-    setCommentsLoading(true);
-    setCommentError(null);
-    try {
-      const params = new URLSearchParams();
-      params.set('ref', branch);
-      if (commit) params.set('commit', commit);
-      params.set('path', path);
-      const res = await fetch(`/api/projects/${project.id}/codebase/comments?${params.toString()}`);
-      if (!res.ok) throw new Error('comments_fetch_failed');
-      const data = (await res.json()) as CodebaseComment[];
-      if (commentRequestId.current !== requestId) return;
-      setComments(Array.isArray(data) ? data : []);
-    } catch (err) {
-      if (commentRequestId.current !== requestId) return;
-      setCommentError(err instanceof Error ? err.message : 'comments_fetch_failed');
-    } finally {
-      if (commentRequestId.current !== requestId) return;
-      setCommentsLoading(false);
-    }
-  };
-
   const parentPath = useMemo(() => {
     if (!currentPath) return '';
     const parts = currentPath.split('/').filter(Boolean);
@@ -410,7 +411,7 @@ export default function CodebaseClient({
   useEffect(() => {
     if (!filePath) return;
     void loadComments(filePath, fileData?.commit ?? null);
-  }, [filePath, branch, project.id, fileData?.commit]);
+  }, [filePath, fileData?.commit, loadComments]);
 
   const lines = useMemo(() => {
     if (!fileData || fileData.isBinary || fileData.truncated) return [];

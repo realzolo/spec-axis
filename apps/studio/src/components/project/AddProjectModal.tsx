@@ -34,24 +34,29 @@ type RepoItem = {
 };
 type RuleSet = { id: string; name: string };
 
-function normalizeRepo(raw: Record<string, any>): RepoItem | null {
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function normalizeRepo(raw: Record<string, unknown>): RepoItem | null {
+  const owner = asRecord(raw.owner);
   const ownerValue =
-    typeof raw.owner === 'string'
-      ? raw.owner
-      : typeof raw.owner?.login === 'string'
-        ? raw.owner.login
-        : typeof raw.owner?.name === 'string'
-          ? raw.owner.name
-          : undefined;
+    asString(raw.owner) ??
+    asString(owner?.login) ??
+    asString(owner?.name);
   const fullName =
-    raw.full_name ??
-    raw.fullName ??
-    (ownerValue && raw.name ? `${ownerValue}/${raw.name}` : undefined);
-  const name = raw.name ?? (fullName ? fullName.split('/').pop() : undefined);
+    asString(raw.full_name) ??
+    asString(raw.fullName) ??
+    (ownerValue && asString(raw.name) ? `${ownerValue}/${asString(raw.name)}` : undefined);
+  const name = asString(raw.name) ?? (fullName ? fullName.split('/').pop() : undefined);
   if (!fullName || !name) return null;
 
-  const defaultBranch = raw.default_branch ?? raw.defaultBranch ?? 'main';
-  const description = raw.description ?? null;
+  const defaultBranch = asString(raw.default_branch) ?? asString(raw.defaultBranch) ?? 'main';
+  const description = asString(raw.description) ?? null;
   const isPrivate =
     typeof raw.private === 'boolean'
       ? raw.private
@@ -60,17 +65,21 @@ function normalizeRepo(raw: Record<string, any>): RepoItem | null {
         : typeof raw.visibility === 'string'
           ? raw.visibility !== 'public'
           : undefined;
-  const language = raw.language ?? null;
-  const updatedAt = raw.updated_at ?? raw.updatedAt ?? raw.last_activity_at ?? null;
+  const language = asString(raw.language) ?? null;
+  const updatedAt =
+    asString(raw.updated_at) ??
+    asString(raw.updatedAt) ??
+    asString(raw.last_activity_at) ??
+    null;
 
   return {
     fullName,
     name,
     description,
     defaultBranch,
-    isPrivate,
     language,
     updatedAt,
+    ...(isPrivate !== undefined ? { isPrivate } : {}),
   };
 }
 
@@ -85,13 +94,26 @@ export default function AddProjectModal({ open, onClose, onCreated, dict }: {
   const [selected, setSelected] = useState<RepoItem | null>(null);
   const [projectName, setProjectName] = useState('');
   const [rulesetId, setRulesetId] = useState('none');
+  const [nowTs] = useState(() => Date.now());
   const [ruleSets, setRuleSets] = useState<RuleSet[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const failedToLoadRepos = dict.projects.failedToLoadRepos;
 
   useEffect(() => {
-    if (!open) { setStep('pick'); setSearch(''); setSelected(null); setProjectName(''); setRulesetId('none'); return; }
-    setReposLoading(true);
-    setReposError('');
+    if (!open) {
+      queueMicrotask(() => {
+        setStep('pick');
+        setSearch('');
+        setSelected(null);
+        setProjectName('');
+        setRulesetId('none');
+      });
+      return;
+    }
+    queueMicrotask(() => {
+      setReposLoading(true);
+      setReposError('');
+    });
     Promise.all([
       fetch('/api/github/repos').then(r => r.json()),
       fetch('/api/rules/sets').then(r => r.json()),
@@ -105,8 +127,8 @@ export default function AddProjectModal({ open, onClose, onCreated, dict }: {
         setRepos(normalized);
       }
       setRuleSets(Array.isArray(ruleData) ? ruleData : []);
-    }).catch(() => setReposError(dict.projects.failedToLoadRepos)).finally(() => setReposLoading(false));
-  }, [open]);
+    }).catch(() => setReposError(failedToLoadRepos)).finally(() => setReposLoading(false));
+  }, [failedToLoadRepos, open]);
 
   const filtered = useMemo(() =>
     repos.filter(r =>
@@ -143,7 +165,7 @@ export default function AddProjectModal({ open, onClose, onCreated, dict }: {
 
   function formatDate(d: string | null) {
     if (!d) return '';
-    const days = Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
+    const days = Math.floor((nowTs - new Date(d).getTime()) / 86400000);
     if (days === 0) return dict.projects.today;
     if (days < 30) return t(dict.projects.daysAgo, { days: days.toString() });
     if (days < 365) return t(dict.projects.monthsAgo, { months: Math.floor(days / 30).toString() });

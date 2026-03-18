@@ -10,7 +10,7 @@ AI-powered code review and CI/CD pipeline platform. Connect GitHub/GitLab reposi
 - **CI/CD Pipelines** — Four-stage DAG builder (Source → Review → Build → Deploy). Shell and Docker step types, per-step timeouts, secrets injection, concurrency modes (Allow / Queue / Cancel Previous).
 - **Notification Settings** — Email notifications on complete, on critical issues, and score threshold. Settings > Notifications.
 - **Dashboard Overview** — Pipeline success rate, per-project quality scores, quick actions, and recent activity on the org home page.
-- **Multi-VCS & AI** — GitHub, GitLab, Generic Git; Claude, GPT-4, DeepSeek, and other OpenAI-compatible models.
+- **Multi-VCS & AI** — GitHub, GitLab, Generic Git; Claude, GPT-4, DeepSeek, and other OpenAI API-format models.
 - **Multi-Tenant** — Org-scoped resources with role-based access (owner / admin / reviewer / member).
 - **Codebase Browser** — Browse Git mirrors with line-level comments and AI chat.
 
@@ -19,7 +19,7 @@ AI-powered code review and CI/CD pipeline platform. Connect GitHub/GitLab reposi
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 16 (App Router, Turbopack) + React 19 + TypeScript |
-| UI | HeroUI v3 (beta) + Tailwind CSS v4 + Geist font |
+| UI | Tailwind CSS v4 + Geist font |
 | AI | Anthropic Claude SDK (supports custom `ANTHROPIC_BASE_URL`) |
 | Database | PostgreSQL 14+ |
 | Queue | Redis + Asynq |
@@ -182,7 +182,7 @@ Runner also needs `REDIS_URL`, `STUDIO_URL`, `STUDIO_TOKEN`. See [CLAUDE.md](./C
 
 | Document | Description |
 |----------|-------------|
-| [CLAUDE.md](./CLAUDE.md) | Developer guide: routing, components, env vars, API contracts, i18n, HeroUI v3 patterns |
+| [CLAUDE.md](./CLAUDE.md) | Developer guide: routing, components, env vars, API contracts, i18n |
 | [docs/db/init.sql](./docs/db/init.sql) | Full database schema |
 | [docs/db/migrations/](./docs/db/migrations/) | Incremental schema migrations |
 | [docs/README.md](./docs/README.md) | Integration system documentation |

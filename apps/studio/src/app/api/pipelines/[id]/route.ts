@@ -24,24 +24,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
     if (!orgId) return unauthorized();
     const data = await getPipeline(id);
-    const pipeline = (data as any)?.pipeline ?? (data as any)?.Pipeline;
+    const pipeline = data.pipeline;
     if (!pipeline) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     if (pipeline.org_id && pipeline.org_id !== orgId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    // Augment with concurrency_mode from Studio DB
-    try {
-      const rows = await dbQuery<{ concurrency_mode: string }>(
-        `SELECT concurrency_mode FROM pipelines WHERE id = $1`,
-        [id]
-      );
-      if (rows.length > 0 && pipeline) {
-        pipeline.concurrency_mode = rows[0].concurrency_mode;
-      }
-    } catch {
-      // concurrency_mode column may not exist yet (migration not applied)
+    // Augment with concurrency_mode from Studio DB (must exist; schema is treated as required).
+    const rows = await dbQuery<{ concurrency_mode: 'allow' | 'queue' | 'cancel_previous' }>(
+      `SELECT concurrency_mode FROM pipelines WHERE id = $1`,
+      [id]
+    );
+    const concurrencyRow = rows[0];
+    if (concurrencyRow) {
+      pipeline.concurrency_mode = concurrencyRow.concurrency_mode;
     }
     return NextResponse.json(data);
   } catch (err) {
@@ -67,7 +64,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     const existing = await getPipeline(id);
-    const pipeline = (existing as any)?.pipeline ?? (existing as any)?.Pipeline;
+    const pipeline = existing.pipeline;
     if (!pipeline) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
@@ -130,5 +127,3 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error }, { status: statusCode });
   }
 }
-
-

@@ -32,6 +32,7 @@ export async function GET(
     logger.setContext({ projectId });
 
     const project = await withRetry(() => requireProjectAccess(projectId, user.id));
+    const defaultBranch = project.default_branch ?? 'main';
     const syncPolicy = resolveSyncPolicy(request.nextUrl.searchParams.get('sync'));
     const branches = await withRetry(async () => {
       try {
@@ -40,16 +41,16 @@ export async function GET(
             orgId: project.org_id,
             projectId,
             repo: project.repo,
-            ref: project.default_branch,
+            ref: defaultBranch,
           },
           { syncPolicy }
         );
       } catch {
-        return await getRepoBranches(project.repo, projectId).catch(() => [project.default_branch]);
+        return await getRepoBranches(project.repo, projectId).catch(() => [defaultBranch]);
       }
     });
 
-    const result = Array.isArray(branches) && branches.length ? branches : [project.default_branch];
+    const result = Array.isArray(branches) && branches.length ? branches : [defaultBranch];
     logger.info(`Branches fetched: ${projectId}`);
     return NextResponse.json(result);
   } catch (err) {

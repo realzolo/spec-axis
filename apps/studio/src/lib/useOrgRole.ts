@@ -32,14 +32,20 @@ export function useOrgRole() {
     let alive = true;
     const cached = roleCache.get(cacheKey);
     if (cached !== undefined) {
-      setRole(cached);
-      setLoading(false);
+      queueMicrotask(() => {
+        if (!alive) return;
+        setRole(cached);
+        setLoading(false);
+      });
       return () => {
         alive = false;
       };
     }
 
-    setLoading(true);
+    queueMicrotask(() => {
+      if (!alive) return;
+      setLoading(true);
+    });
     let pending = rolePromiseCache.get(cacheKey);
     if (!pending) {
       pending = fetchActiveRole()

@@ -25,7 +25,7 @@ function isValidEnvKey(name: string): boolean {
 
 async function requirePipelineInOrg(pipelineId: string, orgId: string) {
   const data = await getPipeline(pipelineId);
-  const pipeline = (data as any)?.pipeline ?? (data as any)?.Pipeline;
+  const pipeline = data.pipeline;
   if (!pipeline) {
     return { ok: false as const, status: 404, error: 'Not found' };
   }
@@ -148,4 +148,3 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     return NextResponse.json({ error }, { status: statusCode });
   }
 }
-

@@ -26,7 +26,7 @@ export async function GET(
   const format = searchParams.get('format') || 'json';
 
   await requireReportAccess(id, user.id);
-  const reportRow = await queryOne<Record<string, any>>(
+  const reportRow = await queryOne<Record<string, unknown>>(
     `select r.*, p.name as project_name, p.repo as project_repo
      from analysis_reports r
      join code_projects p on p.id = r.project_id

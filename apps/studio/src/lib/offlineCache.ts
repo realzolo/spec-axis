@@ -48,7 +48,7 @@ class OfflineCache {
       const entry: CacheEntry<T> = {
         data,
         timestamp: Date.now(),
-        ttl,
+        ...(ttl !== undefined ? { ttl } : {}),
       };
 
       const request = store.put(entry, key);

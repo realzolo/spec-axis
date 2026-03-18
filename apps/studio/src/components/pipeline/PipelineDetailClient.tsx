@@ -1,20 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   Play,
@@ -30,7 +23,6 @@ import {
   XCircle,
   Circle,
   RefreshCw,
-  AlertCircle,
   Plus,
   Trash2,
   Package,
@@ -38,8 +30,6 @@ import {
 import type { Dictionary } from "@/i18n";
 import type {
   PipelineConfig,
-  PipelineDetail,
-  PipelineEnvironment,
   PipelineRunDetail,
   PipelineRunStatus,
   PipelineSummary,
@@ -52,16 +42,9 @@ import {
   ENV_LABELS,
   STATUS_VARIANTS,
 } from "@/services/pipelineTypes";
-import { withOrgPrefix } from "@/lib/orgPath";
 import { useOrgRole } from "@/lib/useOrgRole";
 
 type Tab = "runs" | "configure";
-
-const ENV_OPTIONS: PipelineEnvironment[] = [
-  "development",
-  "staging",
-  "production",
-];
 
 type StageKey = "source" | "review" | "build" | "deploy";
 const STAGE_KEYS: StageKey[] = ["source", "review", "build", "deploy"];
@@ -99,8 +82,6 @@ export default function PipelineDetailClient({
   dict: Dictionary;
   pipelineId: string;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   const p = dict.pipelines;
   const { isAdmin } = useOrgRole();
@@ -152,10 +133,8 @@ export default function PipelineDetailClient({
       const res = await fetch(`/api/pipelines/${pipelineId}`);
       if (!res.ok) throw new Error("load failed");
       const data = await res.json();
-      const rawCfg = data?.version?.config ?? data?.version?.Config;
-      const cfg: PipelineConfig =
-        typeof rawCfg === "string" ? JSON.parse(rawCfg) : rawCfg;
-      setPipeline(data?.pipeline ?? data);
+      const cfg = (data?.version?.config ?? null) as PipelineConfig | null;
+      setPipeline(data.pipeline);
       setConfig(cfg ?? createDefaultPipelineConfig(""));
     } catch {
       toast.error(p.loadFailed);
@@ -213,7 +192,8 @@ export default function PipelineDetailClient({
   useEffect(() => {
     if (runs.length === 0) return;
     if (!selectedRunId || !runs.some((r) => r.id === selectedRunId)) {
-      setSelectedRunId(runs[0].id);
+      const latestRun = runs[0];
+      if (latestRun) setSelectedRunId(latestRun.id);
     }
   }, [runs, selectedRunId]);
 
@@ -448,7 +428,15 @@ export default function PipelineDetailClient({
       [stage]: {
         ...config[stage],
         steps: config[stage].steps.map((s) =>
-          s.id === stepId ? { ...s, ...patch } : s
+          s.id === stepId
+            ? (() => {
+                const next = { ...s, ...patch };
+                if (patch.type === "shell") {
+                  delete next.dockerImage;
+                }
+                return next;
+              })()
+            : s
         ),
       },
     });
@@ -1463,7 +1451,7 @@ function ConfigStepEditor({
                   {(['shell', 'docker'] as const).map(t => (
                     <button
                       key={t}
-                      onClick={() => onUpdate(step.id, { type: t, ...(t === 'shell' ? { dockerImage: undefined } : {}) })}
+                      onClick={() => onUpdate(step.id, { type: t })}
                       className={`px-2.5 py-1 text-[11px] rounded-[4px] border transition-colors ${(step.type ?? 'shell') === t ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-[hsl(var(--ds-border-1))] text-[hsl(var(--ds-text-2))] hover:bg-muted/40'}`}
                     >
                       {t === 'shell' ? p.steps.typeShell : p.steps.typeDocker}

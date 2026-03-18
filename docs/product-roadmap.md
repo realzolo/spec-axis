@@ -139,7 +139,7 @@
 |---------|--------|-------|
 | Trigger analysis by commit SHA | ✅ Done | `POST /api/analyze`, returns `reportId` immediately |
 | Incremental analysis | ✅ Done | Compares against previous report, analyzes only changed files |
-| Any OpenAI-compatible AI backend | ✅ Done | Claude, GPT-4, DeepSeek, etc. via integration config |
+| Any OpenAI API-format AI backend | ✅ Done | Claude, GPT-4, DeepSeek, etc. via integration config |
 | Real-time status streaming | ✅ Done | SSE on `/api/reports/[id]/stream`, polling fallback at 2.5 s |
 | Issue list with code location | ✅ Done | Category, severity, file path, line number |
 | Issue status management | ✅ Done | `open / fixed / ignored / false_positive / planned` |
@@ -169,7 +169,7 @@
 | Feature | Status | Notes |
 |---------|--------|-------|
 | VCS integrations | ✅ Done | GitHub, GitLab, Generic Git |
-| AI integrations | ✅ Done | Any OpenAI-compatible API |
+| AI integrations | ✅ Done | Any OpenAI API-format provider |
 | Org-default + project-level override | ✅ Done | Priority: project-specific > org default |
 | AES-256-GCM secret encryption | ✅ Done | Key via `ENCRYPTION_KEY`, stored in `vault_secret_name` |
 | Connection test | ✅ Done | `POST /api/integrations/[id]/test` |
@@ -424,7 +424,7 @@ These are the most critical gaps that affect the daily usability of the product.
 - Artifact upload from shell steps via a sidecar or runner API endpoint
 - Artifact list in the run detail page (file name, size, download link)
 - Configurable retention (`PIPELINE_ARTIFACT_RETENTION_DAYS`)
-- Optional S3-compatible remote storage backend
+- Optional S3 API remote storage backend
 
 ---
 
@@ -478,7 +478,7 @@ These are the most critical gaps that affect the daily usability of the product.
 
 **Scope:**
 - Permission-based model replacing role-based checks in API routes
-- Built-in permission sets that map to existing roles (backwards compatible)
+- Built-in permission sets that map to existing roles (no behavior break on rollout)
 - Custom role creation (admin-only)
 - Permission matrix UI in Settings > Organizations
 
@@ -562,8 +562,8 @@ The following items are not user-facing features but should be addressed alongsi
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| Remove `ReportDetailClient.tsx` (legacy) | Medium | `EnhancedReportDetailClient` is the current version |
-| Remove `proxy.ts` (unused legacy auth middleware) | Low | Already marked unused in CLAUDE.md |
+| Remove duplicate report-detail clients | Medium | Keep single `ReportDetailClient.tsx` implementation |
+| Remove `proxy.ts` (unused auth middleware) | Low | Already marked unused in CLAUDE.md |
 | Runner `collectArtifacts` stub | Low | Kept as placeholder; remove or implement in Phase 4 |
 | Pipeline `auto_trigger` webhook — multiple orgs same repo | Medium | Currently iterates all orgs, could be expensive at scale |
 | Store `GetPipeline` / `ListPipelines` — add cursor pagination | Medium | Currently unbounded queries; will degrade with 1000+ pipelines |

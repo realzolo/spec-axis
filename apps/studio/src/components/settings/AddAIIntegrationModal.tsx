@@ -37,7 +37,7 @@ function asString(value: unknown): string | undefined {
 
 export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
   const [providers, setProviders] = useState<Record<string, ProviderConfig>>({});
-  const [selectedProvider, setSelectedProvider] = useState('openai-compatible');
+  const selectedProvider = 'openai-api';
   const [selectedPreset, setSelectedPreset] = useState('');
   const [name, setName] = useState('');
   const [config, setConfig] = useState<Record<string, string | number>>({});
@@ -54,7 +54,7 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
       const res = await fetch('/api/integrations/providers');
       const data = await res.json();
       setProviders(data.ai);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load providers');
     }
   }
@@ -126,7 +126,10 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
           {providerConfig?.presets && providerConfig.presets.length > 0 && (
             <div>
               <label className="text-sm font-medium mb-1.5 block">Quick Setup</label>
-              <Select value={selectedPreset || undefined} onValueChange={(value) => handlePresetChange(value)}>
+              <Select
+                {...(selectedPreset ? { value: selectedPreset } : {})}
+                onValueChange={(value) => handlePresetChange(value)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Choose a preset..." />
                 </SelectTrigger>
@@ -180,21 +183,26 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
                   {field.required && ' *'}
                 </label>
                 {field.type === 'select' && field.options ? (
-                  <Select
-                    value={asString(config[field.key])}
-                    onValueChange={(value) =>
-                      setConfig((prev) => ({ ...prev, [field.key]: value }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={field.placeholder} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {field.options.map((opt) => (
-                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  (() => {
+                    const selectedValue = asString(config[field.key]);
+                    return (
+                      <Select
+                        {...(selectedValue ? { value: selectedValue } : {})}
+                        onValueChange={(value) =>
+                          setConfig((prev) => ({ ...prev, [field.key]: value }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={field.placeholder} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {field.options.map((opt) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    );
+                  })()
                 ) : field.type === 'number' ? (
                   <Input
                     type="number"

@@ -9,6 +9,19 @@ export const ORG_COOKIE = 'org_id';
 export const ORG_ADMIN_ROLES: OrgRole[] = ['owner', 'admin'];
 const DEFAULT_PERSONAL_ORG_NAME = 'Default';
 
+type ProjectAccessRecord = Record<string, unknown> & {
+  id: string;
+  org_id: string | null;
+  repo: string;
+  default_branch?: string | null;
+  ruleset_id?: string | null;
+};
+
+type ReportAccessRecord = Record<string, unknown> & {
+  id: string;
+  org_id: string | null;
+};
+
 export interface Organization {
   id: string;
   name: string;
@@ -19,6 +32,7 @@ export interface Organization {
 }
 
 function personalOrgName(_email?: string | null) {
+  void _email;
   return DEFAULT_PERSONAL_ORG_NAME;
 }
 
@@ -119,7 +133,7 @@ export async function requireOrgAccess(orgId: string, userId: string): Promise<v
 }
 
 export async function requireProjectAccess(projectId: string, userId: string) {
-  const project = await queryOne<Record<string, any>>(
+  const project = await queryOne<ProjectAccessRecord>(
     `select * from code_projects where id = $1`,
     [projectId]
   );
@@ -134,11 +148,11 @@ export async function requireProjectAccess(projectId: string, userId: string) {
 
   await requireOrgAccess(project.org_id, userId);
 
-  return project as Record<string, any> & { org_id: string };
+  return project as ProjectAccessRecord & { org_id: string };
 }
 
 export async function requireReportAccess(reportId: string, userId: string) {
-  const report = await queryOne<Record<string, any>>(
+  const report = await queryOne<ReportAccessRecord>(
     `select * from analysis_reports where id = $1`,
     [reportId]
   );
@@ -153,5 +167,5 @@ export async function requireReportAccess(reportId: string, userId: string) {
 
   await requireOrgAccess(report.org_id, userId);
 
-  return report as Record<string, any> & { org_id: string };
+  return report as ReportAccessRecord & { org_id: string };
 }

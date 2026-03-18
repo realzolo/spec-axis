@@ -57,7 +57,14 @@ export async function runAnalyzeTask(projectId: string, payload: AnalyzePayload)
 
     // Resolve integration to get the actual model name used
     const { integration: aiIntegration } = await resolveAIIntegration(projectId).catch(() => ({ integration: null }));
-    const modelVersion = aiIntegration?.config?.model ?? 'unknown';
+    const modelVersion =
+      aiIntegration &&
+      typeof aiIntegration.config === 'object' &&
+      aiIntegration.config !== null &&
+      'model' in aiIntegration.config &&
+      typeof aiIntegration.config.model === 'string'
+        ? aiIntegration.config.model
+        : 'unknown';
 
     const issues = analysis.issues ?? [];
 
@@ -137,7 +144,7 @@ function splitDiffBlocks(diff: string): Array<{ file: string | null; content: st
       flush();
       current = [line];
       const match = line.match(/^diff --git a\/(.+?) b\/.+$/);
-      currentFile = match ? match[1] : null;
+      currentFile = match?.[1] ?? null;
       continue;
     }
     current.push(line);
@@ -176,7 +183,8 @@ function extractDiffStats(diff: string): DiffStats {
   diff.split('\n').forEach((line) => {
     if (line.startsWith('diff --git ')) {
       const match = line.match(/^diff --git a\/(.+?) b\/.+$/);
-      if (match) files.add(match[1]);
+      const file = match?.[1];
+      if (file) files.add(file);
       return;
     }
     if (line.startsWith('+++') || line.startsWith('---')) return;

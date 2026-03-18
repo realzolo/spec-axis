@@ -23,7 +23,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
     if (!orgId) return unauthorized();
     const pipelineData = await getPipeline(id);
-    const pipeline = (pipelineData as any)?.pipeline ?? (pipelineData as any)?.Pipeline;
+    const pipeline = pipelineData.pipeline;
     if (!pipeline) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     const pipelineData = await getPipeline(id);
-    const pipeline = (pipelineData as any)?.pipeline ?? (pipelineData as any)?.Pipeline;
+    const pipeline = pipelineData.pipeline;
     if (!pipeline) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
@@ -105,4 +105,3 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error }, { status: statusCode });
   }
 }
-

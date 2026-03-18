@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
       const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(50, Math.trunc(parsedLimit))) : 20;
 
       const rows = await withRetry(() =>
-        query<Record<string, any>>(
+        query<Record<string, unknown>>(
           `select id, status, score, created_at
            from analysis_reports
            where project_id = $1

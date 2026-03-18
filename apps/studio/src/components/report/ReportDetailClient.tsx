@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import EnhancedIssueCard from '@/components/report/EnhancedIssueCard';
+import IssueCard from '@/components/report/IssueCard';
 import AIChat from '@/components/report/AIChat';
 import TrendChart from '@/components/report/TrendChart';
 import type { Dictionary } from '@/i18n';
@@ -181,7 +181,7 @@ function ReportDetailSkeleton() {
   );
 }
 
-export default function EnhancedReportDetailClient({
+export default function ReportDetailClient({
   reportId,
   initialReport,
   dict,
@@ -252,7 +252,7 @@ export default function EnhancedReportDetailClient({
         setIssueIdMap(map);
       })
       .catch(() => {});
-  }, [report?.id, report?.status]);
+  }, [report]);
 
   useEffect(() => {
     if (!report) return;
@@ -634,17 +634,20 @@ export default function EnhancedReportDetailClient({
                       <div className="text-center py-12 text-[hsl(var(--ds-text-2))]">{dict.reportDetail.noMatchingIssues}</div>
                     ) : (
                       <div className="space-y-3">
-                        {filteredIssues.map((issue, idx) => (
-                          <EnhancedIssueCard
-                            key={issue.file + '-' + issue.line + '-' + idx}
-                            issue={issue}
-                            issueId={issueIdMap[`${issue.file}:${issue.line ?? ''}:${issue.category}:${issue.rule}`]}
-                            reportId={report.id}
-                            onChat={() => openChat(issue.file)}
-                            codebaseHref={codebaseHrefForIssue(issue)}
-                            dict={dict}
-                          />
-                        ))}
+                        {filteredIssues.map((issue, idx) => {
+                          const issueId = issueIdMap[`${issue.file}:${issue.line ?? ''}:${issue.category}:${issue.rule}`];
+                          return (
+                            <IssueCard
+                              key={issue.file + '-' + issue.line + '-' + idx}
+                              issue={issue}
+                              {...(issueId ? { issueId } : {})}
+                              reportId={report.id}
+                              onChat={() => openChat(issue.file)}
+                              codebaseHref={codebaseHrefForIssue(issue)}
+                              dict={dict}
+                            />
+                          );
+                        })}
                       </div>
                     )}
                   </TabsContent>
@@ -830,7 +833,7 @@ export default function EnhancedReportDetailClient({
             <DialogTitle>{dict.reportDetail.aiReviewer}</DialogTitle>
           </DialogHeader>
           <div className="h-[600px]">
-            <AIChat reportId={report.id} issueId={chatIssueId} dict={dict} />
+            <AIChat reportId={report.id} {...(chatIssueId ? { issueId: chatIssueId } : {})} dict={dict} />
           </div>
         </DialogContent>
       </Dialog>

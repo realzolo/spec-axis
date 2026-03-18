@@ -1183,6 +1183,69 @@ func (s *Store) MarkPipelineRunFailed(ctx context.Context, runID string, message
 	return err
 }
 
+func (s *Store) MarkPipelineRunCanceled(ctx context.Context, runID string, message string) error {
+	_, err := s.pool.Exec(
+		ctx,
+		`update pipeline_runs
+		 set status='canceled', error_message=$2, finished_at=now(), updated_at=now()
+		 where id=$1`,
+		runID,
+		message,
+	)
+	return err
+}
+
+func (s *Store) IsPipelineRunCanceled(ctx context.Context, runID string) (bool, error) {
+	row := s.pool.QueryRow(ctx, `select status from pipeline_runs where id=$1`, runID)
+	var status string
+	if err := row.Scan(&status); err != nil {
+		return false, err
+	}
+	return status == "canceled", nil
+}
+
+func (s *Store) CancelPipelineRun(ctx context.Context, runID string, reason string) (bool, error) {
+	// Mark run canceled if it is still queued/running.
+	// We also mark queued/running jobs and steps canceled for consistent UI behavior.
+	cmdTag, err := s.pool.Exec(
+		ctx,
+		`update pipeline_runs
+		 set status='canceled', error_message=$2, finished_at=now(), updated_at=now()
+		 where id=$1 and status in ('queued','running')`,
+		runID,
+		reason,
+	)
+	if err != nil {
+		return false, err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return false, nil
+	}
+
+	_, _ = s.pool.Exec(
+		ctx,
+		`update pipeline_jobs
+		 set status='canceled', error_message=$2, finished_at=now(),
+		     duration_ms=case when started_at is null then null else (extract(epoch from (now()-started_at))*1000)::int end,
+		     updated_at=now()
+		 where run_id=$1 and status in ('queued','running')`,
+		runID,
+		reason,
+	)
+	_, _ = s.pool.Exec(
+		ctx,
+		`update pipeline_steps
+		 set status='canceled', error_message=$2, finished_at=now(),
+		     duration_ms=case when started_at is null then null else (extract(epoch from (now()-started_at))*1000)::int end,
+		     updated_at=now()
+		 where job_id in (select id from pipeline_jobs where run_id=$1) and status in ('queued','running')`,
+		runID,
+		reason,
+	)
+
+	return true, nil
+}
+
 func (s *Store) MarkPipelineJobRunning(ctx context.Context, jobID string) error {
 	_, err := s.pool.Exec(
 		ctx,

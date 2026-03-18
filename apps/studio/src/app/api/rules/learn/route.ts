@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     join code_projects p on p.id = lp.project_id
     where lp.is_enabled = true and p.org_id = $1
   `;
-  const params: any[] = [orgId];
+  const params: unknown[] = [orgId];
 
   if (projectId) {
     const project = await requireProjectAccess(projectId, user.id);
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 
   sql += ` order by lp.confidence_score desc`;
 
-  const data = await query<Record<string, any>>(sql, params);
+  const data = await query<Record<string, unknown>>(sql, params);
 
   return NextResponse.json(data ?? []);
 }

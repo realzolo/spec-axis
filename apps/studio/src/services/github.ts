@@ -5,6 +5,20 @@
 
 import { resolveVCSIntegration } from './integrations';
 import type { VCSClient } from './integrations';
+import { GitHubClient } from './integrations';
+
+function parseRepoFullName(repo: string): { owner: string; repoName: string } {
+  const [owner, repoName, ...rest] = repo.split('/');
+  if (!owner || !repoName || rest.length > 0) {
+    throw new Error(`Invalid repository name: "${repo}". Expected "owner/repo".`);
+  }
+  return { owner, repoName };
+}
+
+function firstLine(text: string): string {
+  const [line] = text.split('\n');
+  return line ?? text;
+}
 
 async function getVCSClient(projectId: string): Promise<VCSClient> {
   const { client } = await resolveVCSIntegration(projectId);
@@ -14,7 +28,7 @@ async function getVCSClient(projectId: string): Promise<VCSClient> {
 export async function validateRepo(repo: string, projectId: string): Promise<boolean> {
   try {
     const client = await getVCSClient(projectId);
-    const [owner, repoName] = repo.split('/');
+    const { owner, repoName } = parseRepoFullName(repo);
     const repos = await client.getRepositories(owner);
     return repos.some((r) => r.name === repoName);
   } catch {
@@ -25,21 +39,11 @@ export async function validateRepo(repo: string, projectId: string): Promise<boo
 export async function getGitHubAuthStatus(projectId: string) {
   const client = await getVCSClient(projectId);
 
-  if (client.provider !== 'github') {
+  if (!(client instanceof GitHubClient)) {
     throw new Error('This function only works with GitHub integrations');
   }
 
-  const githubClient = client as any;
-  const { data } = await githubClient.octokit.rest.users.getAuthenticated();
-
-  return {
-    login: data.login,
-    name: data.name,
-    avatar_url: data.avatar_url,
-    public_repos: data.public_repos,
-    total_private_repos: (data as Record<string, unknown>).total_private_repos ?? 0,
-    html_url: data.html_url,
-  };
+  return client.getAuthenticatedUser();
 }
 
 export async function listAccessibleRepos(projectId: string) {
@@ -60,29 +64,23 @@ export async function listAccessibleRepos(projectId: string) {
 export async function getRepoBranches(repo: string, projectId: string): Promise<string[]> {
   const client = await getVCSClient(projectId);
 
-  if (client.provider !== 'github') {
+  if (!(client instanceof GitHubClient)) {
     throw new Error('Branch listing is only supported for GitHub');
   }
 
-  const [owner, repoName] = repo.split('/');
-  const githubClient = client as any;
-  const { data } = await githubClient.octokit.rest.repos.listBranches({
-    owner,
-    repo: repoName,
-    per_page: 50,
-  });
-
-  return data.map((b: any) => b.name);
+  const { owner, repoName } = parseRepoFullName(repo);
+  return client.listBranches(owner, repoName);
 }
 
-export async function getRepoCommits(repo: string, branch: string, perPage = 30, page = 1, projectId: string) {
+export async function getRepoCommits(repo: string, branch: string, perPage = 30, _page = 1, projectId: string) {
+  void _page;
   const client = await getVCSClient(projectId);
-  const [owner, repoName] = repo.split('/');
+  const { owner, repoName } = parseRepoFullName(repo);
   const commits = await client.getCommits(owner, repoName, branch, perPage);
 
   return commits.map((c) => ({
     sha: c.sha,
-    message: c.message.split('\n')[0],
+    message: firstLine(c.message),
     author: c.author.name,
     date: c.author.date,
     url: c.url,
@@ -91,7 +89,7 @@ export async function getRepoCommits(repo: string, branch: string, perPage = 30,
 
 export async function getCommitsDiff(repo: string, hashes: string[], projectId: string): Promise<string> {
   const client = await getVCSClient(projectId);
-  const [owner, repoName] = repo.split('/');
+  const { owner, repoName } = parseRepoFullName(repo);
   const diffs: string[] = [];
 
   for (const sha of hashes) {
@@ -104,23 +102,23 @@ export async function getCommitsDiff(repo: string, hashes: string[], projectId: 
 
 export async function getCommitDiff(repo: string, sha: string, projectId: string): Promise<string> {
   const client = await getVCSClient(projectId);
-  const [owner, repoName] = repo.split('/');
+  const { owner, repoName } = parseRepoFullName(repo);
   return client.getCommitDiff(owner, repoName, sha);
 }
 
 export async function getCommitBySha(repo: string, sha: string, projectId: string) {
   const client = await getVCSClient(projectId);
-  const [owner, repoName] = repo.split('/');
+  const { owner, repoName } = parseRepoFullName(repo);
   const commits = await client.getCommits(owner, repoName, sha, 1);
 
-  if (commits.length === 0) {
+  const commit = commits.at(0);
+  if (!commit) {
     throw new Error('Commit not found');
   }
 
-  const commit = commits[0];
   return {
     sha: commit.sha,
-    message: commit.message.split('\n')[0],
+    message: firstLine(commit.message),
     author: commit.author.name,
     date: commit.author.date,
     url: commit.url,

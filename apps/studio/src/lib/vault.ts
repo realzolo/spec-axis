@@ -13,6 +13,7 @@ import { encrypt, decrypt } from './encryption';
  * @returns The encrypted value
  */
 export async function storeSecret(name: string, secret: string): Promise<string> {
+  void name;
   return encrypt(secret);
 }
 
@@ -33,11 +34,12 @@ export async function readSecret(encrypted: string): Promise<string> {
 /**
  * Update a secret (re-encrypt it)
  *
- * @param oldEncrypted - The old encrypted value (not used)
+ * @param previousEncrypted - The previous encrypted value (not used)
  * @param secret - The new secret value
  * @returns The new encrypted value
  */
-export async function updateSecret(oldEncrypted: string, secret: string): Promise<string> {
+export async function updateSecret(previousEncrypted: string, secret: string): Promise<string> {
+  void previousEncrypted;
   return encrypt(secret);
 }
 
@@ -47,6 +49,7 @@ export async function updateSecret(oldEncrypted: string, secret: string): Promis
  * @param encrypted - The encrypted value (not used)
  */
 export async function deleteSecret(encrypted: string): Promise<void> {
+  void encrypted;
   // No action needed - encrypted value is stored in database
   // and will be deleted when the integration is deleted
 }

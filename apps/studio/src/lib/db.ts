@@ -1,7 +1,7 @@
 import { Pool, type PoolClient } from 'pg';
 
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __pgPool: Pool | undefined;
 }
 
@@ -19,17 +19,19 @@ if (process.env.NODE_ENV !== 'production') {
   global.__pgPool = pool;
 }
 
-export async function query<T = any>(text: string, params: any[] = []): Promise<T[]> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function query<T = any>(text: string, params: unknown[] = []): Promise<T[]> {
   const { rows } = await pool.query(text, params);
   return rows as T[];
 }
 
-export async function queryOne<T = any>(text: string, params: any[] = []): Promise<T | null> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function queryOne<T = any>(text: string, params: unknown[] = []): Promise<T | null> {
   const rows = await query<T>(text, params);
   return rows[0] ?? null;
 }
 
-export async function exec(text: string, params: any[] = []): Promise<void> {
+export async function exec(text: string, params: unknown[] = []): Promise<void> {
   await pool.query(text, params);
 }
 

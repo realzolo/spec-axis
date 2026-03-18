@@ -22,8 +22,8 @@ export default function TermsPage() {
             <CardHeader className="space-y-2">
               <CardTitle className="text-heading-20">Terms of Service</CardTitle>
               <CardDescription className="text-copy-14 text-muted-foreground">
-                These Terms of Service ("Terms") govern your access to and use of Axon and its related services (the
-                "Service").
+                These Terms of Service (&quot;Terms&quot;) govern your access to and use of Axon and its related services (the
+                &quot;Service&quot;).
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -93,7 +93,7 @@ export default function TermsPage() {
               <section className="space-y-2">
                 <h2 className="text-label-16">8. Disclaimers</h2>
                 <p className="text-copy-14 text-muted-foreground">
-                  The Service is provided "as is" and "as available." To the maximum extent permitted by law, Axon
+                  The Service is provided &quot;as is&quot; and &quot;as available.&quot; To the maximum extent permitted by law, Axon
                   disclaims all warranties, express or implied, including warranties of merchantability, fitness for a
                   particular purpose, and non-infringement.
                 </p>
@@ -127,8 +127,8 @@ export default function TermsPage() {
               <section className="space-y-2">
                 <h2 className="text-label-16">12. Changes to the Terms</h2>
                 <p className="text-copy-14 text-muted-foreground">
-                  We may update these Terms from time to time. If we make material changes, we will update the "Last
-                  updated" date and may provide additional notice as required by law.
+                  We may update these Terms from time to time. If we make material changes, we will update the &quot;Last
+                  updated&quot; date and may provide additional notice as required by law.
                 </p>
               </section>
 

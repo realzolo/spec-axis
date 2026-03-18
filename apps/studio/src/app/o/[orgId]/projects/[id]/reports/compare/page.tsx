@@ -22,5 +22,5 @@ export default async function ReportComparePage({
   const locale = await getLocale();
   const dict = await getDictionary(locale);
 
-  return <ReportCompareClient reportIdA={a} reportIdB={b} projectId={id} dict={dict} />;
+  return <ReportCompareClient reportIdA={a} reportIdB={b} dict={dict} />;
 }

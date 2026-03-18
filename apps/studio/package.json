@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@spec-axis/contracts": "workspace:*",
     "@anthropic-ai/sdk": "^0.78.0",
     "@codemirror/lang-css": "^6.2.1",
     "@codemirror/lang-html": "^6.4.9",

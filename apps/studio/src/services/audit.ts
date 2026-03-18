@@ -65,7 +65,7 @@ class AuditLogger {
     limit: number = 100
   ) {
     try {
-      const params: any[] = [];
+      const params: unknown[] = [];
       const where: string[] = [];
       if (entityType) {
         params.push(entityType);

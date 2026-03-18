@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ArrowLeft, Send, User, Clock, CheckCircle2, FileText } from 'lucide-react';
 import Link from 'next/link';
@@ -44,7 +44,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
     }
   }, [project.ruleset_id]);
 
-  async function fetchCommits(targetBranch: string, targetPage: number, append = false) {
+  const fetchCommits = useCallback(async (targetBranch: string, targetPage: number, append = false) => {
     if (!append) setLoading(true); else setLoadingMore(true);
     try {
       const data = await fetch(`/api/commits?repo=${project.repo}&branch=${targetBranch}&per_page=${PER_PAGE}&page=${targetPage}&project_id=${project.id}`).then(r => r.json());
@@ -53,12 +53,12 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
       else { setCommits(data); setSelected([]); }
     } catch { /* silent */ }
     finally { setLoading(false); setLoadingMore(false); }
-  }
+  }, [project.id, project.repo]);
 
   useEffect(() => {
     setPage(1); setAuthorFilter('all');
-    fetchCommits(branch, 1, false);
-  }, [branch, project.repo]);
+    void fetchCommits(branch, 1, false);
+  }, [branch, fetchCommits]);
 
   const authors = [...new Set(commits.map(c => c.author))];
   const filtered = authorFilter === 'all' ? commits : commits.filter(c => c.author === authorFilter);

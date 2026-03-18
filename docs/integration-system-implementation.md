@@ -17,7 +17,7 @@ All schema lives in `docs/db/init.sql`.
 - user_id: UUID (creator)
 - org_id: UUID
 - type: 'vcs' | 'ai'
-- provider: 'github' | 'gitlab' | 'git' | 'openai-compatible'
+- provider: 'github' | 'gitlab' | 'git' | 'openai-api'
 - name: TEXT
 - is_default: BOOLEAN
 - config: JSONB (non-sensitive)
