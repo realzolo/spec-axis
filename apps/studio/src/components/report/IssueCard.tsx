@@ -9,6 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
+import { formatLocalDateTime } from '@/lib/dateFormat';
 
 type Issue = {
   file: string;
@@ -25,22 +26,12 @@ type Issue = {
   estimatedEffort?: string;
 };
 
-type Comment = {
+type IssueComment = {
   id: string;
   author: string;
   content: string;
   created_at: string;
 };
-
-function timeAgo(value: string) {
-  const ms = Date.now() - new Date(value).getTime();
-  const m = Math.floor(ms / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
 
 export default function IssueCard({
   issue,
@@ -58,11 +49,11 @@ export default function IssueCard({
   dict: Dictionary;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copiedSection, setCopiedSection] = useState<'snippet' | 'patch' | null>(null);
 
   // Comment thread state
   const [commentsLoaded, setCommentsLoaded] = useState(false);
-  const [comments, setComments] = useState<Comment[]>([]);
+  const [comments, setComments] = useState<IssueComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -80,9 +71,7 @@ export default function IssueCard({
 
   async function handleCopy(text: string) {
     await navigator.clipboard.writeText(text);
-    setCopied(true);
     toast.success(dict.common.copied);
-    setTimeout(() => setCopied(false), 2000);
   }
 
   const loadComments = useCallback(async () => {
@@ -123,7 +112,7 @@ export default function IssueCard({
       setComments(prev => [...prev, newComment]);
       setCommentText('');
     } catch {
-      toast.error('Failed to post comment');
+      toast.error(dict.reportDetail.postCommentFailed);
     } finally {
       setSubmitting(false);
     }
@@ -131,9 +120,11 @@ export default function IssueCard({
 
   return (
     <div className="bg-[hsl(var(--ds-background-2))] border border-[hsl(var(--ds-border-1))] rounded-[8px] overflow-hidden mb-3 shadow-sm hover:shadow-md transition-all duration-200">
-      <div
+      <button
+        type="button"
         onClick={handleExpand}
-        className="flex items-start gap-3 px-5 py-4 cursor-pointer hover:bg-[hsl(var(--ds-surface-1))] transition-colors"
+        className="flex w-full items-start gap-3 px-5 py-4 cursor-pointer hover:bg-[hsl(var(--ds-surface-1))] transition-colors text-left"
+        aria-expanded={expanded}
       >
         <div className="shrink-0 mt-0.5">
           <Icon className={['size-5', config.iconClass].join(' ')} />
@@ -171,7 +162,7 @@ export default function IssueCard({
         <div className="shrink-0 text-[hsl(var(--ds-text-2))]">
           {expanded ? <ChevronUp className="size-5" /> : <ChevronDown className="size-5" />}
         </div>
-      </div>
+      </button>
 
       {expanded && (
         <div className="border-t border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] p-5 space-y-4">
@@ -184,8 +175,17 @@ export default function IssueCard({
             <div>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-xs font-semibold text-[hsl(var(--ds-text-2))]">{dict.reportDetail.codeSnippetLabel}</div>
-                <Button variant="ghost" size="sm" className="h-7 text-xs rounded-[8px]" onClick={() => handleCopy(issue.codeSnippet!)}>
-                  {copied ? <Check className="size-3.5 mr-1" /> : <Copy className="size-3.5 mr-1" />}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs rounded-[8px]"
+                  onClick={() => {
+                    void handleCopy(issue.codeSnippet!);
+                    setCopiedSection('snippet');
+                    setTimeout(() => setCopiedSection(null), 1500);
+                  }}
+                >
+                  {copiedSection === 'snippet' ? <Check className="size-3.5 mr-1" /> : <Copy className="size-3.5 mr-1" />}
                   {dict.common.copy}
                 </Button>
               </div>
@@ -197,7 +197,7 @@ export default function IssueCard({
 
           {issue.suggestion && (
             <div>
-              <div className="text-xs font-semibold text-[hsl(var(--ds-text-2))] mb-2">💡 {dict.reportDetail.fixSuggestionLabel}</div>
+              <div className="text-xs font-semibold text-[hsl(var(--ds-text-2))] mb-2">{dict.reportDetail.fixSuggestionLabel}</div>
               <div className="text-sm bg-[hsl(var(--ds-background-2))] border border-[hsl(var(--ds-border-1))] rounded-[8px] p-3 whitespace-pre-wrap">
                 {issue.suggestion}
               </div>
@@ -207,9 +207,18 @@ export default function IssueCard({
           {issue.fixPatch && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-semibold text-[hsl(var(--ds-text-2))]">🔧 {dict.reportDetail.fixPatchLabel}</div>
-                <Button variant="ghost" size="sm" className="h-7 text-xs rounded-[8px]" onClick={() => handleCopy(issue.fixPatch!)}>
-                  {copied ? <Check className="size-3.5 mr-1" /> : <Copy className="size-3.5 mr-1" />}
+                <div className="text-xs font-semibold text-[hsl(var(--ds-text-2))]">{dict.reportDetail.fixPatchLabel}</div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs rounded-[8px]"
+                  onClick={() => {
+                    void handleCopy(issue.fixPatch!);
+                    setCopiedSection('patch');
+                    setTimeout(() => setCopiedSection(null), 1500);
+                  }}
+                >
+                  {copiedSection === 'patch' ? <Check className="size-3.5 mr-1" /> : <Copy className="size-3.5 mr-1" />}
                   {dict.common.copy}
                 </Button>
               </div>
@@ -243,14 +252,14 @@ export default function IssueCard({
             <div className="pt-2 border-t border-[hsl(var(--ds-border-1))]">
               <div className="text-xs font-semibold text-[hsl(var(--ds-text-2))] mb-3 flex items-center gap-1.5">
                 <MessageCircle className="size-3.5" />
-                Discussion
+                {dict.reportDetail.discussion}
                 {comments.length > 0 && (
                   <span className="ml-1 rounded-full bg-[hsl(var(--ds-surface-2))] px-1.5 py-0.5 text-[10px]">{comments.length}</span>
                 )}
               </div>
 
               {commentsLoading && (
-                <div className="text-[12px] text-[hsl(var(--ds-text-2))] py-2">Loading comments…</div>
+                <div className="text-[12px] text-[hsl(var(--ds-text-2))] py-2">{dict.reportDetail.loadingComments}</div>
               )}
 
               {!commentsLoading && comments.length > 0 && (
@@ -263,7 +272,7 @@ export default function IssueCard({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
                           <span className="text-[12px] font-medium text-foreground">{c.author}</span>
-                          <span className="text-[11px] text-[hsl(var(--ds-text-2))]">{timeAgo(c.created_at)}</span>
+                          <span className="text-[11px] text-[hsl(var(--ds-text-2))]">{formatLocalDateTime(c.created_at)}</span>
                         </div>
                         <div className="text-[13px] text-foreground leading-relaxed whitespace-pre-wrap">{c.content}</div>
                       </div>
@@ -273,7 +282,7 @@ export default function IssueCard({
               )}
 
               {!commentsLoading && comments.length === 0 && (
-                <p className="text-[12px] text-[hsl(var(--ds-text-2))] mb-3">No comments yet. Be the first to discuss this issue.</p>
+                <p className="text-[12px] text-[hsl(var(--ds-text-2))] mb-3">{dict.reportDetail.noComments}</p>
               )}
 
               {/* Comment input */}
@@ -287,7 +296,7 @@ export default function IssueCard({
                       void handleSubmitComment();
                     }
                   }}
-                  placeholder="Leave a comment… (⌘+Enter to submit)"
+                  placeholder={dict.reportDetail.commentPlaceholder}
                   rows={2}
                   className="flex-1 text-[13px] rounded-[6px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-[hsl(var(--ds-border-2))] placeholder:text-[hsl(var(--ds-text-2))]"
                 />
@@ -297,7 +306,7 @@ export default function IssueCard({
                   className="h-auto px-3 self-end rounded-[6px]"
                   disabled={!commentText.trim() || submitting}
                   onClick={handleSubmitComment}
-                  aria-label="Post comment"
+                  aria-label={dict.reportDetail.postComment}
                 >
                   <Send className="size-3.5" />
                 </Button>

@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Edit, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Edit, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import AddVCSIntegrationModal from '@/components/settings/AddVCSIntegrationModal';
 import AddAIIntegrationModal from '@/components/settings/AddAIIntegrationModal';
@@ -13,6 +13,8 @@ import EditVCSIntegrationModal from '@/components/settings/EditVCSIntegrationMod
 import EditAIIntegrationModal from '@/components/settings/EditAIIntegrationModal';
 import SettingsNav from '@/components/settings/SettingsNav';
 import { useOrgRole } from '@/lib/useOrgRole';
+import ConfirmDialog from '@/components/ui/confirm-dialog';
+import { useClientDictionary } from '@/i18n/client';
 
 interface Integration {
   id: string;
@@ -112,13 +114,13 @@ export default function IntegrationsPage() {
   const [editingVCS, setEditingVCS] = useState<Integration | null>(null);
   const [editingAI, setEditingAI] = useState<Integration | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [deletingIntegration, setDeletingIntegration] = useState<Integration | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const { isAdmin } = useOrgRole();
+  const dict = useClientDictionary();
+  const i18n = dict.settings.integrationsPage;
 
-  useEffect(() => {
-    loadIntegrations();
-  }, []);
-
-  async function loadIntegrations() {
+  const loadIntegrations = useCallback(async () => {
     try {
       const [vcsRes, aiRes] = await Promise.all([
         fetch('/api/integrations?type=vcs'),
@@ -132,42 +134,49 @@ export default function IntegrationsPage() {
         setAiIntegrations(await aiRes.json());
       }
     } catch {
-      toast.error('Failed to load integrations');
+      toast.error(i18n.loadFailed);
     } finally {
       setLoading(false);
     }
-  }
+  }, [i18n.loadFailed]);
 
-  async function handleDelete(id: string, type: 'vcs' | 'ai') {
-    if (!confirm('Are you sure you want to delete this integration?')) return;
+  useEffect(() => {
+    void loadIntegrations();
+  }, [loadIntegrations]);
 
+  async function handleDelete(integration: Integration) {
+    const type = integration.type;
+    setDeleteLoading(true);
     try {
-      const res = await fetch(`/api/integrations/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/integrations/${integration.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to delete');
+        throw new Error(data.error || i18n.deleteFailed);
       }
 
-      toast.success('Integration deleted');
+      toast.success(i18n.deleteSuccess);
       if (type === 'vcs') {
-        setVcsIntegrations((prev) => prev.filter((i) => i.id !== id));
+        setVcsIntegrations((prev) => prev.filter((item) => item.id !== integration.id));
       } else {
-        setAiIntegrations((prev) => prev.filter((i) => i.id !== id));
+        setAiIntegrations((prev) => prev.filter((item) => item.id !== integration.id));
       }
+      setDeletingIntegration(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to delete integration');
+      toast.error(error instanceof Error ? error.message : i18n.deleteFailed);
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
   async function handleSetDefault(id: string) {
     try {
       const res = await fetch(`/api/integrations/${id}/set-default`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to set default');
+      if (!res.ok) throw new Error(i18n.defaultFailed);
 
-      toast.success('Default integration updated');
+      toast.success(i18n.defaultUpdated);
       await loadIntegrations();
     } catch {
-      toast.error('Failed to set default integration');
+      toast.error(i18n.defaultFailed);
     }
   }
 
@@ -178,12 +187,12 @@ export default function IntegrationsPage() {
       const data = await res.json();
 
       if (data.success) {
-        toast.success('Connection test successful');
+        toast.success(i18n.testSuccess);
       } else {
-        toast.error(data.error || 'Connection test failed');
+        toast.error(data.error || i18n.testFailed);
       }
     } catch {
-      toast.error('Connection test failed');
+      toast.error(i18n.testFailed);
     } finally {
       setTestingId(null);
     }
@@ -199,21 +208,21 @@ export default function IntegrationsPage() {
                 <h3 className="text-[13px] font-medium">{integration.name}</h3>
                 {integration.is_default && (
                   <Badge size="sm" variant="accent">
-                    Default
+                    {i18n.defaultBadge}
                   </Badge>
                 )}
               </div>
               <p className="text-[12px] text-[hsl(var(--ds-text-2))] mb-2">
-                Provider: {integration.provider}
+                {i18n.providerLabel}: {integration.provider}
               </p>
               {integration.config.baseUrl && (
                 <p className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                  URL: {integration.config.baseUrl}
+                  {i18n.urlLabel}: {integration.config.baseUrl}
                 </p>
               )}
               {integration.config.model && (
                 <p className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                  Model: {integration.config.model}
+                  {i18n.modelLabel}: {integration.config.model}
                 </p>
               )}
             </div>
@@ -226,7 +235,7 @@ export default function IntegrationsPage() {
                   onClick={() => handleTest(integration.id)}
                   disabled={testingId === integration.id}
                 >
-                  {testingId === integration.id ? 'Testing...' : 'Test'}
+                  {testingId === integration.id ? i18n.testing : i18n.test}
                 </Button>
 
                 <Button
@@ -239,6 +248,7 @@ export default function IntegrationsPage() {
                       setEditingAI(integration);
                     }
                   }}
+                  aria-label={dict.common.edit}
                 >
                   <Edit className="size-4" />
                 </Button>
@@ -249,14 +259,15 @@ export default function IntegrationsPage() {
                     variant="ghost"
                     onClick={() => handleSetDefault(integration.id)}
                   >
-                    Set Default
+                    {i18n.setDefault}
                   </Button>
                 )}
 
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => handleDelete(integration.id, type)}
+                  onClick={() => setDeletingIntegration(integration)}
+                  aria-label={dict.common.delete}
                 >
                   <Trash2 className="size-4" />
                 </Button>
@@ -280,9 +291,9 @@ export default function IntegrationsPage() {
 
           <div className="space-y-6">
             <div>
-              <h1 className="text-[15px] font-semibold">Integrations</h1>
+              <h1 className="text-[15px] font-semibold">{i18n.title}</h1>
               <p className="text-[13px] text-[hsl(var(--ds-text-2))] mt-0.5">
-                Manage your code repository and AI model integrations
+                {i18n.description}
               </p>
             </div>
 
@@ -291,15 +302,15 @@ export default function IntegrationsPage() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h2 className="text-[13px] font-semibold">Code Repositories</h2>
+                    <h2 className="text-[13px] font-semibold">{i18n.repositoriesTitle}</h2>
                     <p className="text-[13px] text-[hsl(var(--ds-text-2))]">
-                      Connect to GitHub, GitLab, or other Git services
+                      {i18n.repositoriesDescription}
                     </p>
                   </div>
                   {isAdmin && (
                     <Button size="sm" onClick={() => setShowVCSModal(true)} className="gap-1.5">
                       <Plus className="size-4" />
-                      Add Repository
+                      {i18n.addRepository}
                     </Button>
                   )}
                 </div>
@@ -308,7 +319,7 @@ export default function IntegrationsPage() {
                   <Card>
                     <CardContent className="p-6">
                       <p className="text-[13px] text-[hsl(var(--ds-text-2))] text-center">
-                        No repository integrations configured. Add one to get started.
+                        {i18n.noRepositories}
                       </p>
                     </CardContent>
                   </Card>
@@ -325,15 +336,15 @@ export default function IntegrationsPage() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h2 className="text-[13px] font-semibold">AI Models</h2>
+                    <h2 className="text-[13px] font-semibold">{i18n.aiModelsTitle}</h2>
                     <p className="text-[13px] text-[hsl(var(--ds-text-2))]">
-                      Connect to Claude, GPT-4, or other AI services
+                      {i18n.aiModelsDescription}
                     </p>
                   </div>
                   {isAdmin && (
                     <Button size="sm" onClick={() => setShowAIModal(true)} className="gap-1.5">
                       <Plus className="size-4" />
-                      Add AI Model
+                      {i18n.addAiModel}
                     </Button>
                   )}
                 </div>
@@ -342,7 +353,7 @@ export default function IntegrationsPage() {
                   <Card>
                     <CardContent className="p-6">
                       <p className="text-[13px] text-[hsl(var(--ds-text-2))] text-center">
-                        No AI integrations configured. Add one to enable code analysis.
+                        {i18n.noAiModels}
                       </p>
                     </CardContent>
                   </Card>
@@ -399,6 +410,24 @@ export default function IntegrationsPage() {
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={deletingIntegration !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteLoading) setDeletingIntegration(null);
+        }}
+        icon={<AlertTriangle className="size-4 text-warning" />}
+        title={i18n.deleteDialogTitle}
+        description={i18n.deleteDialogDescription.replace('{{name}}', deletingIntegration?.name ?? '')}
+        confirmLabel={deleteLoading ? i18n.deleting : i18n.deleteAction}
+        cancelLabel={dict.common.cancel}
+        onConfirm={() => {
+          if (!deletingIntegration || deleteLoading) return;
+          void handleDelete(deletingIntegration);
+        }}
+        loading={deleteLoading}
+        danger
+      />
     </div>
   );
 }

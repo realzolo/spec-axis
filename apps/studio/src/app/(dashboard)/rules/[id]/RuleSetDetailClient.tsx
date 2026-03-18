@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Trash2, Pencil, Shield } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Plus, Trash2, Pencil, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,6 +16,7 @@ import type { Dictionary } from '@/i18n';
 import { withOrgPrefix } from '@/lib/orgPath';
 import { useOrgRole } from '@/lib/useOrgRole';
 import { Skeleton } from '@/components/ui/skeleton';
+import ConfirmDialog from '@/components/ui/confirm-dialog';
 
 type Rule = {
   id: string; ruleset_id: string; category: string; name: string;
@@ -50,6 +51,8 @@ export default function RuleSetDetailClient({
   const [editRule, setEditRule] = useState<Rule | null>(null);
   const [saving, setSaving] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deletingRule, setDeletingRule] = useState<Rule | null>(null);
+  const [deletingRuleId, setDeletingRuleId] = useState<string | null>(null);
 
   const [fCategory, setFCategory] = useState('style');
   const [fSeverity, setFSeverity] = useState<'error' | 'warning' | 'info'>('warning');
@@ -140,14 +143,26 @@ export default function RuleSetDetailClient({
     setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_enabled: !r.is_enabled } : r));
   }
 
-  async function handleDelete(ruleId: string) {
+  async function handleDelete(rule: Rule) {
     if (!isAdmin) return;
-    const res = await fetch(`/api/rules/${ruleSetId}/rules`, {
-      method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ruleId }),
-    });
-    if (!res.ok) { toast.error(dict.reports.deleteFailed); return; }
-    toast.success(dict.rules.ruleDeleted);
-    setRules(prev => prev.filter(r => r.id !== ruleId));
+    setDeletingRuleId(rule.id);
+    try {
+      const res = await fetch(`/api/rules/${ruleSetId}/rules`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rule.id }),
+      });
+      if (!res.ok) {
+        toast.error(dict.reports.deleteFailed);
+        return;
+      }
+      toast.success(dict.rules.ruleDeleted);
+      setRules((prev) => prev.filter((item) => item.id !== rule.id));
+      setDeletingRule(null);
+    } catch {
+      setDeletingRuleId(null);
+      toast.error(dict.reports.deleteFailed);
+    } finally {
+      setDeletingRuleId(null);
+    }
   }
 
   const grouped = CATEGORIES.reduce<Record<string, Rule[]>>((acc, cat) => {
@@ -305,7 +320,7 @@ export default function RuleSetDetailClient({
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button size="icon" variant="ghost" onClick={() => openEdit(rule)}>
+                                <Button size="icon" variant="ghost" onClick={() => openEdit(rule)} aria-label={dict.common.edit}>
                                   <Pencil className="size-3.5" />
                                 </Button>
                               </TooltipTrigger>
@@ -313,7 +328,13 @@ export default function RuleSetDetailClient({
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button size="icon" variant="ghost" onClick={() => handleDelete(rule.id)}>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => setDeletingRule(rule)}
+                                  aria-label={dict.common.delete}
+                                  disabled={deletingRuleId === rule.id}
+                                >
                                   <Trash2 className="size-3.5" />
                                 </Button>
                               </TooltipTrigger>
@@ -389,6 +410,24 @@ export default function RuleSetDetailClient({
           </DialogContent>
         </Dialog>
       )}
+
+      <ConfirmDialog
+        open={deletingRule !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingRuleId) setDeletingRule(null);
+        }}
+        icon={<AlertTriangle className="size-4 text-warning" />}
+        title={dict.rules.deleteRuleConfirmTitle}
+        description={dict.rules.deleteRuleConfirmDescription.replace('{{name}}', deletingRule?.name ?? '')}
+        confirmLabel={deletingRuleId ? dict.rules.deleting : dict.common.delete}
+        cancelLabel={dict.common.cancel}
+        onConfirm={() => {
+          if (!deletingRule || deletingRuleId) return;
+          void handleDelete(deletingRule);
+        }}
+        loading={deletingRuleId !== null}
+        danger
+      />
     </div>
   );
 }

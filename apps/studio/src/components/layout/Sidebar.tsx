@@ -102,7 +102,12 @@ export default function Sidebar({ dict }: SidebarProps) {
         setActiveOrgId(activeData?.orgId ?? list[0]?.id ?? null);
         setUserEmail(meData?.user?.email ?? null);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!alive) return;
+        setOrgs([]);
+        setActiveOrgId(null);
+        setUserEmail(null);
+      });
     return () => { alive = false; };
   }, []);
 
@@ -127,7 +132,9 @@ export default function Sidebar({ dict }: SidebarProps) {
       setActiveOrgId(orgId);
       router.push(replaceOrgInPath(pathname, orgId));
       router.refresh();
-    } catch {}
+    } catch {
+      // keep current org on request failure
+    }
   }
 
   async function handleSignOut() {
@@ -155,12 +162,12 @@ export default function Sidebar({ dict }: SidebarProps) {
   ];
 
   return (
-    <div className="relative h-screen flex flex-col shrink-0 border-r border-border bg-[hsl(var(--ds-background-2))]" style={{ width: 240 }}>
+    <div className="relative h-full w-60 flex flex-col shrink-0 border-r border-border bg-[hsl(var(--ds-background-2))]">
       {/* Org switcher */}
       <div className="px-3 py-3 border-b border-border shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 w-full h-9 px-2 rounded-[6px] hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100 outline-none group">
+            <button type="button" className="flex items-center gap-2 w-full h-9 px-2 rounded-[6px] hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100 outline-none group">
               {/* Org avatar */}
               <span className="flex h-[22px] w-[22px] items-center justify-center rounded-[4px] bg-[hsl(var(--ds-surface-3))] text-[10px] font-bold text-foreground shrink-0">
                 {orgInitial}
@@ -173,7 +180,7 @@ export default function Sidebar({ dict }: SidebarProps) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-[220px]">
             <DropdownMenuLabel className="text-[11px] text-[hsl(var(--ds-text-2))] font-normal uppercase tracking-wider px-2 py-1.5">
-              Organizations
+              {dict.nav.organizations}
             </DropdownMenuLabel>
             {orgs.map(org => (
               <DropdownMenuItem
@@ -193,7 +200,7 @@ export default function Sidebar({ dict }: SidebarProps) {
               onClick={() => router.push(orgHref('/settings/organizations'))}
               className="text-[13px]"
             >
-              Manage organizations
+              {dict.nav.manageOrganizations}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -216,11 +223,11 @@ export default function Sidebar({ dict }: SidebarProps) {
       <div className="px-3 py-3 border-t border-border shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2.5 w-full h-9 px-2 rounded-[6px] hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100 outline-none">
+            <button type="button" className="flex items-center gap-2.5 w-full h-9 px-2 rounded-[6px] hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100 outline-none">
               <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[hsl(var(--ds-surface-3))] shrink-0">
                 <User className="size-3 text-[hsl(var(--ds-text-2))]" />
               </span>
-              <span className="flex-1 text-left text-[13px] text-foreground truncate">{userEmail ?? 'Account'}</span>
+              <span className="flex-1 text-left text-[13px] text-foreground truncate">{userEmail ?? dict.nav.account}</span>
               <ChevronDown className="size-3.5 text-[hsl(var(--ds-text-2))] shrink-0" />
             </button>
           </DropdownMenuTrigger>

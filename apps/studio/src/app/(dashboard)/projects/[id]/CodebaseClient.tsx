@@ -9,12 +9,9 @@ import {
   FileText,
   Folder,
   FolderUp,
-  Image as ImageIcon,
-  Plus,
   RefreshCcw,
   Search,
   Send,
-  Type as TypeIcon,
   Users,
   X,
 } from 'lucide-react';
@@ -36,6 +33,7 @@ import {
 import CodeEditor, { type CodeLineClickPayload, type CodeSelectionPayload } from '@/components/codebase/CodeEditor';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { formatLocalDateTime } from '@/lib/dateFormat';
 
 type Project = {
   id: string;
@@ -938,17 +936,8 @@ export default function CodebaseClient({
                       />
                     </div>
                     <div className="flex items-center justify-between border-t border-[hsl(var(--ds-border-1))] px-3 py-2 text-[hsl(var(--ds-text-2))]">
-                      <div className="flex items-center gap-3 text-[11px]">
-                        <button type="button" className="hover:text-foreground" aria-label="Add">
-                          <Plus className="size-4" />
-                        </button>
-                        <button type="button" className="hover:text-foreground" aria-label="Image">
-                          <ImageIcon className="size-4" />
-                        </button>
-                        <span className="h-4 w-px bg-border" />
-                        <button type="button" className="hover:text-foreground" aria-label="Type">
-                          <TypeIcon className="size-4" />
-                        </button>
+                      <div className="text-[11px] text-[hsl(var(--ds-text-2))]">
+                        {dict.projects.codebaseMarkdownHint}
                       </div>
                       <Button
                         size="sm"
@@ -960,13 +949,8 @@ export default function CodebaseClient({
                       </Button>
                     </div>
                   </div>
-                  <div className="mt-2 flex items-center justify-between text-[11px] text-[hsl(var(--ds-text-2))]">
-                    <span>{dict.projects.codebaseMarkdownHint}</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={closeComposer}
-                    >
+                  <div className="mt-2 flex items-center justify-end text-[11px] text-[hsl(var(--ds-text-2))]">
+                    <Button variant="ghost" size="sm" onClick={closeComposer}>
                       {dict.common.cancel}
                     </Button>
                   </div>
@@ -1080,9 +1064,7 @@ function formatBytes(bytes: number) {
 }
 
 function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  return formatLocalDateTime(value);
 }
 
 function initialsFromEmail(email: string) {

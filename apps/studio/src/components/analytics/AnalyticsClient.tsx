@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { BarChart3, CheckCircle2, XCircle } from 'lucide-react';
 import { withOrgPrefix } from '@/lib/orgPath';
 import type { Dictionary } from '@/i18n';
+import { PageLoading } from '@/components/ui/page-loading';
 
 type ProjectScore = {
   project_id: string;
@@ -113,12 +114,13 @@ export default function AnalyticsClient({ dict }: { dict: Dictionary }) {
       <div className="px-6 py-4 border-b border-border bg-background shrink-0 flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <BarChart3 className="size-4 text-[hsl(var(--ds-text-2))]" />
-          <h1 className="text-[15px] font-semibold">Analytics</h1>
+          <h1 className="text-[15px] font-semibold">{dict.dashboard.analyticsTitle}</h1>
         </div>
         {/* Date range filter */}
         <div className="flex items-center gap-1 rounded-[6px] border border-border p-0.5">
           {DAY_OPTIONS.map(d => (
             <button
+              type="button"
               key={d}
               onClick={() => setDays(d)}
               className={[
@@ -138,23 +140,23 @@ export default function AnalyticsClient({ dict }: { dict: Dictionary }) {
         <div className="max-w-[1100px] mx-auto px-6 py-6 space-y-8">
 
           {loading && !data && (
-            <div className="text-[13px] text-[hsl(var(--ds-text-2))] py-10 text-center">Loading…</div>
+            <PageLoading label={dict.common.loading} />
           )}
 
           {data && (
             <>
               {/* ── Project Quality Scores ─────────────────────── */}
               <section>
-                <h2 className="text-[13px] font-semibold text-foreground mb-3">Project Quality Scores</h2>
+                <h2 className="text-[13px] font-semibold text-foreground mb-3">{dict.dashboard.projectScores}</h2>
                 {data.projectScores.length === 0 ? (
-                  <p className="text-[13px] text-[hsl(var(--ds-text-2))]">No report data in this period.</p>
+                  <p className="text-[13px] text-[hsl(var(--ds-text-2))]">{dict.dashboard.noReportsInPeriod}</p>
                 ) : (
                   <div className="rounded-[8px] border border-border overflow-hidden">
                     <div className="flex items-center gap-4 px-4 py-2 border-b border-border bg-[hsl(var(--ds-background-2))] text-[11px] font-medium text-[hsl(var(--ds-text-2))] uppercase tracking-wide">
-                      <div className="flex-1">Project</div>
-                      <div className="w-28 text-right">Avg Score</div>
-                      <div className="w-20 text-right">Reports</div>
-                      <div className="w-24 text-right">Open Issues</div>
+                      <div className="flex-1">{dict.dashboard.projectColumn}</div>
+                      <div className="w-28 text-right">{dict.dashboard.avgScoreColumn}</div>
+                      <div className="w-20 text-right">{dict.dashboard.reportsColumn}</div>
+                      <div className="w-24 text-right">{dict.dashboard.openIssuesColumn}</div>
                     </div>
                     {data.projectScores.map(p => (
                       <Link
@@ -189,9 +191,9 @@ export default function AnalyticsClient({ dict }: { dict: Dictionary }) {
 
                 {/* Top Issue Categories */}
                 <section>
-                  <h2 className="text-[13px] font-semibold text-foreground mb-3">Top Issue Categories</h2>
+                  <h2 className="text-[13px] font-semibold text-foreground mb-3">{dict.dashboard.topIssueCategories}</h2>
                   {data.issueCategoryBreakdown.length === 0 ? (
-                    <p className="text-[13px] text-[hsl(var(--ds-text-2))]">No issues in this period.</p>
+                    <p className="text-[13px] text-[hsl(var(--ds-text-2))]">{dict.dashboard.noIssuesInPeriod}</p>
                   ) : (
                     <div className="rounded-[8px] border border-border overflow-hidden">
                       {data.issueCategoryBreakdown.map((cat, i) => {
@@ -218,9 +220,9 @@ export default function AnalyticsClient({ dict }: { dict: Dictionary }) {
 
                 {/* Issue Resolution Rate */}
                 <section>
-                  <h2 className="text-[13px] font-semibold text-foreground mb-3">Issue Resolution Rate</h2>
+                  <h2 className="text-[13px] font-semibold text-foreground mb-3">{dict.dashboard.issueResolutionRate}</h2>
                   {data.issueResolution.length === 0 ? (
-                    <p className="text-[13px] text-[hsl(var(--ds-text-2))]">No data in this period.</p>
+                    <p className="text-[13px] text-[hsl(var(--ds-text-2))]">{dict.dashboard.noDataInPeriod}</p>
                   ) : (
                     <div className="rounded-[8px] border border-border overflow-hidden">
                       {data.issueResolution.map((ir, i) => {
@@ -250,16 +252,16 @@ export default function AnalyticsClient({ dict }: { dict: Dictionary }) {
 
               {/* ── Pipeline Stats ─────────────────────────────── */}
               <section>
-                <h2 className="text-[13px] font-semibold text-foreground mb-3">Pipeline Performance</h2>
+                <h2 className="text-[13px] font-semibold text-foreground mb-3">{dict.dashboard.pipelinePerformance}</h2>
                 {data.pipelineStats.length === 0 ? (
-                  <p className="text-[13px] text-[hsl(var(--ds-text-2))]">No pipeline runs in this period.</p>
+                  <p className="text-[13px] text-[hsl(var(--ds-text-2))]">{dict.dashboard.noPipelineRunsInPeriod}</p>
                 ) : (
                   <div className="rounded-[8px] border border-border overflow-hidden">
                     <div className="flex items-center gap-4 px-4 py-2 border-b border-border bg-[hsl(var(--ds-background-2))] text-[11px] font-medium text-[hsl(var(--ds-text-2))] uppercase tracking-wide">
-                      <div className="flex-1">Pipeline</div>
-                      <div className="w-20 text-right">Runs</div>
-                      <div className="w-28 text-right">Success Rate</div>
-                      <div className="w-20 text-right">Avg Duration</div>
+                      <div className="flex-1">{dict.dashboard.pipelineColumn}</div>
+                      <div className="w-20 text-right">{dict.dashboard.runsColumn}</div>
+                      <div className="w-28 text-right">{dict.dashboard.successRateColumn}</div>
+                      <div className="w-20 text-right">{dict.dashboard.avgDurationColumn}</div>
                     </div>
                     {data.pipelineStats.map(ps => {
                       const successRate = pct(ps.succeeded, ps.total);

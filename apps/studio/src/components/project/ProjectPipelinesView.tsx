@@ -20,6 +20,7 @@ import type { PipelineSummary, PipelineRunStatus } from '@/services/pipelineType
 import { durationLabel, ENV_LABELS, STATUS_VARIANTS } from '@/services/pipelineTypes';
 import { withOrgPrefix } from '@/lib/orgPath';
 import CreatePipelineWizard from '@/components/pipeline/CreatePipelineWizard';
+import { formatLocalDate } from '@/lib/dateFormat';
 
 const STATUS_ICONS: Record<PipelineRunStatus, React.ReactNode> = {
   success:   <CheckCircle className="size-3.5 text-success" />,
@@ -111,7 +112,7 @@ export default function ProjectPipelinesView({
         <div className="flex-1">{dict.common.name}</div>
         <div className="w-24 text-center">{p.environment}</div>
         <div className="w-20 text-center">{p.stages.source}</div>
-        <div className="w-28 text-center">Last Run</div>
+        <div className="w-28 text-center">{p.lastRun}</div>
         <div className="w-24 text-right">{dict.common.actions}</div>
       </div>
 
@@ -153,6 +154,14 @@ export default function ProjectPipelinesView({
                     withOrgPrefix(pathname, `/projects/${projectId}/pipelines/${pipeline.id}`),
                   )
                 }
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  event.preventDefault();
+                  router.push(withOrgPrefix(pathname, `/projects/${projectId}/pipelines/${pipeline.id}`));
+                }}
               >
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-medium text-foreground truncate">{pipeline.name}</div>
@@ -170,7 +179,7 @@ export default function ProjectPipelinesView({
                     <span className="flex items-center gap-1">
                       {STATUS_ICONS[status]}
                       <Badge variant={STATUS_VARIANTS[status]} size="sm">
-                        {status}
+                        {p.status[status]}
                       </Badge>
                     </span>
                   ) : (
@@ -180,7 +189,7 @@ export default function ProjectPipelinesView({
                 <div className="w-28 text-[12px] text-[hsl(var(--ds-text-2))]">
                   {run ? (
                     <div>
-                      <div>{new Date(run.created_at).toLocaleDateString()}</div>
+                      <div>{formatLocalDate(run.created_at)}</div>
                       <div className="text-[hsl(var(--ds-text-2))]/70">
                         {durationLabel(run.started_at, run.finished_at)}
                       </div>
@@ -193,12 +202,12 @@ export default function ProjectPipelinesView({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 gap-1.5 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="h-7 gap-1.5 text-xs opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                     onClick={e => handleRun(e, pipeline.id)}
                     disabled={runningIds.has(pipeline.id)}
                   >
                     <Play className="size-3" />
-                    {p.runs ?? 'Run'}
+                    {p.runs}
                   </Button>
                 </div>
               </div>

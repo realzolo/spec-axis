@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { useClientDictionary } from '@/i18n/client';
 
 interface Integration {
   id: string;
@@ -30,23 +31,33 @@ interface FieldDef {
   help?: string;
 }
 
-// Default field definitions per provider used before provider metadata is loaded.
-const DEFAULT_PROVIDER_FIELDS: Record<string, FieldDef[]> = {
-  github: [
-    { key: 'baseUrl', label: 'Base URL (for Enterprise)', type: 'text', required: false, placeholder: 'https://github.company.com/api/v3', help: 'Leave empty for GitHub.com' },
-    { key: 'org', label: 'Default Organization', type: 'text', required: false, placeholder: 'my-org' },
-  ],
-  gitlab: [
-    { key: 'baseUrl', label: 'Base URL', type: 'text', required: true, placeholder: 'https://gitlab.com' },
-    { key: 'org', label: 'Default Group', type: 'text', required: false, placeholder: 'my-group' },
-  ],
-  git: [
-    { key: 'baseUrl', label: 'Base URL', type: 'text', required: true, placeholder: 'https://git.company.com' },
-  ],
-};
-
 export default function EditVCSIntegrationModal({ integration, onClose, onSuccess }: Props) {
-  const [fields, setFields] = useState<FieldDef[]>(DEFAULT_PROVIDER_FIELDS[integration.provider] ?? []);
+  const dict = useClientDictionary();
+  const i18n = dict.settings.editVcsModal;
+  const defaultProviderFields = useMemo<Record<string, FieldDef[]>>(
+    () => ({
+      github: [
+        {
+          key: 'baseUrl',
+          label: i18n.baseUrlEnterprise,
+          type: 'text',
+          required: false,
+          placeholder: 'https://github.company.com/api/v3',
+          help: i18n.baseUrlEnterpriseHelp,
+        },
+        { key: 'org', label: i18n.defaultOrganization, type: 'text', required: false, placeholder: 'my-org' },
+      ],
+      gitlab: [
+        { key: 'baseUrl', label: i18n.baseUrl, type: 'text', required: true, placeholder: 'https://gitlab.com' },
+        { key: 'org', label: i18n.defaultGroup, type: 'text', required: false, placeholder: 'my-group' },
+      ],
+      git: [
+        { key: 'baseUrl', label: i18n.baseUrl, type: 'text', required: true, placeholder: 'https://git.company.com' },
+      ],
+    }),
+    [i18n],
+  );
+  const [fields, setFields] = useState<FieldDef[]>(defaultProviderFields[integration.provider] ?? []);
   const [name, setName] = useState(integration.name);
   const [config, setConfig] = useState<Record<string, string>>(() =>
     Object.fromEntries(
@@ -75,12 +86,13 @@ export default function EditVCSIntegrationModal({ integration, onClose, onSucces
   }, [integration.provider]);
 
   useEffect(() => {
+    setFields(defaultProviderFields[integration.provider] ?? []);
     void loadProviderFields();
-  }, [loadProviderFields]);
+  }, [defaultProviderFields, integration.provider, loadProviderFields]);
 
   async function handleSubmit() {
     if (!name.trim()) {
-      toast.error('Name is required');
+      toast.error(i18n.nameRequired);
       return;
     }
 
@@ -97,14 +109,14 @@ export default function EditVCSIntegrationModal({ integration, onClose, onSucces
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to update integration');
+        throw new Error(data.error || i18n.updateFailed);
       }
 
-      toast.success('Integration updated successfully');
+      toast.success(i18n.updateSuccess);
       onSuccess();
       onClose();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update integration');
+      toast.error(error instanceof Error ? error.message : i18n.updateFailed);
     } finally {
       setLoading(false);
     }
@@ -114,21 +126,21 @@ export default function EditVCSIntegrationModal({ integration, onClose, onSucces
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Edit VCS Integration</DialogTitle>
+          <DialogTitle>{i18n.title}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Provider</label>
+            <label className="text-sm font-medium mb-1.5 block">{i18n.provider}</label>
             <Input value={integration.provider} disabled />
           </div>
 
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Name</label>
+            <label className="text-sm font-medium mb-1.5 block">{i18n.name}</label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="My GitHub"
+              placeholder={i18n.namePlaceholder}
             />
           </div>
 
@@ -152,29 +164,29 @@ export default function EditVCSIntegrationModal({ integration, onClose, onSucces
 
           <div>
             <label className="text-sm font-medium mb-1.5 block">
-              Access Token {secret ? '' : '(leave empty to keep current)'}
+              {secret ? i18n.accessTokenLabel : i18n.accessTokenLabelWithHint}
             </label>
             <Input
               type="password"
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
-              placeholder="Enter new token to update"
+              placeholder={i18n.accessTokenPlaceholder}
             />
           </div>
 
           <div className="flex items-center gap-2">
             <Switch checked={isDefault} onCheckedChange={setIsDefault} />
-            <label className="text-sm">Set as default</label>
+            <label className="text-sm">{i18n.setDefault}</label>
           </div>
         </div>
 
         <DialogFooter>
           <div className="flex gap-2 w-full">
             <Button variant="outline" onClick={onClose} disabled={loading} className="flex-1">
-              Cancel
+              {dict.common.cancel}
             </Button>
             <Button onClick={handleSubmit} disabled={loading} className="flex-1">
-              {loading ? 'Updating...' : 'Update'}
+              {loading ? i18n.updating : i18n.updateAction}
             </Button>
           </div>
         </DialogFooter>

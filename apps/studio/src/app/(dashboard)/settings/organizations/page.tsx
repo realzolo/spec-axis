@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Check, Copy, Plus, UserMinus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -27,6 +27,9 @@ import {
 import SettingsNav from '@/components/settings/SettingsNav';
 import { replaceOrgInPath } from '@/lib/orgPath';
 import { Skeleton } from '@/components/ui/skeleton';
+import ConfirmDialog from '@/components/ui/confirm-dialog';
+import { useClientDictionary } from '@/i18n/client';
+import { formatLocalDate } from '@/lib/dateFormat';
 
 type OrgRole = 'owner' | 'admin' | 'reviewer' | 'member';
 
@@ -58,13 +61,6 @@ interface OrgInvite {
   created_at: string;
 }
 
-const roleLabels: Record<OrgRole, string> = {
-  owner: 'Owner',
-  admin: 'Admin',
-  reviewer: 'Reviewer',
-  member: 'Member',
-};
-
 const roleBadgeVariant: Record<OrgRole, 'accent' | 'secondary' | 'outline' | 'muted'> = {
   owner: 'accent',
   admin: 'secondary',
@@ -73,6 +69,8 @@ const roleBadgeVariant: Record<OrgRole, 'accent' | 'secondary' | 'outline' | 'mu
 };
 
 export default function OrganizationsPage() {
+  const dict = useClientDictionary();
+  const i18n = dict.settings.organizationsPage;
   const router = useRouter();
   const pathname = usePathname();
   const [orgs, setOrgs] = useState<Organization[]>([]);
@@ -88,13 +86,68 @@ export default function OrganizationsPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<OrgRole>('member');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [memberToRemove, setMemberToRemove] = useState<OrgMember | null>(null);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+
+  const roleLabels: Record<OrgRole, string> = {
+    owner: i18n.roleOwner,
+    admin: i18n.roleAdmin,
+    reviewer: i18n.roleReviewer,
+    member: i18n.roleMember,
+  };
+
+  const memberStatusLabels: Record<OrgMember['status'], string> = {
+    active: i18n.statusActive,
+    invited: i18n.statusInvited,
+    suspended: i18n.statusSuspended,
+  };
 
   useEffect(() => {
     fetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setCurrentUserId(data?.user?.id ?? null))
       .catch(() => setCurrentUserId(null));
-  }, []);
+  }, [i18n.loadOrganizationsFailed]);
+
+  const activeOrg = useMemo(
+    () => orgs.find((org) => org.id === activeOrgId) ?? orgs[0],
+    [orgs, activeOrgId],
+  );
+
+  const currentUserRole = useMemo(() => {
+    if (!currentUserId) return null;
+    return members.find((member) => member.user_id === currentUserId)?.role ?? null;
+  }, [members, currentUserId]);
+
+  const canManageMembers = currentUserRole === 'owner' || currentUserRole === 'admin';
+
+  const loadMembers = useCallback(async (orgId: string) => {
+    setMembersLoading(true);
+    try {
+      const res = await fetch(`/api/orgs/${orgId}/members`);
+      if (!res.ok) throw new Error(i18n.loadMembersFailed);
+      const data = await res.json();
+      setMembers(Array.isArray(data) ? data : []);
+    } catch {
+      toast.error(i18n.loadMembersFailed);
+    } finally {
+      setMembersLoading(false);
+    }
+  }, [i18n.loadMembersFailed]);
+
+  const loadInvites = useCallback(async (orgId: string) => {
+    setInvitesLoading(true);
+    try {
+      const res = await fetch(`/api/orgs/${orgId}/invites`);
+      if (!res.ok) throw new Error(i18n.loadInvitesFailed);
+      const data = await res.json();
+      setInvites(Array.isArray(data) ? data : []);
+    } catch {
+      toast.error(i18n.loadInvitesFailed);
+    } finally {
+      setInvitesLoading(false);
+    }
+  }, [i18n.loadInvitesFailed]);
 
   useEffect(() => {
     let alive = true;
@@ -114,63 +167,23 @@ export default function OrganizationsPage() {
         setOrgs(safeOrgs);
         setActiveOrgId(activeData?.orgId ?? safeOrgs?.[0]?.id ?? null);
       } catch {
-        if (alive) toast.error('Failed to load organizations');
+        if (alive) toast.error(i18n.loadOrganizationsFailed);
       } finally {
         if (alive) setLoading(false);
       }
     }
 
-    loadOrgs();
+    void loadOrgs();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [i18n.loadOrganizationsFailed]);
 
   useEffect(() => {
     if (!activeOrgId) return;
     void loadMembers(activeOrgId);
     void loadInvites(activeOrgId);
-  }, [activeOrgId]);
-
-  const activeOrg = useMemo(
-    () => orgs.find((org) => org.id === activeOrgId) ?? orgs[0],
-    [orgs, activeOrgId],
-  );
-
-  const currentUserRole = useMemo(() => {
-    if (!currentUserId) return null;
-    return members.find((member) => member.user_id === currentUserId)?.role ?? null;
-  }, [members, currentUserId]);
-
-  const canManageMembers = currentUserRole === 'owner' || currentUserRole === 'admin';
-
-  async function loadMembers(orgId: string) {
-    setMembersLoading(true);
-    try {
-      const res = await fetch(`/api/orgs/${orgId}/members`);
-      if (!res.ok) throw new Error('Failed to load members');
-      const data = await res.json();
-      setMembers(Array.isArray(data) ? data : []);
-    } catch {
-      toast.error('Failed to load members');
-    } finally {
-      setMembersLoading(false);
-    }
-  }
-
-  async function loadInvites(orgId: string) {
-    setInvitesLoading(true);
-    try {
-      const res = await fetch(`/api/orgs/${orgId}/invites`);
-      if (!res.ok) throw new Error('Failed to load invites');
-      const data = await res.json();
-      setInvites(Array.isArray(data) ? data : []);
-    } catch {
-      toast.error('Failed to load invites');
-    } finally {
-      setInvitesLoading(false);
-    }
-  }
+  }, [activeOrgId, loadInvites, loadMembers]);
 
   async function setActiveOrg(orgId: string) {
     if (orgId === activeOrgId) return;
@@ -180,12 +193,12 @@ export default function OrganizationsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orgId }),
       });
-      if (!res.ok) throw new Error('Failed to set active org');
+      if (!res.ok) throw new Error(i18n.switchOrganizationFailed);
       setActiveOrgId(orgId);
       router.push(replaceOrgInPath(pathname, orgId));
       router.refresh();
     } catch {
-      toast.error('Failed to switch organization');
+      toast.error(i18n.switchOrganizationFailed);
     }
   }
 
@@ -193,7 +206,7 @@ export default function OrganizationsPage() {
     const name = newOrgName.trim();
     const slug = newOrgSlug.trim();
     if (!name) {
-      toast.error('Organization name is required');
+      toast.error(i18n.organizationNameRequired);
       return;
     }
 
@@ -205,7 +218,7 @@ export default function OrganizationsPage() {
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to create organization');
+        throw new Error(data.error || i18n.createOrganizationFailed);
       }
       const org = await res.json();
       setOrgs((prev) => [org, ...prev]);
@@ -213,9 +226,9 @@ export default function OrganizationsPage() {
       setNewOrgName('');
       setNewOrgSlug('');
       await setActiveOrg(org.id);
-      toast.success('Organization created');
+      toast.success(i18n.createOrganizationSuccess);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to create organization');
+      toast.error(error instanceof Error ? error.message : i18n.createOrganizationFailed);
     }
   }
 
@@ -223,7 +236,7 @@ export default function OrganizationsPage() {
     if (!activeOrgId) return;
     const email = inviteEmail.trim().toLowerCase();
     if (!email) {
-      toast.error('Email is required');
+      toast.error(i18n.inviteEmailRequired);
       return;
     }
 
@@ -235,14 +248,14 @@ export default function OrganizationsPage() {
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to send invite');
+        throw new Error(data.error || i18n.sendInviteFailed);
       }
       const invite = await res.json();
       setInvites((prev) => [invite, ...prev]);
       setInviteEmail('');
-      toast.success('Invite created');
+      toast.success(i18n.sendInviteSuccess);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to send invite');
+      toast.error(error instanceof Error ? error.message : i18n.sendInviteFailed);
     }
   }
 
@@ -250,9 +263,9 @@ export default function OrganizationsPage() {
     const url = `${window.location.origin}/invite/${invite.token}`;
     try {
       await navigator.clipboard.writeText(url);
-      toast.success('Invite link copied');
+      toast.success(i18n.copyInviteSuccess);
     } catch {
-      toast.error('Failed to copy invite link');
+      toast.error(i18n.copyInviteFailed);
     }
   }
 
@@ -260,11 +273,11 @@ export default function OrganizationsPage() {
     if (!activeOrgId) return;
     try {
       const res = await fetch(`/api/orgs/${activeOrgId}/invites/${inviteId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to revoke invite');
+      if (!res.ok) throw new Error(i18n.revokeInviteFailed);
       setInvites((prev) => prev.filter((invite) => invite.id !== inviteId));
-      toast.success('Invite revoked');
+      toast.success(i18n.revokeInviteSuccess);
     } catch {
-      toast.error('Failed to revoke invite');
+      toast.error(i18n.revokeInviteFailed);
     }
   }
 
@@ -278,21 +291,21 @@ export default function OrganizationsPage() {
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to update role');
+        throw new Error(data.error || i18n.updateMemberRoleFailed);
       }
       const updated = await res.json();
       setMembers((prev) =>
         prev.map((item) => (item.user_id === member.user_id ? { ...item, role: updated.role } : item)),
       );
-      toast.success('Member updated');
+      toast.success(i18n.updateMemberRoleSuccess);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update role');
+      toast.error(error instanceof Error ? error.message : i18n.updateMemberRoleFailed);
     }
   }
 
   async function handleRemoveMember(member: OrgMember) {
     if (!activeOrgId) return;
-    if (!confirm(`Remove ${member.email ?? member.user_id}?`)) return;
+    setRemovingMemberId(member.user_id);
 
     try {
       const res = await fetch(`/api/orgs/${activeOrgId}/members/${member.user_id}`, {
@@ -300,12 +313,15 @@ export default function OrganizationsPage() {
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to remove member');
+        throw new Error(data.error || i18n.removeMemberFailed);
       }
       setMembers((prev) => prev.filter((item) => item.user_id !== member.user_id));
-      toast.success('Member removed');
+      toast.success(i18n.removeMemberSuccess);
+      setMemberToRemove(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to remove member');
+      toast.error(error instanceof Error ? error.message : i18n.removeMemberFailed);
+    } finally {
+      setRemovingMemberId(null);
     }
   }
 
@@ -368,9 +384,9 @@ export default function OrganizationsPage() {
           <div className="space-y-8">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h1 className="text-[15px] font-semibold">Organizations</h1>
+                <h1 className="text-[15px] font-semibold">{i18n.title}</h1>
                 <p className="text-[13px] text-[hsl(var(--ds-text-2))] mt-0.5">
-                  Manage workspaces, members, and invites.
+                  {i18n.description}
                 </p>
               </div>
 
@@ -378,39 +394,39 @@ export default function OrganizationsPage() {
                 <DialogTrigger asChild>
                   <Button size="sm" className="gap-1.5">
                     <Plus className="size-4" />
-                    New Organization
+                    {i18n.newOrganization}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Create organization</DialogTitle>
+                    <DialogTitle>{i18n.createDialogTitle}</DialogTitle>
                     <DialogDescription>
-                      Organizations group projects and collaborators under a shared workspace.
+                      {i18n.createDialogDescription}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <label className="text-[12px] font-medium">Name</label>
+                      <label className="text-[12px] font-medium">{dict.common.name}</label>
                       <Input
                         value={newOrgName}
                         onChange={(e) => setNewOrgName(e.target.value)}
-                        placeholder="Acme Inc"
+                        placeholder={i18n.organizationNamePlaceholder}
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[12px] font-medium">Slug (optional)</label>
+                      <label className="text-[12px] font-medium">{i18n.slugOptionalLabel}</label>
                       <Input
                         value={newOrgSlug}
                         onChange={(e) => setNewOrgSlug(e.target.value)}
-                        placeholder="acme"
+                        placeholder={i18n.slugPlaceholder}
                       />
                     </div>
                   </div>
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setCreateOpen(false)}>
-                      Cancel
+                      {dict.common.cancel}
                     </Button>
-                    <Button onClick={handleCreateOrg}>Create</Button>
+                    <Button onClick={handleCreateOrg}>{i18n.createAction}</Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
@@ -418,24 +434,24 @@ export default function OrganizationsPage() {
 
             <section className="space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-[13px] font-semibold">Your organizations</h2>
+                <h2 className="text-[13px] font-semibold">{i18n.yourOrganizationsTitle}</h2>
                 <span className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                  {orgs.length} total
+                  {i18n.totalCount.replace('{{count}}', String(orgs.length))}
                 </span>
               </div>
 
               {orgs.length === 0 ? (
                 <Card>
                   <CardContent className="p-6 text-center text-[13px] text-[hsl(var(--ds-text-2))]">
-                    No organizations yet.
+                    {i18n.noOrganizations}
                   </CardContent>
                 </Card>
               ) : (
                 <div className="overflow-hidden rounded-[8px] border border-[hsl(var(--ds-border-1))]">
                   <div className="hidden md:grid grid-cols-[1fr_140px_160px] px-4 py-2 text-[12px] text-[hsl(var(--ds-text-2))]">
-                    <span>Name</span>
-                    <span>Type</span>
-                    <span className="text-right">Status</span>
+                    <span>{dict.common.name}</span>
+                    <span>{i18n.typeLabel}</span>
+                    <span className="text-right">{dict.common.status}</span>
                   </div>
                   <div className="divide-y divide-[hsl(var(--ds-border-1))]">
                     {orgs.map((org) => {
@@ -451,14 +467,14 @@ export default function OrganizationsPage() {
                           </div>
                           <div>
                             <Badge variant={org.is_personal ? 'secondary' : 'outline'}>
-                              {org.is_personal ? 'Personal' : 'Team'}
+                              {org.is_personal ? i18n.personalType : i18n.teamType}
                             </Badge>
                           </div>
                           <div className="flex items-center justify-between md:justify-end gap-2">
                             {isActive ? (
                               <Badge variant="accent" size="sm" className="gap-1">
                                 <Check className="size-3" />
-                                Active
+                                {i18n.activeBadge}
                               </Badge>
                             ) : (
                               <Button
@@ -466,7 +482,7 @@ export default function OrganizationsPage() {
                                 variant="ghost"
                                 onClick={() => setActiveOrg(org.id)}
                               >
-                                Switch
+                                {i18n.switchAction}
                               </Button>
                             )}
                           </div>
@@ -481,9 +497,11 @@ export default function OrganizationsPage() {
             <section className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-[13px] font-semibold">Members</h2>
+                  <h2 className="text-[13px] font-semibold">{i18n.membersTitle}</h2>
                   <p className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                    {activeOrg ? `Workspace: ${activeOrg.name}` : 'Select an organization'}
+                    {activeOrg
+                      ? i18n.workspaceLabel.replace('{{name}}', activeOrg.name)
+                      : i18n.selectOrganization}
                   </p>
                 </div>
                 <Badge variant="muted">{members.length}</Badge>
@@ -491,10 +509,10 @@ export default function OrganizationsPage() {
 
               <div className="overflow-hidden rounded-[8px] border border-[hsl(var(--ds-border-1))]">
                 <div className="hidden md:grid grid-cols-[1fr_160px_120px_120px] px-4 py-2 text-[12px] text-[hsl(var(--ds-text-2))]">
-                  <span>User</span>
-                  <span>Role</span>
-                  <span>Status</span>
-                  <span className="text-right">Actions</span>
+                  <span>{i18n.userLabel}</span>
+                  <span>{i18n.roleLabel}</span>
+                  <span>{dict.common.status}</span>
+                  <span className="text-right">{dict.common.actions}</span>
                 </div>
                 <div className="divide-y divide-[hsl(var(--ds-border-1))]">
                   {membersLoading ? (
@@ -514,7 +532,7 @@ export default function OrganizationsPage() {
                       ))}
                     </div>
                   ) : members.length === 0 ? (
-                    <div className="px-4 py-6 text-[13px] text-[hsl(var(--ds-text-2))]">No members found.</div>
+                    <div className="px-4 py-6 text-[13px] text-[hsl(var(--ds-text-2))]">{i18n.noMembers}</div>
                   ) : (
                     members.map((member) => {
                       const isSelf = member.user_id === currentUserId;
@@ -535,7 +553,12 @@ export default function OrganizationsPage() {
                           <div>
                             <div className="text-[13px] font-medium">
                               {member.email ?? member.user_id}
-                              {isSelf && <span className="text-[12px] text-[hsl(var(--ds-text-2))]"> (You)</span>}
+                              {isSelf && (
+                                <span className="text-[12px] text-[hsl(var(--ds-text-2))]">
+                                  {' '}
+                                  ({i18n.youLabel})
+                                </span>
+                              )}
                             </div>
                             {member.email && (
                               <div className="text-[12px] text-[hsl(var(--ds-text-2))]">{member.user_id}</div>
@@ -564,7 +587,7 @@ export default function OrganizationsPage() {
                           </div>
                           <div>
                             <Badge variant={member.status === 'active' ? 'success' : 'muted'}>
-                              {member.status}
+                              {memberStatusLabels[member.status]}
                             </Badge>
                           </div>
                           <div className="flex items-center gap-2 md:justify-end">
@@ -572,11 +595,12 @@ export default function OrganizationsPage() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => handleRemoveMember(member)}
+                                onClick={() => setMemberToRemove(member)}
+                                disabled={removingMemberId === member.user_id}
                                 className="gap-1"
                               >
                                 <UserMinus className="size-3.5" />
-                                Remove
+                                {removingMemberId === member.user_id ? i18n.removing : i18n.removeAction}
                               </Button>
                             ) : (
                               <span className="text-[12px] text-[hsl(var(--ds-text-2))]">—</span>
@@ -593,9 +617,12 @@ export default function OrganizationsPage() {
             <section className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-[13px] font-semibold">Invites</h2>
+                  <h2 className="text-[13px] font-semibold">{i18n.invitesTitle}</h2>
                   <p className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                    Invite teammates to join {activeOrg?.name ?? 'your organization'}.
+                    {i18n.invitesDescription.replace(
+                      '{{orgName}}',
+                      activeOrg?.name ?? i18n.yourOrganization,
+                    )}
                   </p>
                 </div>
                 <Badge variant="muted">{invites.length}</Badge>
@@ -607,7 +634,7 @@ export default function OrganizationsPage() {
                     <Input
                       value={inviteEmail}
                       onChange={(e) => setInviteEmail(e.target.value)}
-                      placeholder="teammate@company.com"
+                      placeholder={i18n.inviteEmailPlaceholder}
                     />
                     <Select value={inviteRole} onValueChange={(value) => setInviteRole(value as OrgRole)}>
                       <SelectTrigger className="h-9">
@@ -622,12 +649,12 @@ export default function OrganizationsPage() {
                       </SelectContent>
                     </Select>
                     <Button onClick={handleInvite} disabled={!canManageMembers}>
-                      Send Invite
+                      {i18n.sendInviteAction}
                     </Button>
                   </div>
                   {!canManageMembers && (
                     <p className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                      Only owners or admins can send invites.
+                      {i18n.invitePermissionHint}
                     </p>
                   )}
                 </CardContent>
@@ -635,10 +662,10 @@ export default function OrganizationsPage() {
 
               <div className="overflow-hidden rounded-[8px] border border-[hsl(var(--ds-border-1))]">
                 <div className="hidden md:grid grid-cols-[1fr_120px_160px_120px] px-4 py-2 text-[12px] text-[hsl(var(--ds-text-2))]">
-                  <span>Email</span>
-                  <span>Role</span>
-                  <span>Expires</span>
-                  <span className="text-right">Actions</span>
+                  <span>{dict.auth.email}</span>
+                  <span>{i18n.roleLabel}</span>
+                  <span>{i18n.expiresLabel}</span>
+                  <span className="text-right">{dict.common.actions}</span>
                 </div>
                 <div className="divide-y divide-[hsl(var(--ds-border-1))]">
                   {invitesLoading ? (
@@ -658,7 +685,7 @@ export default function OrganizationsPage() {
                       ))}
                     </div>
                   ) : invites.length === 0 ? (
-                    <div className="px-4 py-6 text-[13px] text-[hsl(var(--ds-text-2))]">No active invites.</div>
+                    <div className="px-4 py-6 text-[13px] text-[hsl(var(--ds-text-2))]">{i18n.noInvites}</div>
                   ) : (
                     invites.map((invite) => {
                       const expired = new Date(invite.expires_at).getTime() < Date.now();
@@ -670,14 +697,18 @@ export default function OrganizationsPage() {
                           <div>
                             <div className="text-[13px] font-medium">{invite.email}</div>
                             <div className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                              {invite.accepted_at ? 'Accepted' : expired ? 'Expired' : 'Pending'}
+                              {invite.accepted_at
+                                ? i18n.inviteAccepted
+                                : expired
+                                  ? i18n.inviteExpired
+                                  : i18n.invitePending}
                             </div>
                           </div>
                           <div>
                             <Badge variant={roleBadgeVariant[invite.role]}>{roleLabels[invite.role]}</Badge>
                           </div>
                           <div className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                            {new Date(invite.expires_at).toLocaleDateString()}
+                            {formatLocalDate(invite.expires_at)}
                           </div>
                           <div className="flex items-center gap-2 md:justify-end">
                             <Button
@@ -687,7 +718,7 @@ export default function OrganizationsPage() {
                               className="gap-1"
                             >
                               <Copy className="size-3.5" />
-                              Copy
+                              {dict.common.copy}
                             </Button>
                             {canManageMembers && !invite.accepted_at && (
                               <Button
@@ -695,7 +726,7 @@ export default function OrganizationsPage() {
                                 variant="ghost"
                                 onClick={() => handleRevokeInvite(invite.id)}
                               >
-                                Revoke
+                                {i18n.revokeAction}
                               </Button>
                             )}
                           </div>
@@ -709,6 +740,26 @@ export default function OrganizationsPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={memberToRemove !== null}
+        onOpenChange={(open) => {
+          if (!open && !removingMemberId) setMemberToRemove(null);
+        }}
+        title={i18n.removeMemberDialogTitle}
+        description={i18n.removeMemberDialogDescription.replace(
+          '{{target}}',
+          memberToRemove?.email ?? memberToRemove?.user_id ?? '',
+        )}
+        confirmLabel={removingMemberId ? i18n.removing : i18n.removeAction}
+        cancelLabel={dict.common.cancel}
+        onConfirm={() => {
+          if (!memberToRemove || removingMemberId) return;
+          void handleRemoveMember(memberToRemove);
+        }}
+        loading={removingMemberId !== null}
+        danger
+      />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export function PageLoading({
-  label = 'Loading...',
+  label,
   className,
 }: {
   label?: string;

@@ -65,6 +65,10 @@
     --auth-surface: var(--ds-background-2);
     --auth-border: var(--ds-border-1);
     --auth-shadow: 0 18px 50px hsl(0 0% 0% / 0.35);
+
+    --terminal-background: 0 0% 7%;
+    --terminal-foreground: 142 72% 58%;
+    --terminal-muted: var(--ds-text-2);
   }
 
   :root[data-theme="light"] {
@@ -118,6 +122,10 @@
 
     --elevation-1: 0 1px 2px hsl(220 20% 20% / 0.08), 0 0 0 1px hsl(var(--border) / 0.7);
     --elevation-2: 0 12px 30px hsl(220 20% 20% / 0.16), 0 0 0 1px hsl(var(--border) / 0.6);
+
+    --terminal-background: 220 27% 10%;
+    --terminal-foreground: 152 64% 62%;
+    --terminal-muted: var(--ds-text-2);
   }
 
   * {
@@ -175,6 +183,9 @@
   .text-sidebar-foreground { color: hsl(var(--sidebar-foreground)); }
   .bg-sidebar-muted { background-color: hsl(var(--sidebar-muted)); }
   .border-sidebar { border-color: hsl(var(--sidebar-border)); }
+  .bg-terminal { background-color: hsl(var(--terminal-background)); }
+  .text-terminal { color: hsl(var(--terminal-foreground)); }
+  .text-terminal-muted { color: hsl(var(--terminal-muted)); }
 
   .transition-soft {
     transition:
@@ -458,4 +469,3 @@
   position: relative;
   z-index: 1;
 }
-

@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { useClientDictionary } from '@/i18n/client';
 
 interface Integration {
   id: string;
@@ -45,6 +46,8 @@ interface ProviderConfig {
 }
 
 export default function EditAIIntegrationModal({ integration, onClose, onSuccess }: Props) {
+  const dict = useClientDictionary();
+  const i18n = dict.settings.editAiModal;
   const [providerConfig, setProviderConfig] = useState<ProviderConfig | null>(null);
   const [name, setName] = useState(integration.name);
   const [config, setConfig] = useState<AIConfigForm>(integration.config);
@@ -84,13 +87,13 @@ export default function EditAIIntegrationModal({ integration, onClose, onSuccess
 
   async function handleSubmit() {
     if (!name.trim()) {
-      toast.error('Name is required');
+      toast.error(i18n.nameRequired);
       return;
     }
 
     const model = typeof config.model === 'string' ? config.model.trim() : '';
     if (!model) {
-      toast.error('Model is required');
+      toast.error(i18n.modelRequired);
       return;
     }
 
@@ -107,14 +110,14 @@ export default function EditAIIntegrationModal({ integration, onClose, onSuccess
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to update integration');
+        throw new Error(data.error || i18n.updateFailed);
       }
 
-      toast.success('Integration updated successfully');
+      toast.success(i18n.updateSuccess);
       onSuccess();
       onClose();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update integration');
+      toast.error(error instanceof Error ? error.message : i18n.updateFailed);
     } finally {
       setLoading(false);
     }
@@ -122,31 +125,31 @@ export default function EditAIIntegrationModal({ integration, onClose, onSuccess
 
   // Determine which fields to render: prefer dynamic provider config, fall back to hardcoded basics
   const fields = providerConfig?.fields ?? [
-    { key: 'baseUrl', label: 'Base URL', type: 'text', required: true, placeholder: 'https://api.anthropic.com' },
-    { key: 'model', label: 'Model', type: 'text', required: true, placeholder: 'claude-sonnet-4-6' },
-    { key: 'maxTokens', label: 'Max Tokens (optional)', type: 'number', required: false, placeholder: '4096' },
-    { key: 'temperature', label: 'Temperature (optional)', type: 'number', required: false, placeholder: '0.7', help: 'Value between 0 and 1. Not supported by reasoning models.' },
+    { key: 'baseUrl', label: i18n.baseUrl, type: 'text', required: true, placeholder: 'https://api.anthropic.com' },
+    { key: 'model', label: i18n.model, type: 'text', required: true, placeholder: 'claude-sonnet-4-6' },
+    { key: 'maxTokens', label: i18n.maxTokensOptional, type: 'number', required: false, placeholder: '4096' },
+    { key: 'temperature', label: i18n.temperatureOptional, type: 'number', required: false, placeholder: '0.7', help: i18n.temperatureHelp },
   ];
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Edit AI Integration</DialogTitle>
+          <DialogTitle>{i18n.title}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Provider</label>
+            <label className="text-sm font-medium mb-1.5 block">{i18n.provider}</label>
             <Input value={integration.provider} disabled />
           </div>
 
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Name</label>
+            <label className="text-sm font-medium mb-1.5 block">{i18n.name}</label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="My AI Integration"
+              placeholder={i18n.namePlaceholder}
             />
           </div>
 
@@ -222,29 +225,29 @@ export default function EditAIIntegrationModal({ integration, onClose, onSuccess
 
           <div>
             <label className="text-sm font-medium mb-1.5 block">
-              API Key {secret ? '' : '(leave empty to keep current)'}
+              {secret ? i18n.apiKeyLabel : i18n.apiKeyLabelWithHint}
             </label>
             <Input
               type="password"
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
-              placeholder="Enter new API key to update"
+              placeholder={i18n.apiKeyPlaceholder}
             />
           </div>
 
           <div className="flex items-center gap-2">
             <Switch checked={isDefault} onCheckedChange={setIsDefault} />
-            <label className="text-sm">Set as default</label>
+            <label className="text-sm">{i18n.setDefault}</label>
           </div>
         </div>
 
         <DialogFooter>
           <div className="flex gap-2 w-full">
             <Button variant="outline" onClick={onClose} disabled={loading} className="flex-1">
-              Cancel
+              {dict.common.cancel}
             </Button>
             <Button onClick={handleSubmit} disabled={loading} className="flex-1">
-              {loading ? 'Updating...' : 'Update'}
+              {loading ? i18n.updating : i18n.updateAction}
             </Button>
           </div>
         </DialogFooter>

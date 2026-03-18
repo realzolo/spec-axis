@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Dictionary } from '@/i18n';
+import { formatLocalDateTime } from '@/lib/dateFormat';
 
 type Issue = {
   id: string;
@@ -167,7 +168,7 @@ function ReportCard({ report, label }: { report: Report; label: string }) {
           {firstCommit?.sha && (
             <span className="text-[12px] font-mono text-[hsl(var(--ds-text-2))]">{firstCommit.sha.slice(0, 7)}</span>
           )}
-          <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{new Date(report.created_at).toLocaleString()}</span>
+          <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{formatLocalDateTime(report.created_at)}</span>
         </div>
       </div>
     </div>
@@ -190,6 +191,7 @@ export default function ReportCompareClient({
   const [issuesB, setIssuesB] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadErrorText = dict.common.error;
 
   useEffect(() => {
     let alive = true;
@@ -214,11 +216,11 @@ export default function ReportCompareClient({
         setLoading(false);
       })
       .catch(() => {
-        if (alive) { setError('Failed to load reports'); setLoading(false); }
+        if (alive) { setError(loadErrorText); setLoading(false); }
       });
 
     return () => { alive = false; };
-  }, [reportIdA, reportIdB]);
+  }, [reportIdA, reportIdB, loadErrorText]);
 
   const diff = !loading && reportA && reportB ? diffIssues(issuesA, issuesB) : null;
 
@@ -227,7 +229,7 @@ export default function ReportCompareClient({
       {/* Header */}
       <div className="px-6 py-4 border-b border-[hsl(var(--ds-border-1))] bg-background shrink-0">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.back()}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.back()} type="button">
             <ArrowLeft className="size-4" />
           </Button>
           <div className="flex-1">

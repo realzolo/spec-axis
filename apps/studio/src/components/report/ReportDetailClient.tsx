@@ -27,6 +27,7 @@ import TrendChart from '@/components/report/TrendChart';
 import type { Dictionary } from '@/i18n';
 import { withOrgPrefix } from '@/lib/orgPath';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatLocalDate } from '@/lib/dateFormat';
 
 type Issue = {
   file: string; line?: number;
@@ -92,7 +93,7 @@ function formatDate(d: string, dict: Dictionary) {
   if (h < 1) return dict.commits.justNow;
   if (h < 24) return dict.commits.hoursAgo.replace('{{hours}}', String(h));
   if (days < 30) return dict.commits.daysAgo.replace('{{days}}', String(days));
-  return new Date(d).toLocaleDateString();
+  return formatLocalDate(d);
 }
 
 function ReportDetailSkeleton() {
@@ -251,7 +252,9 @@ export default function ReportDetailClient({
         }
         setIssueIdMap(map);
       })
-      .catch(() => {});
+      .catch(() => {
+        setIssueIdMap({});
+      });
   }, [report]);
 
   useEffect(() => {

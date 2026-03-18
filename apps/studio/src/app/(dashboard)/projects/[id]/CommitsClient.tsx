@@ -12,6 +12,7 @@ import type { Dictionary } from '@/i18n';
 import { withOrgPrefix } from '@/lib/orgPath';
 import CodeEditor from '@/components/codebase/CodeEditor';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatLocalDate } from '@/lib/dateFormat';
 
 type Commit = { sha: string; message: string; author: string; date: string };
 type Project = { id: string; name: string; repo: string; default_branch: string; ruleset_id?: string };
@@ -116,7 +117,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
     if (h < 1) return dict.commits.justNow;
     if (h < 24) return dict.commits.hoursAgo.replace('{{hours}}', h.toString());
     if (days < 30) return dict.commits.daysAgo.replace('{{days}}', days.toString());
-    return new Date(d).toLocaleDateString();
+    return formatLocalDate(d);
   }
 
   const branchItems = branches.map(b => ({ id: b, label: b }));

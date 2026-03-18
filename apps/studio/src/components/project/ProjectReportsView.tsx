@@ -16,6 +16,7 @@ import {
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 import { withOrgPrefix } from '@/lib/orgPath';
+import { formatLocalDateTime } from '@/lib/dateFormat';
 
 
 type Report = {
@@ -177,17 +178,38 @@ export default function ProjectReportsView({
               : null;
             const isSelected = selectedIds.includes(report.id);
             const isDisabled = !isSelected && selectedIds.length === 2;
+            const reportHref = withOrgPrefix(pathname, `/projects/${projectId}/reports/${report.id}`);
             return (
               <div
                 key={report.id}
                 className={`flex items-center px-6 py-3 gap-4 border-b border-[hsl(var(--ds-border-1))] cursor-pointer group transition-colors duration-100 ${isSelected ? 'bg-primary/5 hover:bg-primary/8' : 'hover:bg-[hsl(var(--ds-surface-1))]'} ${isDisabled ? 'opacity-50' : ''}`}
-                onClick={() => router.push(withOrgPrefix(pathname, `/projects/${projectId}/reports/${report.id}`))}
+                onClick={() => router.push(reportHref)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  event.preventDefault();
+                  router.push(reportHref);
+                }}
               >
                 <div
                   className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-[hsl(var(--ds-border-1))] hover:border-primary/50'}`}
                   onClick={e => toggleSelect(report.id, e)}
                   role="checkbox"
                   aria-checked={isSelected}
+                  tabIndex={0}
+                  aria-label={dict.reports.compare.selectReports}
+                  aria-disabled={isDisabled}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (isDisabled) return;
+                    setSelectedIds(prev =>
+                      prev.includes(report.id) ? prev.filter(id => id !== report.id) : [...prev, report.id].slice(-2)
+                    );
+                  }}
                 >
                   {isSelected && <span className="block w-2 h-2 rounded-sm bg-white" />}
                 </div>
@@ -214,9 +236,9 @@ export default function ProjectReportsView({
                   <Badge variant={chip.variant} size="sm">{chip.label}</Badge>
                 </div>
                 <div className="w-36 text-[12px] text-[hsl(var(--ds-text-2))]">
-                  {new Date(report.created_at).toLocaleString()}
+                  {formatLocalDateTime(report.created_at)}
                 </div>
-                <div className="w-8 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="w-8 flex justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                   <Button
                     variant="ghost"
                     size="icon"

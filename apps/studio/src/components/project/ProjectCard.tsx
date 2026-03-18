@@ -62,7 +62,7 @@ export default function ProjectCard({ project: initialProject, onDelete, onUpdat
             </div>
           )}
 
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-soft shrink-0">
+          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-soft shrink-0">
             {canManage && (confirmDelete ? (
               <>
                 <Button size="sm" variant="destructive" className="h-7 px-2.5 text-xs" onClick={() => onDelete(project.id)}>{dict.projects.confirmDelete}</Button>
@@ -117,7 +117,7 @@ export default function ProjectCard({ project: initialProject, onDelete, onUpdat
             </div>
             <div className="flex items-center gap-1">
               <Badge variant="muted" size="sm">{project.default_branch}</Badge>
-              <Button size="icon" variant="ghost" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-soft">
+              <Button size="icon" variant="ghost" className="h-7 w-7 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-soft">
                 <MoreHorizontal className="h-3.5 w-3.5 text-[hsl(var(--ds-text-2))]" />
               </Button>
             </div>
@@ -137,7 +137,7 @@ export default function ProjectCard({ project: initialProject, onDelete, onUpdat
             ) : (
               <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.projects.ruleSetAttached}</span>
             )}
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-soft">
+            <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-soft">
               {canManage && (
                 <>
                   <Tooltip>

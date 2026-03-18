@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { useClientDictionary } from '@/i18n/client';
 
 interface Props {
   onClose: () => void;
@@ -27,6 +28,8 @@ interface ProviderConfig {
 }
 
 export default function AddVCSIntegrationModal({ onClose, onSuccess }: Props) {
+  const dict = useClientDictionary();
+  const i18n = dict.settings.addVcsModal;
   const [providers, setProviders] = useState<Record<string, ProviderConfig>>({});
   const [selectedProvider, setSelectedProvider] = useState('github');
   const [name, setName] = useState('');
@@ -35,30 +38,30 @@ export default function AddVCSIntegrationModal({ onClose, onSuccess }: Props) {
   const [isDefault, setIsDefault] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    loadProviders();
-  }, []);
-
-  async function loadProviders() {
+  const loadProviders = useCallback(async () => {
     try {
       const res = await fetch('/api/integrations/providers');
       const data = await res.json();
       setProviders(data.vcs);
     } catch {
-      toast.error('Failed to load providers');
+      toast.error(i18n.loadProvidersFailed);
     }
-  }
+  }, [i18n.loadProvidersFailed]);
+
+  useEffect(() => {
+    void loadProviders();
+  }, [loadProviders]);
 
   const providerConfig = providers[selectedProvider];
 
   async function handleSubmit() {
     if (!name.trim()) {
-      toast.error('Please enter a name');
+      toast.error(i18n.nameRequired);
       return;
     }
 
     if (!secret.trim()) {
-      toast.error('Please enter an access token');
+      toast.error(i18n.accessTokenRequired);
       return;
     }
 
@@ -79,13 +82,13 @@ export default function AddVCSIntegrationModal({ onClose, onSuccess }: Props) {
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to create integration');
+        throw new Error(data.error || i18n.createFailed);
       }
 
-      toast.success('VCS integration created');
+      toast.success(i18n.createSuccess);
       onSuccess();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to create integration');
+      toast.error(error instanceof Error ? error.message : i18n.createFailed);
     } finally {
       setLoading(false);
     }
@@ -95,12 +98,12 @@ export default function AddVCSIntegrationModal({ onClose, onSuccess }: Props) {
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add Code Repository Integration</DialogTitle>
+          <DialogTitle>{i18n.title}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Provider</label>
+            <label className="text-sm font-medium mb-1.5 block">{i18n.provider}</label>
             <Select value={selectedProvider} onValueChange={(value) => setSelectedProvider(value)}>
               <SelectTrigger>
                 <SelectValue />
@@ -119,19 +122,19 @@ export default function AddVCSIntegrationModal({ onClose, onSuccess }: Props) {
           </div>
 
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Name</label>
+            <label className="text-sm font-medium mb-1.5 block">{i18n.name}</label>
             <Input
-              placeholder="e.g., Company GitHub"
+              placeholder={i18n.namePlaceholder}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Access Token *</label>
+            <label className="text-sm font-medium mb-1.5 block">{i18n.accessTokenLabel}</label>
             <Input
               type="password"
-              placeholder="ghp_..."
+              placeholder={i18n.accessTokenPlaceholder}
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
             />
@@ -142,7 +145,7 @@ export default function AddVCSIntegrationModal({ onClose, onSuccess }: Props) {
                 rel="noopener noreferrer"
                 className="text-xs text-primary hover:underline mt-1 inline-block"
               >
-                How to create a token →
+                {i18n.tokenDocs}
               </a>
             )}
           </div>
@@ -178,17 +181,17 @@ export default function AddVCSIntegrationModal({ onClose, onSuccess }: Props) {
               className="rounded"
             />
             <label htmlFor="isDefault" className="text-sm">
-              Set as default VCS integration
+              {i18n.setDefault}
             </label>
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose} disabled={loading}>
-            Cancel
+            {dict.common.cancel}
           </Button>
           <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? 'Creating...' : 'Create Integration'}
+            {loading ? i18n.creating : i18n.createAction}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -39,7 +39,10 @@ function ProjectSwitcher({
     fetch('/api/projects')
       .then(r => r.ok ? r.json() : [])
       .then(data => { if (alive) setProjects(Array.isArray(data) ? data : []); })
-      .catch(() => {});
+      .catch(() => {
+        if (!alive) return;
+        setProjects([]);
+      });
     return () => { alive = false; };
   }, []);
 
@@ -48,7 +51,10 @@ function ProjectSwitcher({
     fetch(`/api/projects/${currentProjectId}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (alive && data) setCurrentProject(data); })
-      .catch(() => {});
+      .catch(() => {
+        if (!alive) return;
+        setCurrentProject(null);
+      });
     return () => { alive = false; };
   }, [currentProjectId]);
 
@@ -59,8 +65,8 @@ function ProjectSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex items-center gap-1 text-[13px] font-medium text-foreground hover:text-foreground/80 transition-colors duration-100 outline-none">
-          <span>{currentProject?.name ?? '...'}</span>
+        <button type="button" className="flex items-center gap-1 text-[13px] font-medium text-foreground hover:text-foreground/80 transition-colors duration-100 outline-none">
+          <span>{currentProject?.name ?? dict.common.loading}</span>
           <ChevronDown className="size-3 text-[hsl(var(--ds-text-2))] mt-px" />
         </button>
       </DropdownMenuTrigger>

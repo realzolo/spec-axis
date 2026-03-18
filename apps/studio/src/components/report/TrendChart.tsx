@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import type { Dictionary } from '@/i18n';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatLocalDate } from '@/lib/dateFormat';
 
 type Snapshot = {
   snapshot_date: string;
@@ -129,7 +130,7 @@ export default function TrendChart({ projectId, dict }: { projectId: string; dic
               </div>
               {idx % Math.ceil(snapshots.length / 7) === 0 && (
                 <div className="text-[10px] text-[hsl(var(--ds-text-2))]">
-                  {new Date(snap.snapshot_date).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })}
+                  {formatLocalDate(snap.snapshot_date)}
                 </div>
               )}
             </div>

@@ -164,7 +164,7 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3">
         <div className="text-[13px] text-[hsl(var(--ds-text-2))]">{dict.common.error}</div>
-        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+        <Button variant="outline" size="sm" onClick={() => router.refresh()}>
           {dict.common.refresh}
         </Button>
       </div>
@@ -224,6 +224,13 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
                   key={rs.id}
                   className="flex items-center gap-4 px-4 py-2.5 border-b border-[hsl(var(--ds-border-1))] last:border-0 hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100 cursor-pointer"
                   onClick={() => router.push(withOrgPrefix(pathname, `/rules/${rs.id}`))}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    router.push(withOrgPrefix(pathname, `/rules/${rs.id}`));
+                  }}
                 >
                   <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[hsl(var(--ds-surface-2))] shrink-0">
                     <Shield className="size-4 text-[hsl(var(--ds-text-2))]" />
@@ -303,7 +310,9 @@ export default function RulesClient({ initialRuleSets, dict }: { initialRuleSets
                       </Badge>
                     </div>
                     <div className="text-[12px] text-[hsl(var(--ds-text-2))] mt-0.5">{t.description}</div>
-                    <div className="text-[11px] text-[hsl(var(--ds-text-2))] mt-1">{t.ruleCount} rules</div>
+                    <div className="text-[11px] text-[hsl(var(--ds-text-2))] mt-1">
+                      {dict.rules.rulesCount.replace('{{count}}', String(t.ruleCount))}
+                    </div>
                   </div>
                   <Button
                     size="sm"

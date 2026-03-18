@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { useClientDictionary } from '@/i18n/client';
 
 interface Props {
   onClose: () => void;
@@ -36,6 +37,8 @@ function asString(value: unknown): string | undefined {
 }
 
 export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
+  const dict = useClientDictionary();
+  const i18n = dict.settings.addAiModal;
   const [providers, setProviders] = useState<Record<string, ProviderConfig>>({});
   const selectedProvider = 'openai-api';
   const [selectedPreset, setSelectedPreset] = useState('');
@@ -45,19 +48,19 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
   const [isDefault, setIsDefault] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    loadProviders();
-  }, []);
-
-  async function loadProviders() {
+  const loadProviders = useCallback(async () => {
     try {
       const res = await fetch('/api/integrations/providers');
       const data = await res.json();
       setProviders(data.ai);
     } catch {
-      toast.error('Failed to load providers');
+      toast.error(i18n.loadProvidersFailed);
     }
-  }
+  }, [i18n.loadProvidersFailed]);
+
+  useEffect(() => {
+    void loadProviders();
+  }, [loadProviders]);
 
   const providerConfig = providers[selectedProvider];
 
@@ -72,17 +75,17 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
 
   async function handleSubmit() {
     if (!name.trim()) {
-      toast.error('Please enter a name');
+      toast.error(i18n.nameRequired);
       return;
     }
 
     if (!secret.trim()) {
-      toast.error('Please enter an API key');
+      toast.error(i18n.apiKeyRequired);
       return;
     }
 
     if (!config.model) {
-      toast.error('Please enter a model name');
+      toast.error(i18n.modelRequired);
       return;
     }
 
@@ -103,13 +106,13 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to create integration');
+        throw new Error(data.error || i18n.createFailed);
       }
 
-      toast.success('AI integration created');
+      toast.success(i18n.createSuccess);
       onSuccess();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to create integration');
+      toast.error(error instanceof Error ? error.message : i18n.createFailed);
     } finally {
       setLoading(false);
     }
@@ -119,19 +122,19 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add AI Model Integration</DialogTitle>
+          <DialogTitle>{i18n.title}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           {providerConfig?.presets && providerConfig.presets.length > 0 && (
             <div>
-              <label className="text-sm font-medium mb-1.5 block">Quick Setup</label>
+              <label className="text-sm font-medium mb-1.5 block">{i18n.quickSetup}</label>
               <Select
                 {...(selectedPreset ? { value: selectedPreset } : {})}
                 onValueChange={(value) => handlePresetChange(value)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose a preset..." />
+                  <SelectValue placeholder={i18n.quickSetupPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
                   {providerConfig.presets.map((p) => (
@@ -140,25 +143,25 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
                 </SelectContent>
               </Select>
               <p className="text-[12px] text-[hsl(var(--ds-text-2))] mt-1">
-                Or configure manually below
+                {i18n.configureManually}
               </p>
             </div>
           )}
 
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Name</label>
+            <label className="text-sm font-medium mb-1.5 block">{i18n.name}</label>
             <Input
-              placeholder="e.g., Claude Sonnet 4.6"
+              placeholder={i18n.namePlaceholder}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium mb-1.5 block">API Key *</label>
+            <label className="text-sm font-medium mb-1.5 block">{i18n.apiKeyLabel}</label>
             <Input
               type="password"
-              placeholder="sk-..."
+              placeholder={i18n.apiKeyPlaceholder}
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
             />
@@ -169,7 +172,7 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
                 rel="noopener noreferrer"
                 className="text-xs text-primary hover:underline mt-1 inline-block"
               >
-                How to get an API key →
+                {i18n.apiKeyDocs}
               </a>
             )}
           </div>
@@ -243,17 +246,17 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
               className="rounded"
             />
             <label htmlFor="isDefault" className="text-sm">
-              Set as default AI integration
+              {i18n.setDefault}
             </label>
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose} disabled={loading}>
-            Cancel
+            {dict.common.cancel}
           </Button>
           <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? 'Creating...' : 'Create Integration'}
+            {loading ? i18n.creating : i18n.createAction}
           </Button>
         </DialogFooter>
       </DialogContent>

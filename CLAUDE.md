@@ -17,12 +17,15 @@ const dict = await getDictionary(locale);
 ```
 
 **Client component:** Pass `dict` as prop from server page, type as `Dictionary` from `@/i18n`.
+If a client-only page cannot receive `dict` from a server parent, use `useClientDictionary()` from `src/i18n/client.ts` instead of duplicating cookie parsing.
 
 **Rules:**
 - Both dictionary files (`src/i18n/dictionaries/en.json` and `src/i18n/dictionaries/zh.json`) must have **identical key structure** — TypeScript infers types from `en.json`
 - When adding keys, update BOTH files simultaneously or the build fails
 - Run `rm -rf .next` if TypeScript type cache is stale after dict changes
 - `LanguageSwitcher` in Sidebar footer persists locale in cookies
+- User-facing copy in dashboard/product UI must come from dictionary keys. Do not hardcode English/Chinese strings directly in feature components.
+- Prefer shared client i18n helper (`src/i18n/client.ts`) for locale + dictionary access; do not implement ad-hoc `document.cookie` locale readers in feature components.
 
 ## Project Overview
 
@@ -124,6 +127,10 @@ Rules:
 - Prefer `components/ui/*` wrappers over direct Radix usage to keep styling and behavior consistent.
 - Do not introduce compatibility props or dual APIs (for example `foo` vs `Foo`, `onPress` vs `onClick`). Pick one naming and enforce it.
 - Do not add framework-specific naming that implies legacy support (for example `legacy*`, `compat*`, `polyfill*`).
+- Interactive containers (cards/rows/panels) must be keyboard accessible (`role`, `tabIndex`, `Enter/Space` handling) when not using native interactive elements.
+- Primary async route segments should provide `loading.tsx` boundaries; avoid pure text placeholders as the only loading state.
+- Destructive actions in product UI must use in-app confirmation dialogs (`components/ui/confirm-dialog.tsx`), not native `window.confirm`.
+- In client UI, use shared date format helpers from `src/lib/dateFormat.ts` instead of direct `toLocaleString`/`toLocaleDateString` calls in feature components.
 
 ## UI Design Guidelines
 

@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useClientDictionary } from '@/i18n/client';
 
 type NotificationSettings = {
   email_enabled: boolean;
@@ -22,6 +23,8 @@ type NotificationSettings = {
 export const dynamic = 'force-dynamic';
 
 export default function NotificationsSettingsPage() {
+  const dict = useClientDictionary();
+  const i18n = dict.settings.notificationsPage;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
@@ -32,12 +35,12 @@ export default function NotificationsSettingsPage() {
       setLoading(true);
       try {
         const res = await fetch('/api/notification-settings');
-        if (!res.ok) throw new Error('load_failed');
+        if (!res.ok) throw new Error(i18n.loadFailed);
         const data = await res.json();
         if (!alive) return;
         setSettings(data?.settings ?? null);
       } catch {
-        if (alive) toast.error('Failed to load notification settings');
+        if (alive) toast.error(i18n.loadFailed);
       } finally {
         if (alive) setLoading(false);
       }
@@ -46,7 +49,7 @@ export default function NotificationsSettingsPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [i18n.loadFailed]);
 
   async function save() {
     if (!settings) return;
@@ -57,10 +60,10 @@ export default function NotificationsSettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),
       });
-      if (!res.ok) throw new Error('save_failed');
-      toast.success('Saved');
+      if (!res.ok) throw new Error(i18n.saveFailed);
+      toast.success(i18n.saveSuccess);
     } catch {
-      toast.error('Save failed');
+      toast.error(i18n.saveFailed);
     } finally {
       setSaving(false);
     }
@@ -70,15 +73,15 @@ export default function NotificationsSettingsPage() {
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="max-w-[1200px] mx-auto w-full px-6 py-6">
-        <div className="grid gap-6 lg:grid-cols-[240px_1fr] items-start">
+      <div className="max-w-5xl px-6 py-6">
+        <div className="grid gap-8 lg:grid-cols-[220px_1fr] items-start">
           <SettingsNav />
 
           <div className="space-y-6">
             <div>
-              <div className="text-[15px] font-semibold">Notifications</div>
+              <div className="text-[15px] font-semibold">{i18n.title}</div>
               <div className="text-[13px] text-[hsl(var(--ds-text-2))] mt-1">
-                Configure how you want to be notified about pipeline runs and reports.
+                {i18n.description}
               </div>
             </div>
 
@@ -96,9 +99,9 @@ export default function NotificationsSettingsPage() {
                   <>
                     <div className="flex items-center justify-between gap-4">
                       <div>
-                        <div className="text-[13px] font-medium">Email notifications</div>
+                        <div className="text-[13px] font-medium">{i18n.emailNotificationsTitle}</div>
                         <div className="text-[12px] text-[hsl(var(--ds-text-2))] mt-0.5">
-                          Receive email updates when runs complete.
+                          {i18n.emailNotificationsDescription}
                         </div>
                       </div>
                       <Switch
@@ -109,9 +112,9 @@ export default function NotificationsSettingsPage() {
 
                     <div className="flex items-center justify-between gap-4">
                       <div>
-                        <div className="text-[13px] font-medium">Notify on completion</div>
+                        <div className="text-[13px] font-medium">{i18n.notifyCompletionTitle}</div>
                         <div className="text-[12px] text-[hsl(var(--ds-text-2))] mt-0.5">
-                          Pipeline run completed (success or failure).
+                          {i18n.notifyCompletionDescription}
                         </div>
                       </div>
                       <Switch
@@ -123,9 +126,9 @@ export default function NotificationsSettingsPage() {
 
                     <div className="flex items-center justify-between gap-4">
                       <div>
-                        <div className="text-[13px] font-medium">Notify on critical issues</div>
+                        <div className="text-[13px] font-medium">{i18n.notifyCriticalTitle}</div>
                         <div className="text-[12px] text-[hsl(var(--ds-text-2))] mt-0.5">
-                          Reports with critical/high issues.
+                          {i18n.notifyCriticalDescription}
                         </div>
                       </div>
                       <Switch
@@ -136,9 +139,9 @@ export default function NotificationsSettingsPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <div className="text-[13px] font-medium">Score threshold</div>
+                      <div className="text-[13px] font-medium">{i18n.scoreThresholdTitle}</div>
                       <div className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                        Only notify when the score is below this threshold (0-100). Leave empty to disable.
+                        {i18n.scoreThresholdDescription}
                       </div>
                       <Input
                         type="number"
@@ -165,23 +168,23 @@ export default function NotificationsSettingsPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <div className="text-[13px] font-medium">Slack webhook (optional)</div>
+                      <div className="text-[13px] font-medium">{i18n.slackWebhookTitle}</div>
                       <div className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                        Not implemented yet. Stored for future integrations.
+                        {i18n.slackWebhookDescription}
                       </div>
                       <Input
                         value={settings.slack_webhook ?? ''}
                         onChange={(e) => setSettings({ ...settings, slack_webhook: e.target.value || null })}
-                        placeholder="https://hooks.slack.com/services/..."
+                        placeholder={i18n.slackWebhookPlaceholder}
                         disabled={!settings.email_enabled}
                       />
                     </div>
 
                     <div className="flex items-center justify-between gap-4">
                       <div>
-                        <div className="text-[13px] font-medium">Daily digest</div>
+                        <div className="text-[13px] font-medium">{i18n.dailyDigestTitle}</div>
                         <div className="text-[12px] text-[hsl(var(--ds-text-2))] mt-0.5">
-                          Not implemented yet.
+                          {i18n.dailyDigestDescription}
                         </div>
                       </div>
                       <Switch
@@ -193,9 +196,9 @@ export default function NotificationsSettingsPage() {
 
                     <div className="flex items-center justify-between gap-4">
                       <div>
-                        <div className="text-[13px] font-medium">Weekly digest</div>
+                        <div className="text-[13px] font-medium">{i18n.weeklyDigestTitle}</div>
                         <div className="text-[12px] text-[hsl(var(--ds-text-2))] mt-0.5">
-                          Not implemented yet.
+                          {i18n.weeklyDigestDescription}
                         </div>
                       </div>
                       <Switch
@@ -211,7 +214,7 @@ export default function NotificationsSettingsPage() {
 
             <div className="flex justify-end">
               <Button onClick={save} disabled={disabled || saving}>
-                {saving ? 'Saving...' : 'Save'}
+                {saving ? i18n.saving : dict.common.save}
               </Button>
             </div>
           </div>

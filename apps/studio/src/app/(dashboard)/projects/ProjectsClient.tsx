@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Plus, Search, Github, GitBranch, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { AlertTriangle, Plus, Search, Github, GitBranch, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +16,7 @@ import {
 import { toast } from 'sonner';
 import AddProjectModal from '@/components/project/AddProjectModal';
 import EditProjectModal from '@/components/project/EditProjectModal';
+import ConfirmDialog from '@/components/ui/confirm-dialog';
 import type { Dictionary } from '@/i18n';
 import { useOrgRole } from '@/lib/useOrgRole';
 import { withOrgPrefix } from '@/lib/orgPath';
@@ -30,6 +32,8 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
   const [loadError, setLoadError] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [search, setSearch] = useState('');
+  const [deleteCandidate, setDeleteCandidate] = useState<Project | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const { isAdmin } = useOrgRole();
   const router = useRouter();
   const pathname = usePathname();
@@ -41,14 +45,33 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
   }, [projects, search]);
 
   async function refresh() {
-    const res = await fetch('/api/projects');
-    setProjects(await res.json());
+    setLoadError(false);
+    setLoading(true);
+    try {
+      const res = await fetch('/api/projects');
+      if (!res.ok) throw new Error('projects_fetch_failed');
+      const data = await res.json();
+      setProjects(Array.isArray(data) ? data : []);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleDelete(id: string) {
-    await fetch(`/api/projects/${id}`, { method: 'DELETE' });
-    toast.success(dict.projects.projectDeleted);
-    setProjects(prev => prev.filter(p => p.id !== id));
+    setDeletingProjectId(id);
+    try {
+      const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('project_delete_failed');
+      toast.success(dict.projects.projectDeleted);
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+      setDeleteCandidate(null);
+    } catch {
+      toast.error(dict.projects.deleteFailed);
+    } finally {
+      setDeletingProjectId(null);
+    }
   }
 
   function handleUpdate(updated: Project) {
@@ -112,12 +135,11 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
         {/* Search bar */}
         <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-[hsl(var(--ds-text-2))]" />
-          <input
-            type="text"
+          <Input
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder={dict.nav.searchPlaceholder}
-            className="w-full h-9 pl-9 pr-3 rounded-[6px] border border-border bg-[hsl(var(--ds-surface-1))] text-[13px] text-foreground placeholder:text-[hsl(var(--ds-text-2))] outline-none focus:ring-1 focus:ring-[hsl(var(--ds-accent-7))] transition-colors"
+            className="h-9 pl-9"
           />
         </div>
 
@@ -138,7 +160,7 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
         ) : loadError && projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-20">
             <div className="text-[13px] text-[hsl(var(--ds-text-2))]">{dict.common.error}</div>
-            <Button variant="outline" size="sm" className="h-8 text-[13px]" onClick={() => window.location.reload()}>
+            <Button variant="outline" size="sm" className="h-8 text-[13px]" onClick={() => void refresh()}>
               {dict.common.refresh}
             </Button>
           </div>
@@ -172,9 +194,10 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
                 project={p}
                 dict={dict}
                 canManage={isAdmin}
-                onDelete={handleDelete}
                 onUpdate={handleUpdate}
                 onOpen={() => router.push(withOrgPrefix(pathname, `/projects/${p.id}/commits`))}
+                onRequestDelete={() => setDeleteCandidate(p)}
+                deleting={deletingProjectId === p.id}
               />
             ))}
           </div>
@@ -185,10 +208,31 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
         <AddProjectModal
           open={showAdd}
           onClose={() => setShowAdd(false)}
-          onCreated={() => { setShowAdd(false); refresh(); }}
+          onCreated={() => {
+            setShowAdd(false);
+            void refresh();
+          }}
           dict={dict}
         />
       )}
+
+      <ConfirmDialog
+        open={deleteCandidate !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingProjectId) setDeleteCandidate(null);
+        }}
+        icon={<AlertTriangle className="size-4 text-warning" />}
+        title={dict.projects.deleteProject}
+        description={deleteCandidate ? `${dict.common.name}: ${deleteCandidate.name}` : undefined}
+        confirmLabel={deletingProjectId ? dict.common.loading : dict.common.delete}
+        cancelLabel={dict.common.cancel}
+        onConfirm={() => {
+          if (!deleteCandidate || deletingProjectId) return;
+          void handleDelete(deleteCandidate.id);
+        }}
+        loading={deletingProjectId !== null}
+        danger
+      />
     </div>
   );
 }
@@ -197,25 +241,34 @@ function ProjectRow({
   project,
   dict,
   canManage,
-  onDelete,
   onUpdate,
   onOpen,
+  onRequestDelete,
+  deleting,
 }: {
   project: Project;
   dict: Dictionary;
   canManage: boolean;
-  onDelete: (id: string) => void;
   onUpdate: (p: Project) => void;
   onOpen: () => void;
+  onRequestDelete: () => void;
+  deleting: boolean;
 }) {
   const [showEdit, setShowEdit] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
     <>
       <div
         className="group flex items-center gap-3 px-4 py-3 hover:bg-[hsl(var(--ds-surface-1))] cursor-pointer transition-colors duration-100"
         onClick={onOpen}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          onOpen();
+        }}
       >
         {/* Icon */}
         <div className="flex h-8 w-8 items-center justify-center rounded-[6px] bg-[hsl(var(--ds-surface-2))] border border-border shrink-0">
@@ -236,62 +289,46 @@ function ProjectRow({
 
         {/* Actions */}
         <div
-          className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-100 shrink-0"
+          className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-100 shrink-0"
           onClick={e => e.stopPropagation()}
         >
-          {confirmDelete ? (
-            <>
-              <Button
-                size="sm"
-                variant="destructive"
-                className="h-7 px-2.5 text-[12px]"
-                onClick={() => onDelete(project.id)}
-              >
-                {dict.projects.confirmDelete}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 px-2.5 text-[12px]"
-                onClick={() => setConfirmDelete(false)}
-              >
-                {dict.common.cancel}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 px-2.5 text-[12px] gap-1"
-                onClick={onOpen}
-              >
-                {dict.projects.review}
-              </Button>
-              {canManage && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="icon" variant="ghost" className="h-7 w-7">
-                      <MoreHorizontal className="size-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-40">
-                    <DropdownMenuItem onClick={() => setShowEdit(true)} className="text-[13px] gap-2">
-                      <Pencil className="size-3.5" />
-                      {dict.common.edit}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => setConfirmDelete(true)}
-                      className="text-[13px] gap-2 text-danger focus:text-danger"
-                    >
-                      <Trash2 className="size-3.5" />
-                      {dict.common.delete}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2.5 text-[12px] gap-1"
+            onClick={onOpen}
+            disabled={deleting}
+          >
+            {dict.projects.review}
+          </Button>
+          {canManage && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  aria-label={dict.common.actions}
+                  disabled={deleting}
+                >
+                  <MoreHorizontal className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuItem onClick={() => setShowEdit(true)} className="text-[13px] gap-2">
+                  <Pencil className="size-3.5" />
+                  {dict.common.edit}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={onRequestDelete}
+                  className="text-[13px] gap-2 text-danger focus:text-danger"
+                >
+                  <Trash2 className="size-3.5" />
+                  {dict.common.delete}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </div>

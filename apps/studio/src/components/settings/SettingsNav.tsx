@@ -5,17 +5,18 @@ import { usePathname } from 'next/navigation';
 import { Bell, Plug, Shield, Users } from 'lucide-react';
 import { stripOrgPrefix, withOrgPrefix } from '@/lib/orgPath';
 import { cn } from '@/lib/utils';
-
-const items = [
-  { href: '/settings/organizations', label: 'Organizations', icon: Users },
-  { href: '/settings/notifications', label: 'Notifications', icon: Bell },
-  { href: '/settings/integrations', label: 'Integrations', icon: Plug },
-  { href: '/settings/security', label: 'Security', icon: Shield },
-];
+import { useClientDictionary } from '@/i18n/client';
 
 export default function SettingsNav() {
   const pathname = usePathname();
   const basePath = stripOrgPrefix(pathname);
+  const dict = useClientDictionary();
+  const items = [
+    { href: '/settings/organizations', label: dict.settings.organizations, icon: Users },
+    { href: '/settings/notifications', label: dict.settings.notifications, icon: Bell },
+    { href: '/settings/integrations', label: dict.settings.integrations, icon: Plug },
+    { href: '/settings/security', label: dict.settings.security, icon: Shield },
+  ];
 
   return (
     <nav className="space-y-0.5">

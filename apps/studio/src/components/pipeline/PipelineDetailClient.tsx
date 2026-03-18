@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { PageLoading } from "@/components/ui/page-loading";
 import { toast } from "sonner";
 import {
   Play,
@@ -43,6 +44,7 @@ import {
   STATUS_VARIANTS,
 } from "@/services/pipelineTypes";
 import { useOrgRole } from "@/lib/useOrgRole";
+import { formatLocalDateTime } from "@/lib/dateFormat";
 
 type Tab = "runs" | "configure";
 
@@ -492,11 +494,7 @@ export default function PipelineDetailClient({
   // ── Render ─────────────────────────────────────────────────────────────────
 
   if (loading) {
-    return (
-      <div className="px-6 py-10 text-[13px] text-[hsl(var(--ds-text-2))]">
-        {dict.common.loading}
-      </div>
-    );
+    return <PageLoading label={dict.common.loading} />;
   }
 
   const currentRun = runs.find((r) => r.id === selectedRunId);
@@ -509,7 +507,7 @@ export default function PipelineDetailClient({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-[16px] font-semibold text-foreground truncate">
-                {pipeline?.name ?? "Pipeline"}
+                {pipeline?.name ?? p.title}
               </span>
               {pipeline?.environment && (
                 <Badge
@@ -538,7 +536,7 @@ export default function PipelineDetailClient({
               </div>
               {pipeline?.auto_trigger && (
                 <span className="text-accent text-[11px]">
-                  Auto-trigger on push
+                  {p.basic.autoTrigger}
                 </span>
               )}
             </div>
@@ -571,6 +569,7 @@ export default function PipelineDetailClient({
         <div className="flex px-6 gap-1">
           {(["runs", "configure"] as Tab[]).map((t) => (
             <button
+              type="button"
               key={t}
               onClick={() => setTab(t)}
               className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors ${
@@ -594,14 +593,15 @@ export default function PipelineDetailClient({
       <div className="flex-1 overflow-hidden">
         {/* ── Runs tab ──────────────────────────────────────────────────── */}
         {tab === "runs" && (
-          <div className="flex h-full">
+          <div className="flex h-full flex-col lg:flex-row">
             {/* Left: run list */}
-            <div className="w-64 shrink-0 border-r border-[hsl(var(--ds-border-1))] flex flex-col overflow-hidden">
+            <div className="w-full lg:w-64 h-56 lg:h-auto shrink-0 border-b lg:border-b-0 lg:border-r border-[hsl(var(--ds-border-1))] flex flex-col overflow-hidden">
               <div className="px-4 py-2.5 border-b border-[hsl(var(--ds-border-1))] flex items-center justify-between">
                 <span className="text-xs font-medium text-foreground">
                   {p.detail.runHistory}
                 </span>
                 <button
+                  type="button"
                   onClick={loadRuns}
                   className="text-[hsl(var(--ds-text-2))] hover:text-foreground transition-colors"
                 >
@@ -652,8 +652,8 @@ export default function PipelineDetailClient({
                         <span className="ml-1">· {run.branch}</span>
                       )}
                     </div>
-                    <div className="text-[11px] text-[hsl(var(--ds-text-2))]">
-                      {new Date(run.created_at).toLocaleString()}
+                      <div className="text-[11px] text-[hsl(var(--ds-text-2))]">
+                      {formatLocalDateTime(run.created_at)}
                     </div>
                   </button>
                 ))}
@@ -751,9 +751,9 @@ export default function PipelineDetailClient({
                   </div>
 
                   {/* Jobs + logs */}
-                  <div className="flex-1 flex overflow-hidden">
+                  <div className="flex-1 flex flex-col xl:flex-row overflow-hidden">
                     {/* Job/step tree */}
-                    <div className="w-56 shrink-0 border-r border-[hsl(var(--ds-border-1))] overflow-y-auto">
+                    <div className="w-full xl:w-56 max-h-48 xl:max-h-none shrink-0 border-b xl:border-b-0 xl:border-r border-[hsl(var(--ds-border-1))] overflow-y-auto">
                       {!runDetail && (
                         <div className="px-4 py-6 text-[12px] text-[hsl(var(--ds-text-2))]">
                           {dict.common.loading}
@@ -762,6 +762,7 @@ export default function PipelineDetailClient({
                       {runDetail?.jobs.map((job) => (
                         <div key={job.id}>
                           <button
+                            type="button"
                             className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-[hsl(var(--ds-surface-1))] transition-colors"
                             onClick={() =>
                               setExpandedJobId(
@@ -784,6 +785,7 @@ export default function PipelineDetailClient({
                               .filter((s) => s.job_id === job.id)
                               .map((step) => (
                                 <button
+                                  type="button"
                                   key={step.id}
                                   onClick={() => loadLog(step.id)}
                                   className={`w-full flex items-center gap-2 pl-8 pr-4 py-1.5 transition-colors text-left ${
@@ -805,19 +807,19 @@ export default function PipelineDetailClient({
                     </div>
 
                     {/* Log viewer */}
-                    <div className="flex-1 flex flex-col overflow-hidden bg-[#0d0d0d]">
+                    <div className="flex-1 flex flex-col overflow-hidden bg-terminal">
                       {!selectedStepId && (
-                        <div className="flex-1 flex items-center justify-center text-[12px] text-[hsl(var(--ds-text-2))]">
+                        <div className="flex-1 flex items-center justify-center text-[12px] text-terminal-muted">
                           {p.log.selectStep}
                         </div>
                       )}
                       {selectedStepId && (
                         <div
                           ref={logRef}
-                          className="flex-1 overflow-y-auto p-4 font-mono text-[11px] text-green-400 leading-relaxed whitespace-pre-wrap"
+                          className="flex-1 overflow-y-auto p-4 font-mono text-[11px] text-terminal leading-relaxed whitespace-pre-wrap"
                         >
                           {logText || (
-                            <span className="text-[hsl(var(--ds-text-2))]">
+                            <span className="text-terminal-muted">
                               {p.log.noLogs}
                             </span>
                           )}
@@ -827,11 +829,11 @@ export default function PipelineDetailClient({
 
                     {/* Artifacts panel */}
                     {artifacts.length > 0 && (
-                      <div className="border-t border-[hsl(var(--ds-border-1))] bg-[#0d0d0d]">
+                      <div className="border-t border-[hsl(var(--ds-border-1))] bg-terminal">
                         <div className="flex items-center gap-1.5 px-4 py-2 border-b border-[hsl(var(--ds-border-1))]">
                           <Package className="size-3 text-[hsl(var(--ds-text-2))]" />
                           <span className="text-[11px] font-medium text-[hsl(var(--ds-text-2))] uppercase tracking-wide">
-                            Artifacts ({artifacts.length})
+                            {p.artifactsLabel.replace("{{count}}", String(artifacts.length))}
                           </span>
                         </div>
                         <div className="max-h-40 overflow-y-auto">
@@ -847,7 +849,7 @@ export default function PipelineDetailClient({
                                 className="flex items-center gap-3 px-4 py-2 border-b border-[hsl(var(--ds-border-1))]/30 hover:bg-white/5 transition-colors"
                               >
                                 <Package className="size-3 text-[hsl(var(--ds-text-2))] shrink-0" />
-                                <span className="flex-1 font-mono text-[11px] text-green-300 truncate" title={a.path}>
+                                <span className="flex-1 font-mono text-[11px] text-terminal truncate" title={a.path}>
                                   {filename}
                                 </span>
                                 <span className="text-[10px] text-[hsl(var(--ds-text-2))] shrink-0 w-16 text-right">
@@ -878,6 +880,7 @@ export default function PipelineDetailClient({
             <div className="w-40 shrink-0 border-r border-[hsl(var(--ds-border-1))] py-4 space-y-1 px-3">
               {STAGE_KEYS.map((s, i) => (
                 <button
+                  type="button"
                   key={s}
                   onClick={() => setConfigStageTab(s)}
                   className={`w-full flex items-center gap-2 rounded-[6px] px-3 py-2 text-left text-xs transition-colors ${
@@ -895,6 +898,7 @@ export default function PipelineDetailClient({
               <Separator className="my-3" />
               {/* Pipeline-level settings */}
               <button
+                type="button"
                 onClick={() => setConfigStageTab("settings")}
                 className={`w-full flex items-center gap-2 rounded-[6px] px-3 py-2 text-left text-xs transition-colors ${
                   configStageTab === "settings"
@@ -1032,6 +1036,7 @@ export default function PipelineDetailClient({
                           const active = config.notifications.channels.includes(ch);
                           return (
                             <button
+                              type="button"
                               key={ch}
                               onClick={() => {
                                 if (!isAdmin) return;
@@ -1153,6 +1158,7 @@ export default function PipelineDetailClient({
                         const help = mode === 'allow' ? p.concurrencyMode.allowHelp : mode === 'queue' ? p.concurrencyMode.queueHelp : p.concurrencyMode.cancelPreviousHelp;
                         return (
                           <button
+                            type="button"
                             key={mode}
                             onClick={async () => {
                               if (!isAdmin || !pipeline) return;

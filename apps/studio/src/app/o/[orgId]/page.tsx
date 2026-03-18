@@ -37,6 +37,7 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
     recentRuns,
     pipelineSuccessRow,
     projectScores,
+    firstProjectRow,
   ] = await Promise.all([
     queryOne<{ count: string }>(
       `select count(*)::text as count
@@ -135,6 +136,14 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
        order by r.project_id, r.created_at desc`,
       [orgId]
     ),
+    queryOne<{ id: string }>(
+      `select id
+       from code_projects
+       where org_id = $1
+       order by created_at asc
+       limit 1`,
+      [orgId]
+    ),
   ]);
 
   const totalProjects = Number(projectCountRow?.count ?? 0);
@@ -146,6 +155,9 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
   const pipelineTotal = Number(pipelineSuccessRow?.total ?? 0);
   const pipelineSuccess = Number(pipelineSuccessRow?.success ?? 0);
   const pipelineSuccessRate = pipelineTotal > 0 ? Math.round((pipelineSuccess / pipelineTotal) * 100) : null;
+  const createPipelineHref = firstProjectRow?.id
+    ? `/o/${orgId}/projects/${firstProjectRow.id}/pipelines`
+    : `/o/${orgId}/projects`;
 
   const dateFmt = new Intl.DateTimeFormat(locale, {
     month: 'short',
@@ -310,7 +322,7 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
               </div>
               <div className="flex gap-2 flex-wrap">
                 <Link
-                  href={`/o/${orgId}/projects`}
+                  href={createPipelineHref}
                   className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-border px-3 text-[13px] font-medium text-foreground hover:bg-[hsl(var(--ds-surface-1))] transition-colors"
                 >
                   <Zap className="size-3.5" />
