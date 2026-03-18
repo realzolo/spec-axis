@@ -13,6 +13,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { Dictionary } from '@/i18n';
+import type { Locale } from '@/i18n/config';
+import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
+import ThemeToggle from '@/components/theme/ThemeToggle';
 import { extractOrgFromPath, stripOrgPrefix, withOrgPrefix } from '@/lib/orgPath';
 import { cn } from '@/lib/utils';
 
@@ -96,7 +99,7 @@ function ProjectSwitcher({
   );
 }
 
-export default function Topbar({ dict }: { dict: Dictionary }) {
+export default function Topbar({ dict, locale }: { dict: Dictionary; locale: Locale }) {
   const pathname = usePathname();
   const { orgId } = extractOrgFromPath(pathname);
   const basePath = stripOrgPrefix(pathname);
@@ -111,6 +114,9 @@ export default function Topbar({ dict }: { dict: Dictionary }) {
   if (basePath.startsWith('/projects')) {
     sectionLabel = dict.nav.projects;
     sectionHref = orgId ? `/o/${orgId}/projects` : '/projects';
+  } else if (basePath.startsWith('/analytics')) {
+    sectionLabel = dict.nav.analytics;
+    sectionHref = orgId ? `/o/${orgId}/analytics` : '/analytics';
   } else if (basePath.startsWith('/rules')) {
     sectionLabel = dict.nav.rules;
   } else if (basePath.startsWith('/settings')) {
@@ -119,38 +125,47 @@ export default function Topbar({ dict }: { dict: Dictionary }) {
     sectionLabel = dict.nav.home;
   }
 
-  if (!sectionLabel) return null;
-
   return (
-    <header className="h-11 flex items-center gap-1 px-4 border-b border-border bg-[hsl(var(--ds-background-2))] shrink-0">
-      {/* Section breadcrumb */}
-      {sectionHref ? (
-        <Link
-          href={sectionHref}
-          className="text-[13px] text-[hsl(var(--ds-text-2))] hover:text-foreground transition-colors duration-100"
-        >
-          {sectionLabel}
-        </Link>
-      ) : (
-        <span className={cn(
-          'text-[13px]',
-          currentProjectId ? 'text-[hsl(var(--ds-text-2))]' : 'text-foreground font-medium',
-        )}>
-          {sectionLabel}
-        </span>
-      )}
+    <header className="h-11 flex items-center px-4 border-b border-border bg-[hsl(var(--ds-background-2))] shrink-0 gap-3">
+      <div className="flex min-w-0 items-center gap-1">
+        {/* Section breadcrumb */}
+        {sectionLabel && sectionHref ? (
+          <Link
+            href={sectionHref}
+            className="text-[13px] text-[hsl(var(--ds-text-2))] hover:text-foreground transition-colors duration-100"
+          >
+            {sectionLabel}
+          </Link>
+        ) : sectionLabel ? (
+          <span className={cn(
+            'text-[13px]',
+            currentProjectId ? 'text-[hsl(var(--ds-text-2))]' : 'text-foreground font-medium',
+          )}>
+            {sectionLabel}
+          </span>
+        ) : null}
 
-      {/* Project switcher segment */}
-      {currentProjectId && (
-        <>
-          <span className="text-[hsl(var(--ds-border-3))] text-sm select-none">/</span>
-          <ProjectSwitcher
-            currentProjectId={currentProjectId}
-            pathname={pathname}
-            dict={dict}
-          />
-        </>
-      )}
+        {/* Project switcher segment */}
+        {currentProjectId && (
+          <>
+            <span className="text-[hsl(var(--ds-border-3))] text-sm select-none">/</span>
+            <ProjectSwitcher
+              currentProjectId={currentProjectId}
+              pathname={pathname}
+              dict={dict}
+            />
+          </>
+        )}
+      </div>
+
+      <div className="ml-auto flex items-center gap-0.5">
+        <LanguageSwitcher
+          currentLocale={locale}
+          compact
+          className="border-[hsl(var(--ds-border-2))] bg-[hsl(var(--ds-background-2))] text-foreground hover:bg-[hsl(var(--ds-surface-1))]"
+        />
+        <ThemeToggle className="h-7 w-7 border-[hsl(var(--ds-border-2))] bg-[hsl(var(--ds-background-2))] text-foreground hover:bg-[hsl(var(--ds-surface-1))]" />
+      </div>
     </header>
   );
 }

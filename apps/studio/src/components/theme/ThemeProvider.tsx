@@ -19,22 +19,14 @@ export function ThemeProvider({
   children: React.ReactNode;
   defaultTheme?: ThemeMode;
 }) {
-  const [theme, setTheme] = useState<ThemeMode>(() => {
-    if (typeof window === 'undefined') {
-      return defaultTheme;
-    }
-    const stored = window.localStorage.getItem('theme');
-    if (stored === 'light' || stored === 'dark') {
-      return stored;
-    }
-    return defaultTheme;
-  });
+  const [theme, setTheme] = useState<ThemeMode>(defaultTheme);
 
   useEffect(() => {
     const root = document.documentElement;
     root.setAttribute('data-theme', theme);
     root.classList.toggle('dark', theme === 'dark');
     window.localStorage.setItem('theme', theme);
+    document.cookie = `theme=${theme}; path=/; max-age=31536000; samesite=lax`;
   }, [theme]);
 
   const value = useMemo(

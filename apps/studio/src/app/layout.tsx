@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
-import Script from 'next/script';
 import './globals.css';
 import { Providers } from './providers';
 import { getLocale } from '@/lib/locale';
 import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
+import { cookies } from 'next/headers';
 
 const geistSans = GeistSans;
 const geistMono = GeistMono;
@@ -23,29 +23,19 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await getLocale();
+  const cookieStore = await cookies();
+  const storedTheme = cookieStore.get('theme')?.value;
+  const initialTheme = storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'dark';
 
   return (
     <html
       lang={locale}
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} dark`}
-      data-theme="dark"
+      className={`${geistSans.variable} ${geistMono.variable}${initialTheme === 'dark' ? ' dark' : ''}`}
+      data-theme={initialTheme}
     >
-      <head>
-        <Script id="theme-init" strategy="beforeInteractive">
-          {`(() => {
-  try {
-    const stored = window.localStorage.getItem('theme');
-    const theme = stored === 'light' || stored === 'dark' ? stored : 'dark';
-    const root = document.documentElement;
-    root.setAttribute('data-theme', theme);
-    root.classList.toggle('dark', theme === 'dark');
-  } catch {}
-})();`}
-        </Script>
-      </head>
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <Providers>{children}</Providers>
+        <Providers defaultTheme={initialTheme}>{children}</Providers>
       </body>
     </html>
   );

@@ -2,10 +2,17 @@
 
 import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/components/theme/ThemeProvider';
+import type { ThemeMode } from '@/components/theme/ThemeProvider';
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({
+  children,
+  defaultTheme,
+}: {
+  children: React.ReactNode;
+  defaultTheme: ThemeMode;
+}) {
   return (
-    <ThemeProvider defaultTheme="dark">
+    <ThemeProvider defaultTheme={defaultTheme}>
       {children}
       <Toaster />
     </ThemeProvider>
