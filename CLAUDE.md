@@ -39,7 +39,7 @@ Unless stated otherwise, paths in this guide are relative to `apps/studio`.
 - AI code review with configurable rule sets, quality gate scoring, and issue tracking
 - Rule set template marketplace: 5 built-in templates (React, Go, Security/OWASP, Python, Performance) importable via `GET /api/rules/templates` + `POST /api/rules/templates/[id]/import`
 - Report comparison view: diff two reports side-by-side (new / resolved / persisting issues) at `/o/:orgId/projects/:id/reports/compare?a=...&b=...`
-- Pipeline concurrency control: `allow | queue | cancel_previous` modes stored in `pipelines.concurrency_mode` column (requires migration `docs/db/migrations/add_concurrency_mode.sql`)
+- Pipeline concurrency control: `allow | queue | cancel_previous` modes stored in `pipelines.concurrency_mode` column (included in `docs/db/init.sql`; use migration for existing DBs)
 - Notification settings UI at `/o/:orgId/settings/notifications` backed by `/api/notification-settings`
 - Dashboard org home page (`/o/:orgId`) shows 4 stat cards (projects, avg score, open issues, pipeline success rate), quick actions, per-project score list, and recent activity
 
@@ -96,7 +96,7 @@ Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on si
 - **No compatibility naming**: Do not introduce `legacy*`, `compat*`, `polyfill*`, or similar identifiers.
 - **Single contract source**: Runner HTTP contracts are defined in `packages/contracts/src/runner.ts` and consumed by Studio.
 - **Type safety baseline**: `apps/studio/tsconfig.json` enforces strict type checks (`allowJs: false`, `skipLibCheck: false`, `exactOptionalPropertyTypes: true`, `noUncheckedIndexedAccess: true`).
-- **Schema requirement**: migrations must be applied before runtime. Missing required columns (for example `pipelines.concurrency_mode`) are treated as errors, not tolerated with fallback logic.
+- **Schema requirement**: latest schema (`docs/db/init.sql`) and any required upgrade migrations must be applied before runtime. Missing required columns (for example `pipelines.concurrency_mode`) are treated as errors, not tolerated with fallback logic.
 - **Canonical provider IDs only**: Use a single provider identifier per integration type (current AI provider key is `openai-api`). Do not add alias keys.
 - **Fail-fast on unsupported providers**: Provider switch statements must throw on unknown values; no silent fallback client selection.
 
@@ -249,7 +249,8 @@ docs/
   db/
     init.sql                    # Full schema initialization
     migrations/
-      add_concurrency_mode.sql  # ALTER TABLE pipelines ADD COLUMN concurrency_mode
+      004_api_tokens.sql        # Adds api_tokens table for existing DB upgrades
+      add_concurrency_mode.sql  # Adds pipelines.concurrency_mode for existing DB upgrades
 packages/
   contracts/                    # Shared API/contracts (active)
 ```
@@ -363,7 +364,7 @@ If new install warnings appear, approve the dependency and update the allowlist.
 - **Pipeline secrets** are stored in `pipeline_secrets` encrypted at rest (AES-256-GCM, `ENCRYPTION_KEY`) and injected into every step as environment variables (write-only in UI).
 - **Execution model**: jobs form a DAG via `needs`; steps run sequentially inside a job.
 - **Step types**: `shell` (default) runs via `/bin/sh -c`; `docker` runs `docker run --rm -w /workspace -v {workingDir}:/workspace {envFlags} {image} /bin/sh -c "{script}"`. Set `type: "docker"` and `dockerImage` on a step to use Docker.
-- **Concurrency modes**: each pipeline has a `concurrency_mode` column (`allow` / `queue` / `cancel_previous`). Studio API enforces this before creating a new run. Requires migration: `docs/db/migrations/add_concurrency_mode.sql`.
+- **Concurrency modes**: each pipeline has a `concurrency_mode` column (`allow` / `queue` / `cancel_previous`). Studio API enforces this before creating a new run. Included in `docs/db/init.sql`; existing DBs should apply `docs/db/migrations/add_concurrency_mode.sql`.
 - **Events** are appended to `pipeline_run_events` for UI polling and audit.
 - **Logs** and **artifacts** are stored locally under `RUNNER_DATA_DIR`:
   - `logs/{run_id}/{job_key}/{step_key}.log`
@@ -424,7 +425,7 @@ toast.success('...'); toast.error('...'); toast.warning('...');
 - Public pages accessible without login: `/`, `/login`, `/verify`, `/reset`, `/auth/*`, `/invite/*`, `/terms`, `/privacy`
 - Dashboard routes must be accessed via `/o/:orgId/...` (middleware rewrites internally)
 - Project detail tabs support deep links via query params: `?tab=commits|codebase|stats|config`. Codebase supports `ref`, `path`, `line` for jump-to-location.
-- `PATCH /api/pipelines/[id]` updates `concurrency_mode` in Studio DB (requires `add_concurrency_mode.sql` migration applied)
+- `PATCH /api/pipelines/[id]` updates `concurrency_mode` in Studio DB (schema must include `pipelines.concurrency_mode`; present in `init.sql`)
 - `POST /api/pipelines/[id]/runs` enforces concurrency gate before calling runner (409 if `queue` mode and run active)
 - Studio server calls Runner `POST /v1/pipeline-runs/{runId}/cancel` and expects `{ ok: true }` (used by `cancel_previous` concurrency mode)
 - `GET /api/rules/templates` returns static template list; `POST /api/rules/templates/[id]/import` is admin-only
@@ -432,14 +433,17 @@ toast.success('...'); toast.error('...'); toast.warning('...');
 
 ## DB Migrations
 
-Incremental migrations live in `docs/db/migrations/`. Apply them manually after `init.sql`:
+Incremental migrations live in `docs/db/migrations/` and are used to upgrade existing databases.
+`docs/db/init.sql` already contains the latest full schema for fresh databases.
 
 ```bash
+psql "$DATABASE_URL" -f docs/db/migrations/004_api_tokens.sql
 psql "$DATABASE_URL" -f docs/db/migrations/add_concurrency_mode.sql
 ```
 
 | File | Description |
 |------|-------------|
+| `004_api_tokens.sql` | Adds `api_tokens` table and related indexes |
 | `add_concurrency_mode.sql` | Adds `concurrency_mode TEXT NOT NULL DEFAULT 'allow'` to `pipelines` table |
 
 ## FAQ

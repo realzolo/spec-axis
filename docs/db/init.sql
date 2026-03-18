@@ -128,6 +128,29 @@ create index idx_org_invites_org_id on org_invites(org_id);
 create index idx_org_invites_email on org_invites(email);
 
 -- ============================================================
+-- API tokens
+-- ============================================================
+create table api_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth_users(id) on delete cascade,
+  org_id uuid not null references organizations(id) on delete cascade,
+  name text not null,
+  token_hash text not null unique,
+  token_prefix text not null,
+  scopes text[] not null default '{}',
+  last_used_at timestamptz,
+  expires_at timestamptz,
+  created_at timestamptz not null default now(),
+  constraint api_tokens_scopes_check check (
+    scopes <@ array['read','write','pipeline:trigger']::text[]
+  )
+);
+
+create index api_tokens_user_idx on api_tokens(user_id);
+create index api_tokens_org_idx on api_tokens(org_id);
+create index api_tokens_hash_idx on api_tokens(token_hash);
+
+-- ============================================================
 -- Integrations
 -- ============================================================
 create table org_integrations (
@@ -594,6 +617,8 @@ create table pipelines (
   description text,
   is_active boolean not null default true,
   current_version_id uuid,
+  concurrency_mode text not null default 'allow'
+    check (concurrency_mode in ('allow', 'queue', 'cancel_previous')),
   -- Pipeline execution fields
   environment text not null default 'production'
     check (environment in ('development', 'staging', 'production')),
