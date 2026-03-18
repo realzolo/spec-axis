@@ -114,7 +114,7 @@ Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on si
   - `pnpm -C apps/studio lint` returns 0 errors and 0 warnings.
   - `pnpm -C apps/studio build` succeeds.
 - Runner backend baseline must compile:
-  - `cd apps/runner && GOCACHE=/tmp/spec-axis-go-cache go build ./...`
+  - `cd apps/runner && GOMODCACHE=../../.cache/go/mod GOCACHE=../../.cache/go/build go build ./...`
 
 ## UI Components
 
@@ -394,7 +394,8 @@ Automatic mirror sync can be triggered by:
 - Project creation triggers an initial mirror sync in the background.
 Stale workspaces can be cleared via `POST /api/codebase/cleanup` (uses `x-task-token` if `TASK_RUNNER_TOKEN` is set).
 
-Local cache directories (for example `apps/studio/.codebase/` and `/.pnpm-store/`) are not committed to Git.
+Tool caches are centralized under repo root `/.cache/` (for example `/.cache/go/mod`, `/.cache/go/build`, `/.cache/pnpm/store`, `/.cache/codebase`) and are not committed to Git.
+`CodebaseService` default root is `/.cache/codebase` (override via `CODEBASE_ROOT` when needed).
 Note: env vars like `CODEBASE_ROOT` / `CODEBASE_MIRRORS_DIR` / `CODEBASE_WORKSPACES_DIR` treat empty values (e.g. `FOO=` in `.env`) as "unset" and fall back to defaults.
 
 ```

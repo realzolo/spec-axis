@@ -27,8 +27,11 @@ apps/runner/data/logs/
 *.pem
 
 # local caches
+/.cache/
 **/.codebase/
 /.pnpm-store/
+/.gomodcache/
+/.gocache/
 
 # debug
 npm-debug.log*

@@ -1,5 +1,5 @@
 import path from 'path';
-import { promises as fs } from 'fs';
+import { existsSync, promises as fs } from 'fs';
 import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 
@@ -107,7 +107,7 @@ type CacheEntry<T> = {
   expiresAt: number;
 };
 
-const DEFAULT_ROOT = path.resolve(process.cwd(), '.codebase');
+const DEFAULT_ROOT = path.join(resolveWorkspaceRoot(), '.cache', 'codebase');
 const DEFAULT_SYNC_INTERVAL_MS = 60_000;
 const DEFAULT_LOCK_TIMEOUT_MS = 120_000;
 const DEFAULT_LOCK_STALE_MS = 300_000;
@@ -829,6 +829,23 @@ export class CodebaseService {
 }
 
 export const codebaseService = new CodebaseService();
+
+function resolveWorkspaceRoot(): string {
+  let current = process.cwd();
+  while (true) {
+    if (
+      existsSync(path.join(current, 'pnpm-workspace.yaml')) ||
+      existsSync(path.join(current, '.git'))
+    ) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return process.cwd();
+    }
+    current = parent;
+  }
+}
 
 function readNumberEnv(name: string, override: number | undefined, fallback: number) {
   if (typeof override === 'number' && Number.isFinite(override)) return override;

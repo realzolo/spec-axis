@@ -113,10 +113,12 @@ Open [http://localhost:8109](http://localhost:8109).
 pnpm dev                                  # Studio dev server
 pnpm build                                # Production build + TypeScript check
 pnpm lint                                 # ESLint
-cd apps/runner && go build ./...          # Build runner
+cd apps/runner && GOMODCACHE=../../.cache/go/mod GOCACHE=../../.cache/go/build go build ./...  # Build runner
 cd apps/runner && go run ./cmd/runner     # Start runner
 psql "$DATABASE_URL" -f docs/db/init.sql  # Reset schema
 ```
+
+Local caches are standardized under repository root `/.cache/` (for example `/.cache/go/mod/`, `/.cache/go/build/`, `/.cache/pnpm/store/`, `/.cache/codebase/`) and are ignored by Git.
 
 ## Pipeline Step Types
 
