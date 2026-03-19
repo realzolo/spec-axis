@@ -96,9 +96,9 @@ function calculateStats(reports: Report[]): StatsResponse {
     };
   }
 
-  const doneReports = reports.filter((r) => r.status === 'done');
+  const doneReports = reports.filter((r) => r.status === 'done' || r.status === 'partial_failed');
   const pendingReports = reports.filter(
-    (r) => r.status === 'pending' || r.status === 'analyzing'
+    (r) => r.status === 'pending' || r.status === 'running'
   ).length;
 
   // Calculate average score

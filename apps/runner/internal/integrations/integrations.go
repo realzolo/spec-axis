@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -34,11 +35,19 @@ type VCSConfig struct {
 
 type AIConfig struct {
 	BaseURL         string
+	APIStyle        string
 	ModelName       string
 	MaxTokens       int
 	Temperature     float64
 	ReasoningEffort string
 	APIKey          string
+}
+
+var aiWebUIHosts = map[string]bool{
+	"platform.openai.com": true,
+	"chat.openai.com":     true,
+	"openai.com":          true,
+	"www.openai.com":      true,
 }
 
 func ResolveVCSClient(ctx context.Context, st *store.Store, project *store.Project) (VCSClient, error) {
@@ -83,12 +92,23 @@ func ResolveAIClient(ctx context.Context, st *store.Store, project *store.Projec
 
 	config := AIConfig{
 		BaseURL:         readConfigString(integration.Config, "baseUrl"),
+		APIStyle:        readConfigString(integration.Config, "apiStyle"),
 		ModelName:       readConfigString(integration.Config, "model"),
 		MaxTokens:       readConfigInt(integration.Config, "maxTokens", 4096),
 		Temperature:     readConfigFloat(integration.Config, "temperature", 0.7),
 		ReasoningEffort: readConfigString(integration.Config, "reasoningEffort"),
 		APIKey:          apiKey,
 	}
+	normalizedBaseURL, err := normalizeAIBaseURL(config.BaseURL)
+	if err != nil {
+		return nil, err
+	}
+	config.BaseURL = normalizedBaseURL
+	normalizedAPIStyle, err := normalizeAPIStyle(config.APIStyle)
+	if err != nil {
+		return nil, err
+	}
+	config.APIStyle = normalizedAPIStyle
 	if strings.TrimSpace(config.ModelName) == "" {
 		return nil, fmt.Errorf("AI model is required")
 	}
@@ -99,6 +119,53 @@ func ResolveAIClient(ctx context.Context, st *store.Store, project *store.Projec
 	default:
 		return nil, fmt.Errorf("unsupported AI provider: %s", integration.Provider)
 	}
+}
+
+func normalizeAIBaseURL(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", fmt.Errorf("AI baseUrl is required")
+	}
+
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("AI baseUrl must be a valid absolute URL")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("AI baseUrl must use http or https")
+	}
+
+	host := strings.ToLower(parsed.Hostname())
+	if aiWebUIHosts[host] {
+		return "", fmt.Errorf(
+			"AI baseUrl points to a web console URL. Use an API endpoint, for example https://api.openai.com/v1",
+		)
+	}
+
+	path := strings.TrimSuffix(parsed.Path, "/")
+	endpointSuffixes := []string{
+		"/v1/chat/completions",
+		"/v1/responses",
+		"/v1/messages",
+		"/chat/completions",
+		"/responses",
+		"/messages",
+	}
+	for _, suffix := range endpointSuffixes {
+		if strings.HasSuffix(path, suffix) {
+			path = strings.TrimSuffix(path, suffix)
+			break
+		}
+	}
+
+	if host == "api.openai.com" && (path == "" || path == "/") {
+		path = "/v1"
+	}
+
+	parsed.Path = path
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return strings.TrimSuffix(parsed.String(), "/"), nil
 }
 
 func wrapSecretDecryptError(integrationType string, err error) error {
@@ -352,6 +419,13 @@ func NewOpenAIAPIClient(config AIConfig) *OpenAIAPIClient {
 	}
 }
 
+const (
+	aiRequestMaxAttempts = 3
+	aiRetryBaseDelay     = 700 * time.Millisecond
+	aiRetryMaxTokensCap  = 32768
+	aiRetryMinTokens     = 6144
+)
+
 func (c *OpenAIAPIClient) Model() string {
 	return c.config.ModelName
 }
@@ -367,6 +441,10 @@ var noTemperatureModels = []string{
 }
 
 var reasoningModelPrefixes = []string{"o", "gpt-5", "codex"}
+var supportedAPIStyles = map[string]bool{
+	"openai":    true,
+	"anthropic": true,
+}
 
 func supportsTemperature(model string) bool {
 	normalized := strings.TrimSpace(strings.ToLower(model))
@@ -397,6 +475,14 @@ func normalizeReasoningEffort(value string) string {
 	}
 }
 
+func normalizeAPIStyle(value string) (string, error) {
+	style := strings.TrimSpace(strings.ToLower(value))
+	if supportedAPIStyles[style] {
+		return style, nil
+	}
+	return "", fmt.Errorf("AI apiStyle must be either \"openai\" or \"anthropic\"")
+}
+
 func isOpenAIOfficialBase(baseURL string) bool {
 	parsed, err := url.Parse(strings.TrimSpace(baseURL))
 	if err != nil {
@@ -419,7 +505,12 @@ func (c *OpenAIAPIClient) Analyze(prompt string, code string, timeout time.Durat
 	if strings.TrimSpace(c.config.BaseURL) == "" {
 		return domain.ReviewResult{}, fmt.Errorf("AI baseUrl is required")
 	}
-	if strings.Contains(strings.ToLower(c.config.BaseURL), "anthropic.com") {
+	apiStyle, err := normalizeAPIStyle(c.config.APIStyle)
+	if err != nil {
+		return domain.ReviewResult{}, err
+	}
+	useAnthropic := apiStyle == "anthropic"
+	if useAnthropic {
 		return c.analyzeAnthropic(prompt, code, timeout)
 	}
 	if shouldUseResponsesAPI(c.config) {
@@ -429,10 +520,20 @@ func (c *OpenAIAPIClient) Analyze(prompt string, code string, timeout time.Durat
 }
 
 func (c *OpenAIAPIClient) analyzeAnthropic(prompt string, code string, timeout time.Duration) (domain.ReviewResult, error) {
+	return c.analyzeAnthropicWithBudget(prompt, code, timeout, c.config.MaxTokens, true)
+}
+
+func (c *OpenAIAPIClient) analyzeAnthropicWithBudget(
+	prompt string,
+	code string,
+	timeout time.Duration,
+	maxTokens int,
+	allowTokenRetry bool,
+) (domain.ReviewResult, error) {
 	fullPrompt := buildClientPrompt(prompt, code, true)
 	body := map[string]any{
 		"model":      c.config.ModelName,
-		"max_tokens": c.config.MaxTokens,
+		"max_tokens": maxTokens,
 		"messages": []map[string]any{
 			{"role": "user", "content": fullPrompt},
 		},
@@ -447,31 +548,22 @@ func (c *OpenAIAPIClient) analyzeAnthropic(prompt string, code string, timeout t
 	if strings.HasSuffix(base, "/v1") {
 		endpoint = base + "/messages"
 	}
-	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(payload))
+	parsed, err := c.postJSONWithRetry(endpoint, payload, timeout, "anthropic", func(req *http.Request) {
+		req.Header.Set("x-api-key", c.config.APIKey)
+		req.Header.Set("anthropic-version", "2023-06-01")
+	})
 	if err != nil {
 		return domain.ReviewResult{}, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", c.config.APIKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return domain.ReviewResult{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return domain.ReviewResult{}, fmt.Errorf("anthropic error: %s", resp.Status)
-	}
-
-	raw, err := readAll(resp)
-	if err != nil {
-		return domain.ReviewResult{}, err
-	}
-
-	parsed, err := parseJSONBody(raw, "anthropic")
-	if err != nil {
+	if err := detectAnthropicOutputLimit(parsed); err != nil {
+		if allowTokenRetry {
+			if retryBudget, ok := nextRetryTokenBudget(maxTokens); ok {
+				return c.analyzeAnthropicWithBudget(prompt, code, timeout, retryBudget, false)
+			}
+		}
+		if !allowTokenRetry {
+			return domain.ReviewResult{}, fmt.Errorf("%w; automatic token retry exhausted", err)
+		}
 		return domain.ReviewResult{}, err
 	}
 
@@ -490,13 +582,23 @@ func (c *OpenAIAPIClient) analyzeAnthropic(prompt string, code string, timeout t
 }
 
 func (c *OpenAIAPIClient) analyzeOpenAI(prompt string, code string, timeout time.Duration) (domain.ReviewResult, error) {
+	return c.analyzeOpenAIWithBudget(prompt, code, timeout, c.config.MaxTokens, true)
+}
+
+func (c *OpenAIAPIClient) analyzeOpenAIWithBudget(
+	prompt string,
+	code string,
+	timeout time.Duration,
+	maxTokens int,
+	allowTokenRetry bool,
+) (domain.ReviewResult, error) {
 	fullPrompt := buildClientPrompt(prompt, code, false)
 	body := map[string]any{
 		"model": c.config.ModelName,
 		"messages": []map[string]any{
 			{"role": "user", "content": fullPrompt},
 		},
-		"max_tokens": c.config.MaxTokens,
+		"max_tokens": maxTokens,
 	}
 	if supportsTemperature(c.config.ModelName) {
 		body["temperature"] = c.config.Temperature
@@ -505,32 +607,23 @@ func (c *OpenAIAPIClient) analyzeOpenAI(prompt string, code string, timeout time
 
 	base := strings.TrimSuffix(c.config.BaseURL, "/")
 	endpoint := base + "/chat/completions"
-	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(payload))
+	parsed, err := c.postJSONWithRetry(endpoint, payload, timeout, "openai-chat-completions", func(req *http.Request) {
+		if c.config.APIKey != "" {
+			req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+		}
+	})
 	if err != nil {
 		return domain.ReviewResult{}, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if c.config.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
-	}
-
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return domain.ReviewResult{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return domain.ReviewResult{}, fmt.Errorf("openai-api error: %s", resp.Status)
-	}
-
-	raw, err := readAll(resp)
-	if err != nil {
-		return domain.ReviewResult{}, err
-	}
-
-	parsed, err := parseJSONBody(raw, "openai-chat-completions")
-	if err != nil {
+	if err := detectOpenAIChatOutputLimit(parsed); err != nil {
+		if allowTokenRetry {
+			if retryBudget, ok := nextRetryTokenBudget(maxTokens); ok {
+				return c.analyzeOpenAIWithBudget(prompt, code, timeout, retryBudget, false)
+			}
+		}
+		if !allowTokenRetry {
+			return domain.ReviewResult{}, fmt.Errorf("%w; automatic token retry exhausted", err)
+		}
 		return domain.ReviewResult{}, err
 	}
 	choices, _ := parsed["choices"].([]any)
@@ -549,11 +642,21 @@ func (c *OpenAIAPIClient) analyzeOpenAI(prompt string, code string, timeout time
 }
 
 func (c *OpenAIAPIClient) analyzeOpenAIResponses(prompt string, code string, timeout time.Duration) (domain.ReviewResult, error) {
+	return c.analyzeOpenAIResponsesWithBudget(prompt, code, timeout, c.config.MaxTokens, true)
+}
+
+func (c *OpenAIAPIClient) analyzeOpenAIResponsesWithBudget(
+	prompt string,
+	code string,
+	timeout time.Duration,
+	maxOutputTokens int,
+	allowTokenRetry bool,
+) (domain.ReviewResult, error) {
 	fullPrompt := buildClientPrompt(prompt, code, false)
 	body := map[string]any{
 		"model":             c.config.ModelName,
 		"input":             fullPrompt,
-		"max_output_tokens": c.config.MaxTokens,
+		"max_output_tokens": maxOutputTokens,
 	}
 	if effort := normalizeReasoningEffort(c.config.ReasoningEffort); effort != "" && supportsReasoningEffort(c.config.ModelName) {
 		body["reasoning"] = map[string]any{"effort": effort}
@@ -562,32 +665,23 @@ func (c *OpenAIAPIClient) analyzeOpenAIResponses(prompt string, code string, tim
 	payload, _ := json.Marshal(body)
 	base := strings.TrimSuffix(c.config.BaseURL, "/")
 	endpoint := base + "/responses"
-	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(payload))
+	parsed, err := c.postJSONWithRetry(endpoint, payload, timeout, "openai-responses", func(req *http.Request) {
+		if c.config.APIKey != "" {
+			req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+		}
+	})
 	if err != nil {
 		return domain.ReviewResult{}, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if c.config.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
-	}
-
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return domain.ReviewResult{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return domain.ReviewResult{}, fmt.Errorf("openai-responses error: %s", resp.Status)
-	}
-
-	raw, err := readAll(resp)
-	if err != nil {
-		return domain.ReviewResult{}, err
-	}
-
-	parsed, err := parseJSONBody(raw, "openai-responses")
-	if err != nil {
+	if err := detectOpenAIResponsesOutputLimit(parsed); err != nil {
+		if allowTokenRetry {
+			if retryBudget, ok := nextRetryTokenBudget(maxOutputTokens); ok {
+				return c.analyzeOpenAIResponsesWithBudget(prompt, code, timeout, retryBudget, false)
+			}
+		}
+		if !allowTokenRetry {
+			return domain.ReviewResult{}, fmt.Errorf("%w; automatic token retry exhausted", err)
+		}
 		return domain.ReviewResult{}, err
 	}
 
@@ -602,6 +696,157 @@ func (c *OpenAIAPIClient) analyzeOpenAIResponses(prompt string, code string, tim
 	}
 	result.TokenUsage = parseTokenUsageFromOpenAIResponses(parsed)
 	return result, nil
+}
+
+func nextRetryTokenBudget(current int) (int, bool) {
+	if current <= 0 {
+		current = 4096
+	}
+	retry := current * 2
+	if retry < aiRetryMinTokens {
+		retry = aiRetryMinTokens
+	}
+	if retry > aiRetryMaxTokensCap {
+		retry = aiRetryMaxTokensCap
+	}
+	if retry <= current {
+		return 0, false
+	}
+	return retry, true
+}
+
+func (c *OpenAIAPIClient) postJSONWithRetry(
+	endpoint string,
+	payload []byte,
+	timeout time.Duration,
+	source string,
+	extraHeaders func(*http.Request),
+) (map[string]any, error) {
+	clientTimeout := timeout
+	if clientTimeout <= 0 {
+		clientTimeout = 120 * time.Second
+	}
+
+	client := &http.Client{Timeout: clientTimeout}
+	var lastErr error
+
+	for attempt := 1; attempt <= aiRequestMaxAttempts; attempt++ {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(payload))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if extraHeaders != nil {
+			extraHeaders(req)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			if attempt < aiRequestMaxAttempts && isRetryableUpstreamError(err) {
+				time.Sleep(retryDelay(attempt))
+				continue
+			}
+			return nil, err
+		}
+
+		raw, readErr := readAll(resp)
+		_ = resp.Body.Close()
+		if readErr != nil {
+			lastErr = readErr
+			if attempt < aiRequestMaxAttempts && isRetryableUpstreamError(readErr) {
+				time.Sleep(retryDelay(attempt))
+				continue
+			}
+			return nil, readErr
+		}
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			lastErr = fmt.Errorf("%s error: %s", source, resp.Status)
+			if attempt < aiRequestMaxAttempts && isRetryableStatus(resp.StatusCode) {
+				time.Sleep(retryDelay(attempt))
+				continue
+			}
+			return nil, fmt.Errorf("%s error: %s, body=%s", source, resp.Status, trimBody(raw))
+		}
+
+		parsed, parseErr := parseJSONBody(raw, source)
+		if parseErr != nil {
+			lastErr = parseErr
+			if attempt < aiRequestMaxAttempts && isRetryableParseError(parseErr) {
+				time.Sleep(retryDelay(attempt))
+				continue
+			}
+			return nil, parseErr
+		}
+		return parsed, nil
+	}
+
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("%s request failed without details", source)
+}
+
+func retryDelay(attempt int) time.Duration {
+	if attempt <= 1 {
+		return aiRetryBaseDelay
+	}
+	return time.Duration(attempt) * aiRetryBaseDelay
+}
+
+func isRetryableStatus(code int) bool {
+	return code == http.StatusTooManyRequests || code == http.StatusRequestTimeout || code >= 500
+}
+
+func isRetryableParseError(err error) bool {
+	if err == nil {
+		return false
+	}
+	low := strings.ToLower(err.Error())
+	return strings.Contains(low, "unexpected end of json input") ||
+		strings.Contains(low, "unexpected eof") ||
+		strings.Contains(low, "empty response body")
+}
+
+func isRetryableUpstreamError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout() || netErr.Temporary()
+	}
+	low := strings.ToLower(err.Error())
+	retryableSignals := []string{
+		"unexpected eof",
+		"eof",
+		"connection reset by peer",
+		"broken pipe",
+		"server closed idle connection",
+		"http2: client connection lost",
+		"stream error",
+	}
+	for _, token := range retryableSignals {
+		if strings.Contains(low, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func trimBody(raw []byte) string {
+	body := strings.TrimSpace(string(raw))
+	if body == "" {
+		return "<empty>"
+	}
+	if len(body) > 240 {
+		return body[:240]
+	}
+	return body
 }
 
 func parseTokenUsageFromOpenAIChat(parsed map[string]any) *domain.TokenUsage {
@@ -845,6 +1090,9 @@ func readAll(resp *http.Response) ([]byte, error) {
 }
 
 func parseJSONBody(raw []byte, source string) (map[string]any, error) {
+	if strings.TrimSpace(string(raw)) == "" {
+		return nil, fmt.Errorf("%s returned empty response body", source)
+	}
 	var parsed map[string]any
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		bodySnippet := strings.TrimSpace(string(raw))
@@ -857,4 +1105,44 @@ func parseJSONBody(raw []byte, source string) (map[string]any, error) {
 		return nil, fmt.Errorf("%s returned invalid JSON: %w", source, err)
 	}
 	return parsed, nil
+}
+
+func detectOpenAIChatOutputLimit(parsed map[string]any) error {
+	choices, _ := parsed["choices"].([]any)
+	if len(choices) == 0 {
+		return nil
+	}
+	first, ok := choices[0].(map[string]any)
+	if !ok {
+		return nil
+	}
+	finishReason, _ := first["finish_reason"].(string)
+	if finishReason == "length" {
+		return fmt.Errorf("AI output truncated because max tokens was reached (chat finish_reason=length)")
+	}
+	return nil
+}
+
+func detectOpenAIResponsesOutputLimit(parsed map[string]any) error {
+	status, _ := parsed["status"].(string)
+	if status != "incomplete" {
+		return nil
+	}
+	incompleteDetails, _ := parsed["incomplete_details"].(map[string]any)
+	reason, _ := incompleteDetails["reason"].(string)
+	if reason == "max_output_tokens" {
+		return fmt.Errorf("AI output truncated because max_output_tokens was reached (responses incomplete)")
+	}
+	if reason != "" {
+		return fmt.Errorf("AI output incomplete (responses reason=%s)", reason)
+	}
+	return fmt.Errorf("AI output incomplete (responses status=incomplete)")
+}
+
+func detectAnthropicOutputLimit(parsed map[string]any) error {
+	stopReason, _ := parsed["stop_reason"].(string)
+	if stopReason == "max_tokens" {
+		return fmt.Errorf("AI output truncated because max_tokens was reached (anthropic stop_reason=max_tokens)")
+	}
+	return nil
 }

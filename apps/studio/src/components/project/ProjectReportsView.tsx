@@ -42,8 +42,9 @@ export default function ProjectReportsView({
 
   const STATUS_CHIP: Record<string, { variant: 'muted' | 'accent' | 'success' | 'danger' | 'warning'; label: string }> = {
     pending:   { variant: 'muted',    label: dict.reports.status.pending },
-    analyzing: { variant: 'accent',   label: dict.reports.status.analyzing },
+    running: { variant: 'accent',   label: dict.reports.status.running },
     done:      { variant: 'success',  label: dict.reports.status.done },
+    partial_failed: { variant: 'warning', label: dict.reports.status.partialFailed },
     failed:    { variant: 'danger',   label: dict.reports.status.failed },
   };
 
@@ -56,7 +57,8 @@ export default function ProjectReportsView({
   const STATUS_ITEMS = [
     { id: 'all', label: dict.reports.allStatus },
     { id: 'done', label: dict.reports.status.done },
-    { id: 'analyzing', label: dict.reports.status.analyzing },
+    { id: 'running', label: dict.reports.status.running },
+    { id: 'partial_failed', label: dict.reports.status.partialFailed },
     { id: 'pending', label: dict.reports.status.pending },
     { id: 'failed', label: dict.reports.status.failed },
   ];
@@ -263,7 +265,7 @@ export default function ProjectReportsView({
                   {formatLocalDateTime(report.created_at)}
                 </div>
                 <div className="w-8 flex justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                  {(report.status === 'pending' || report.status === 'analyzing') ? (
+                  {(report.status === 'pending' || report.status === 'running') ? (
                     <Button
                       variant="ghost"
                       size="icon"

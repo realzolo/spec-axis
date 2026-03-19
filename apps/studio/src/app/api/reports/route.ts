@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
           `select id, status, score, created_at
            from analysis_reports
            where project_id = $1
-             and status = 'done'
+             and status in ('done', 'partial_failed')
              and score is not null
            order by created_at desc
            limit $2`,

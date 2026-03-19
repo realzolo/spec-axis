@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getReportById, deleteReport } from '@/services/db';
+import { query } from '@/lib/db';
 import { logger } from '@/services/logger';
 import { reportIdSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
@@ -38,9 +39,39 @@ export async function GET(
     if (!report) {
       return NextResponse.json({ error: 'Report not found' }, { status: 404 });
     }
+    const sections = await withRetry(() =>
+      query<Record<string, unknown>>(
+        `select phase,
+                attempt,
+                status,
+                payload,
+                error_message as "errorMessage",
+                duration_ms as "durationMs",
+                tokens_used as "tokensUsed",
+                token_usage as "tokenUsage",
+                estimated_cost_usd as "estimatedCostUsd",
+                started_at as "startedAt",
+                completed_at as "completedAt",
+                updated_at as "updatedAt"
+         from analysis_report_sections
+         where report_id = $1
+         order by case phase
+           when 'core' then 1
+           when 'quality' then 2
+           when 'security_performance' then 3
+           when 'suggestions' then 4
+           else 99
+         end,
+         attempt desc`,
+        [reportId]
+      )
+    );
 
     logger.info(`Report fetched: ${reportId}`);
-    return NextResponse.json(report);
+    return NextResponse.json({
+      ...report,
+      sections,
+    });
   } catch (err) {
     const { error, statusCode } = formatErrorResponse(err);
     logger.error('Get report failed', err instanceof Error ? err : undefined);

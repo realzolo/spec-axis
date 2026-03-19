@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       `select count(*)::int as count
        from analysis_issues i
        join analysis_reports r on r.id = i.report_id
-       where r.org_id = $1 and r.status = 'done' and i.status = 'open'`,
+       where r.org_id = $1 and r.status in ('done', 'partial_failed') and i.status = 'open'`,
       [orgId]
     ).then((rows) => rows[0] ?? { count: 0 }),
     query<CountRow>(
@@ -79,9 +79,9 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const doneReports = reports.filter(r => r.status === 'done');
+  const doneReports = reports.filter(r => r.status === 'done' || r.status === 'partial_failed');
   const pendingReports = reports.filter(
-    r => r.status === 'pending' || r.status === 'analyzing'
+    r => r.status === 'pending' || r.status === 'running'
   ).length;
 
   // Calculate average score

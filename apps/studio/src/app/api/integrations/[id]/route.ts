@@ -8,6 +8,8 @@ import { requireUser, unauthorized } from '@/services/auth';
 import {
   updateIntegration,
   deleteIntegration,
+  getIntegration,
+  sanitizeAIConfig,
   type UpdateIntegrationInput,
 } from '@/services/integrations';
 import { getActiveOrgId, getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES } from '@/services/orgs';
@@ -25,7 +27,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const input: UpdateIntegrationInput = {};
     if (name !== undefined) input.name = name;
-    if (config !== undefined) input.config = config;
     if (secret !== undefined) input.secret = secret;
     if (isDefault !== undefined) input.isDefault = isDefault;
 
@@ -33,6 +34,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const role = await getOrgMemberRole(orgId, user.id);
     if (!isRoleAllowed(role, ORG_ADMIN_ROLES)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    if (config !== undefined) {
+      const existing = await getIntegration(id, orgId);
+      input.config = existing.type === 'ai' ? sanitizeAIConfig(config) : config;
     }
 
     const integration = await updateIntegration(id, orgId, input);

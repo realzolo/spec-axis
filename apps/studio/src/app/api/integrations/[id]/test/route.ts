@@ -30,7 +30,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Test connection based on type
     let success = false;
-    let error = null;
+    let error: string | null = null;
+    let details: unknown = null;
 
     if (integration.type === 'vcs') {
       try {
@@ -42,13 +43,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     } else if (integration.type === 'ai') {
       try {
         const client = createAIClient(integration, secret);
-        success = await client.testConnection();
+        const result = await client.testConnection();
+        success = result.success;
+        details = result;
       } catch (e) {
         error = e instanceof Error ? e.message : 'Connection test failed';
       }
     }
 
-    return NextResponse.json({ success, error });
+    return NextResponse.json({ success, error, details });
   } catch (error) {
     console.error('Failed to test integration:', error);
     return NextResponse.json(

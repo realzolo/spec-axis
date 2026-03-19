@@ -52,7 +52,7 @@ export async function POST(
       return NextResponse.json({ error: 'Report not found' }, { status: 404 });
     }
 
-    if (report.status !== 'pending' && report.status !== 'analyzing') {
+    if (report.status !== 'pending' && report.status !== 'running') {
       return NextResponse.json(
         { error: `Report cannot be terminated in status: ${report.status}` },
         { status: 409 }
@@ -65,9 +65,10 @@ export async function POST(
         `update analysis_reports
          set status = 'failed',
              error_message = $2,
+             sse_seq = sse_seq + 1,
              updated_at = now()
          where id = $1
-           and status in ('pending', 'analyzing')
+           and status in ('pending', 'running')
          returning id, status, project_id`,
         [reportId, terminationMessage]
       )

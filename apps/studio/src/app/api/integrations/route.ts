@@ -9,6 +9,7 @@ import {
   getOrgIntegrations,
   createIntegration,
   type CreateIntegrationInput,
+  sanitizeAIConfig,
 } from '@/services/integrations';
 import { getActiveOrgId, getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES } from '@/services/orgs';
 
@@ -79,13 +80,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const normalizedConfig = type === 'ai' ? sanitizeAIConfig(config || {}) : (config || {});
+
     const input: CreateIntegrationInput = {
       userId: user.id,
       orgId,
       type,
       provider,
       name,
-      config: config || {},
+      config: normalizedConfig,
       secret,
       isDefault: isDefault || false,
     };

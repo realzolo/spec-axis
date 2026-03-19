@@ -3,7 +3,7 @@ import { logger } from '@/services/logger';
 
 type ExpiredReportRow = { id: string };
 
-const REPORT_TIMEOUT_MS = readPositiveIntEnv('ANALYZE_REPORT_TIMEOUT_MS', 20 * 60 * 1000);
+const REPORT_TIMEOUT_MS = readPositiveIntEnv('ANALYZE_REPORT_TIMEOUT_MS', 60 * 60 * 1000);
 const SWEEP_INTERVAL_MS = readPositiveIntEnv('ANALYZE_REPORT_TIMEOUT_SWEEP_INTERVAL_MS', 30 * 1000);
 const TIMEOUT_SECONDS = Math.max(1, Math.floor(REPORT_TIMEOUT_MS / 1000));
 
@@ -20,8 +20,9 @@ export async function failTimedOutReports(): Promise<number> {
     `update analysis_reports
      set status = 'failed',
          error_message = $2,
+         sse_seq = sse_seq + 1,
          updated_at = now()
-     where status in ('pending', 'analyzing')
+     where status in ('pending', 'running')
        and created_at < now() - make_interval(secs => $1)
      returning id`,
     [TIMEOUT_SECONDS, timeoutMessage()]
@@ -38,9 +39,10 @@ export async function failTimedOutReport(reportId: string): Promise<boolean> {
     `update analysis_reports
      set status = 'failed',
          error_message = $3,
+         sse_seq = sse_seq + 1,
          updated_at = now()
      where id = $1
-       and status in ('pending', 'analyzing')
+       and status in ('pending', 'running')
        and created_at < now() - make_interval(secs => $2)
      returning id`,
     [reportId, TIMEOUT_SECONDS, timeoutMessage()]

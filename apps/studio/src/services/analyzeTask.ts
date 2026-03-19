@@ -32,7 +32,7 @@ export async function runAnalyzeTask(projectId: string, payload: AnalyzePayload)
   logger.setContext({ projectId, reportId });
 
   try {
-    await updateReport(reportId, { status: 'analyzing' });
+    await updateReport(reportId, { status: 'running' });
 
     const project = await getProjectById(projectId);
     const ignorePatterns = Array.isArray(project.ignore_patterns) ? project.ignore_patterns : [];

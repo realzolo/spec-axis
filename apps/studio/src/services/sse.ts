@@ -18,7 +18,9 @@ const pollers = new Map<string, NodeJS.Timeout>();
 const lastSnapshots = new Map<string, {
   status: string | null;
   score: number | null;
+  sseSeq: number | null;
   analysisProgressJson: string;
+  analysisSectionsJson: string;
   tokenUsageJson: string;
   tokensUsed: number | null;
   errorMessage: string | null;
@@ -161,27 +163,66 @@ export async function watchReportStatus(reportId: string) {
     const row = await queryOne<{
       status: string | null;
       score: number | null;
+      sse_seq: number | null;
       analysis_progress: unknown;
+      sections: unknown;
       token_usage: unknown;
       tokens_used: number | null;
       error_message: string | null;
     }>(
-      `select status, score, analysis_progress, token_usage, tokens_used, error_message
-       from analysis_reports
-       where id = $1`,
+      `select r.status,
+              r.score,
+              r.sse_seq,
+              r.analysis_progress,
+              r.token_usage,
+              r.tokens_used,
+              r.error_message,
+              coalesce((
+                select jsonb_agg(
+                         jsonb_build_object(
+                           'phase', s.phase,
+                           'attempt', s.attempt,
+                           'status', s.status,
+                           'payload', s.payload,
+                           'errorMessage', s.error_message,
+                           'durationMs', s.duration_ms,
+                           'tokensUsed', s.tokens_used,
+                           'tokenUsage', s.token_usage,
+                           'estimatedCostUsd', s.estimated_cost_usd,
+                           'startedAt', s.started_at,
+                           'completedAt', s.completed_at,
+                           'updatedAt', s.updated_at
+                         )
+                         order by case s.phase
+                           when 'core' then 1
+                           when 'quality' then 2
+                           when 'security_performance' then 3
+                           when 'suggestions' then 4
+                           else 99
+                         end,
+                         s.attempt desc
+                       )
+                from analysis_report_sections s
+                where s.report_id = r.id
+              ), '[]'::jsonb) as sections
+       from analysis_reports r
+       where r.id = $1`,
       [reportId]
     );
 
     if (!row) return;
 
     const analysisProgressJson = JSON.stringify(row.analysis_progress ?? null);
+    const analysisSectionsJson = JSON.stringify(row.sections ?? []);
     const tokenUsageJson = JSON.stringify(row.token_usage ?? null);
     const previous = lastSnapshots.get(reportId);
     if (
       !previous ||
+      previous.sseSeq !== row.sse_seq ||
       previous.status !== row.status ||
       previous.score !== row.score ||
       previous.analysisProgressJson !== analysisProgressJson ||
+      previous.analysisSectionsJson !== analysisSectionsJson ||
       previous.tokenUsageJson !== tokenUsageJson ||
       previous.tokensUsed !== row.tokens_used ||
       previous.errorMessage !== row.error_message
@@ -189,7 +230,9 @@ export async function watchReportStatus(reportId: string) {
       lastSnapshots.set(reportId, {
         status: row.status,
         score: row.score,
+        sseSeq: row.sse_seq,
         analysisProgressJson,
+        analysisSectionsJson,
         tokenUsageJson,
         tokensUsed: row.tokens_used,
         errorMessage: row.error_message,
@@ -198,7 +241,9 @@ export async function watchReportStatus(reportId: string) {
         type: 'status_update',
         status: row.status,
         score: row.score,
+        sequence: row.sse_seq,
         analysisProgress: row.analysis_progress ?? null,
+        analysisSections: row.sections ?? [],
         tokenUsage: row.token_usage ?? null,
         tokensUsed: row.tokens_used ?? null,
         errorMessage: row.error_message ?? null,
@@ -207,7 +252,13 @@ export async function watchReportStatus(reportId: string) {
       logger.info(`Report status updated: ${reportId} -> ${row.status}`);
     }
 
-    if (row.status === 'done' || row.status === 'failed') {
+    if (
+      row.status === 'done' ||
+      row.status === 'partial_done' ||
+      row.status === 'partial_failed' ||
+      row.status === 'failed' ||
+      row.status === 'canceled'
+    ) {
       stopPolling(reportId);
     }
   };

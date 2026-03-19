@@ -12,7 +12,7 @@ import { withRetry, formatErrorResponse } from '@/services/retry';
 import { requireUser, unauthorized } from '@/services/auth';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { requireProjectAccess } from '@/services/orgs';
-import { resolveAIIntegration } from '@/services/integrations';
+import { resolveAIIntegration, IntegrationResolutionError } from '@/services/integrations';
 import {
   buildAnalyzeFingerprint,
   claimAnalyzeDedupeLock,
@@ -65,7 +65,41 @@ export async function POST(request: NextRequest) {
     }
 
     // Preflight AI integration decryptability/config validity before creating report/task.
-    await withRetry(() => resolveAIIntegration(projectId));
+    let aiIntegrationSnapshot: Record<string, unknown> = {};
+    try {
+      const resolved = await withRetry(() => resolveAIIntegration(projectId));
+      const integration = resolved.integration;
+      const config =
+        integration && typeof integration.config === 'object' && integration.config !== null
+          ? integration.config as Record<string, unknown>
+          : {};
+      aiIntegrationSnapshot = integration
+        ? {
+            id: integration.id,
+            provider: integration.provider,
+            name: integration.name,
+            model: typeof config.model === 'string' ? config.model : null,
+            apiStyle: typeof config.apiStyle === 'string' ? config.apiStyle : null,
+            baseUrl: typeof config.baseUrl === 'string' ? config.baseUrl : null,
+            maxTokens: typeof config.maxTokens === 'number' ? config.maxTokens : null,
+            temperature: typeof config.temperature === 'number' ? config.temperature : null,
+            reasoningEffort: typeof config.reasoningEffort === 'string' ? config.reasoningEffort : null,
+          }
+        : {};
+    } catch (error) {
+      if (error instanceof IntegrationResolutionError) {
+        return NextResponse.json(
+          {
+            error: error.message,
+            code: error.code,
+          },
+          {
+            status: error.code === 'AI_INTEGRATION_REBIND_REQUIRED' ? 409 : 400,
+          }
+        );
+      }
+      throw error;
+    }
 
     // Check whether to use incremental analysis
     const recentReports = await query(
@@ -102,7 +136,7 @@ export async function POST(request: NextRequest) {
         `select status from analysis_reports where id = $1`,
         [existingResult.reportId]
       );
-      if (reportStatus && (reportStatus.status === 'pending' || reportStatus.status === 'analyzing')) {
+      if (reportStatus && (reportStatus.status === 'pending' || reportStatus.status === 'running')) {
         return NextResponse.json(
           {
             reportId: existingResult.reportId,
@@ -126,7 +160,7 @@ export async function POST(request: NextRequest) {
           `select status from analysis_reports where id = $1`,
           [waitResult.reportId]
         );
-        if (reportStatus && (reportStatus.status === 'pending' || reportStatus.status === 'analyzing')) {
+        if (reportStatus && (reportStatus.status === 'pending' || reportStatus.status === 'running')) {
           return NextResponse.json(
             {
               reportId: waitResult.reportId,
@@ -181,6 +215,27 @@ export async function POST(request: NextRequest) {
         org_id: project.org_id,
         ruleset_snapshot: rules,
         commits: selectedCommits,
+        analysis_snapshot: {
+          createdAt: new Date().toISOString(),
+          repo: project.repo,
+          forceFullAnalysis,
+          useIncremental,
+          selectedHashes,
+          selectedCommits: selectedCommits.map((commit) => ({
+            sha: typeof commit.sha === 'string' ? commit.sha : '',
+            author: typeof commit.author === 'string' ? commit.author : '',
+            date: typeof commit.date === 'string' ? commit.date : '',
+            message: typeof commit.message === 'string' ? commit.message : '',
+          })),
+          rules: rules.map((rule) => ({
+            id: String(rule.id ?? ''),
+            category: String(rule.category ?? ''),
+            name: String(rule.name ?? ''),
+            prompt: String(rule.prompt ?? ''),
+            severity: String(rule.severity ?? ''),
+          })),
+          aiIntegration: aiIntegrationSnapshot,
+        },
       })
     );
 

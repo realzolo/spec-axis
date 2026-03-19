@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { exec, query, queryOne } from '@/lib/db';
-import Anthropic from '@anthropic-ai/sdk';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { requireReportAccess } from '@/services/orgs';
@@ -147,26 +146,74 @@ Suggestion: ${issue.suggestion ?? 'None'}
 
   context += `\nPlease respond in English with clear, actionable guidance.`;
 
-  // Call Claude API
-  const client = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-    ...(process.env.ANTHROPIC_BASE_URL && { baseURL: process.env.ANTHROPIC_BASE_URL }),
-  });
+  // Call Anthropic Messages API via unified HTTP transport
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json({ error: 'ANTHROPIC_API_KEY is not configured' }, { status: 500 });
+  }
+  const baseUrl = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/+$/, '');
+  const endpoint = baseUrl.endsWith('/v1') ? `${baseUrl}/messages` : `${baseUrl}/v1/messages`;
 
   const apiMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [
     ...messages,
     { role: 'user', content: message }
   ];
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
-    system: context,
-    messages: apiMessages
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      system: context,
+      messages: apiMessages,
+    }),
   });
 
-  const firstContent = response.content[0];
-  const assistantMessage = firstContent && firstContent.type === 'text' ? firstContent.text : '';
+  const raw = await response.text();
+  if (!response.ok) {
+    return NextResponse.json(
+      { error: `Anthropic API error: ${response.status} ${response.statusText}` },
+      { status: 502 }
+    );
+  }
+  if (looksLikeHTML(response.headers.get('content-type'), raw)) {
+    return NextResponse.json(
+      { error: 'Anthropic endpoint returned HTML instead of JSON' },
+      { status: 502 }
+    );
+  }
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = parseJSONLoose(raw);
+  } catch {
+    return NextResponse.json(
+      { error: 'Anthropic endpoint returned invalid JSON' },
+      { status: 502 }
+    );
+  }
+
+  const contentBlocks = parsed.content;
+  if (!Array.isArray(contentBlocks) || contentBlocks.length === 0 || typeof contentBlocks[0] !== 'object' || !contentBlocks[0]) {
+    return NextResponse.json(
+      { error: 'Anthropic response missing content' },
+      { status: 502 }
+    );
+  }
+
+  const firstContent = contentBlocks[0] as Record<string, unknown>;
+  const assistantMessage = typeof firstContent.text === 'string' ? firstContent.text : '';
+  if (!assistantMessage) {
+    return NextResponse.json(
+      { error: 'Anthropic response missing text content' },
+      { status: 502 }
+    );
+  }
 
   // Update conversation
   const updatedMessages = [
@@ -234,6 +281,22 @@ export async function GET(
 function isUuid(value?: string | null) {
   if (!value) return false;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function looksLikeHTML(contentType: string | null, bodySnippet: string): boolean {
+  const lowerType = (contentType ?? '').toLowerCase();
+  if (lowerType.includes('text/html')) return true;
+  return bodySnippet.trim().startsWith('<');
+}
+
+function parseJSONLoose(raw: string): Record<string, unknown> {
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start === -1 || end <= start) {
+    throw new Error('invalid json');
+  }
+  const candidate = raw.slice(start, end + 1).trim();
+  return JSON.parse(candidate) as Record<string, unknown>;
 }
 
 function normalizeConversationMessages(value: unknown): ConversationMessage[] {

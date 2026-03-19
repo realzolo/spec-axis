@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -38,8 +39,8 @@ func RunAnalyzeTask(
 	if report.ProjectID != "" && report.ProjectID != payload.ProjectID {
 		return fmt.Errorf("report project mismatch")
 	}
-	if report.Status != "pending" && report.Status != "analyzing" {
-		return store.ErrReportNotAnalyzing
+	if report.Status != "pending" && report.Status != "running" {
+		return store.ErrReportNotRunning
 	}
 
 	project, err := st.GetProject(ctx, payload.ProjectID)
@@ -47,7 +48,7 @@ func RunAnalyzeTask(
 		return err
 	}
 
-	if err := st.MarkReportAnalyzing(ctx, payload.ReportID); err != nil {
+	if err := st.MarkReportRunning(ctx, payload.ReportID); err != nil {
 		return err
 	}
 	tracker := newProgressTracker(ctx, st, payload.ReportID)
@@ -55,7 +56,7 @@ func RunAnalyzeTask(
 		return err
 	}
 	if publisher != nil {
-		publisher.ReportStatus(payload.ReportID, "analyzing", nil)
+		publisher.ReportStatus(payload.ReportID, "running", nil)
 	}
 
 	if err := tracker.Update("resolving_integrations", "Resolving project integrations", nil, 0, 0, false); err != nil {
@@ -111,46 +112,197 @@ func RunAnalyzeTask(
 		return err
 	}
 
-	analyzingMessage := fmt.Sprintf("Analyzing changes with model %s", aiClient.Model())
-	if err := tracker.Update("analyzing", analyzingMessage, nil, 0, len(changedFiles), false); err != nil {
+	if err := tracker.Update(
+		"running_core",
+		fmt.Sprintf("Running core analysis with model %s", aiClient.Model()),
+		nil,
+		0,
+		0,
+		false,
+	); err != nil {
 		return err
 	}
-	start := time.Now()
-	var result domain.ReviewResult
+
+	var corePrompt string
 	if payload.UseIncremental {
-		result, err = analyzeIncremental(payload, filtered, aiClient, timeout)
+		previousIssues := extractPreviousIssues(payload.PreviousReport)
+		filteredIssues := filterIssuesByFiles(previousIssues, changedFiles)
+		corePrompt = buildIncrementalPrompt(payload.Rules, filtered, filteredIssues)
 	} else {
-		result, err = analyzeFull(payload, filtered, aiClient, timeout)
+		corePrompt = buildCorePhasePrompt(payload.Rules, filtered)
 	}
+
+	start := time.Now()
+	coreResult, _, err := runPhaseWithRetry(
+		ctx,
+		st,
+		payload.ReportID,
+		aiClient,
+		"core",
+		corePrompt,
+		phaseBudget(timeout, 40),
+	)
 	if err != nil {
 		return err
 	}
-	durationMs := int(time.Since(start).Milliseconds())
-	tokenUsageJSON, tokensUsed := marshalTokenUsage(result.TokenUsage)
-
-	if result.CategoryScores == nil {
-		result.CategoryScores = map[string]float64{}
+	if err := tracker.Update(
+		"core_done",
+		"Core analysis completed, running remaining phases in parallel",
+		nil,
+		0,
+		0,
+		false,
+	); err != nil {
+		return err
 	}
 
-	issuesJSON, _ := json.Marshal(result.Issues)
-	categoryScoresJSON, _ := json.Marshal(result.CategoryScores)
-	progressDone := tracker.Complete("completed", "Analysis completed", stats.TotalFiles, stats.TotalFiles)
+	type phaseSpec struct {
+		phase  string
+		prompt string
+	}
+	parallelPhases := []phaseSpec{
+		{
+			phase:  "quality",
+			prompt: buildQualityPhasePrompt(filtered),
+		},
+		{
+			phase:  "security_performance",
+			prompt: buildSecurityPerformancePhasePrompt(filtered),
+		},
+		{
+			phase:  "suggestions",
+			prompt: buildSuggestionsPhasePrompt(filtered, coreResult.Issues),
+		},
+	}
+
+	type phaseOutcome struct {
+		phase      string
+		result     domain.ReviewResult
+		durationMs int
+		err        error
+	}
+	outcomes := make(chan phaseOutcome, len(parallelPhases))
+	for _, phase := range parallelPhases {
+		phase := phase
+		go func() {
+			result, durationMs, phaseErr := runPhaseWithRetry(
+				ctx,
+				st,
+				payload.ReportID,
+				aiClient,
+				phase.phase,
+				phase.prompt,
+				phaseBudget(timeout, 30),
+			)
+			outcomes <- phaseOutcome{
+				phase:      phase.phase,
+				result:     result,
+				durationMs: durationMs,
+				err:        phaseErr,
+			}
+		}()
+	}
+
+	finalResult := coreResult
+	if finalResult.CategoryScores == nil {
+		finalResult.CategoryScores = map[string]float64{}
+	}
+
+	totalInputTokens := 0
+	totalOutputTokens := 0
+	totalTokens := 0
+	phaseFailures := make([]string, 0, len(parallelPhases))
+	accumulateTokenUsage(coreResult.TokenUsage, &totalInputTokens, &totalOutputTokens, &totalTokens)
+
+	completedCount := 1
+	for range parallelPhases {
+		outcome := <-outcomes
+		if outcome.err != nil {
+			phaseFailures = append(phaseFailures, fmt.Sprintf("%s: %v", outcome.phase, outcome.err))
+			_ = tracker.Update(
+				"running_parallel",
+				fmt.Sprintf("Phase %s failed, continuing remaining phases", outcome.phase),
+				nil,
+				0,
+				0,
+				false,
+			)
+			continue
+		}
+
+		completedCount++
+		switch outcome.phase {
+		case "quality":
+			finalResult.ComplexityMetrics = outcome.result.ComplexityMetrics
+			finalResult.DuplicationMetrics = outcome.result.DuplicationMetrics
+			finalResult.DependencyMetrics = outcome.result.DependencyMetrics
+		case "security_performance":
+			finalResult.SecurityFindings = outcome.result.SecurityFindings
+			finalResult.PerformanceFindings = outcome.result.PerformanceFindings
+		case "suggestions":
+			finalResult.AISuggestions = outcome.result.AISuggestions
+			finalResult.CodeExplanations = outcome.result.CodeExplanations
+		}
+		accumulateTokenUsage(outcome.result.TokenUsage, &totalInputTokens, &totalOutputTokens, &totalTokens)
+		_ = tracker.Update(
+			"running_parallel",
+			fmt.Sprintf("Completed phase %s (%d/4)", outcome.phase, completedCount),
+			nil,
+			0,
+			0,
+			false,
+		)
+	}
+
+	var finalStatus string
+	var finalErrorMessage *string
+	if len(phaseFailures) == 0 {
+		finalStatus = "done"
+	} else {
+		finalStatus = "partial_failed"
+		msg := "Some analysis phases failed: " + strings.Join(phaseFailures, "; ")
+		finalErrorMessage = &msg
+	}
+
+	durationMs := int(time.Since(start).Milliseconds())
+	var tokenUsage *domain.TokenUsage
+	if totalInputTokens > 0 || totalOutputTokens > 0 || totalTokens > 0 {
+		tokenUsage = &domain.TokenUsage{
+			InputTokens:  totalInputTokens,
+			OutputTokens: totalOutputTokens,
+			TotalTokens:  totalTokens,
+		}
+	}
+	tokenUsageJSON, tokensUsed := marshalTokenUsage(tokenUsage)
+
+	issuesJSON, _ := json.Marshal(finalResult.Issues)
+	categoryScoresJSON, _ := json.Marshal(finalResult.CategoryScores)
+	doneMessage := "Analysis completed"
+	progressPhase := "completed"
+	if finalStatus == "partial_failed" {
+		doneMessage = "Analysis completed with partial phase failures"
+		progressPhase = "partial_failed"
+	}
+	progressDone := tracker.Complete(progressPhase, doneMessage, stats.TotalFiles, stats.TotalFiles)
 	progressDoneJSON, _ := json.Marshal(progressDone)
 
+	if err := tracker.Update("finalizing", "Saving analysis result", nil, 0, 0, false); err != nil {
+		return err
+	}
 	update := store.ReportAnalysisUpdate{
-		Status:              "done",
-		Score:               result.Score,
+		Status:              finalStatus,
+		Score:               finalResult.Score,
 		CategoryScores:      categoryScoresJSON,
 		Issues:              issuesJSON,
-		Summary:             result.Summary,
-		ComplexityMetrics:   result.ComplexityMetrics,
-		DuplicationMetrics:  result.DuplicationMetrics,
-		DependencyMetrics:   result.DependencyMetrics,
-		SecurityFindings:    result.SecurityFindings,
-		PerformanceFindings: result.PerformanceFindings,
-		AISuggestions:       result.AISuggestions,
-		CodeExplanations:    result.CodeExplanations,
-		ContextAnalysis:     result.ContextAnalysis,
+		Summary:             finalResult.Summary,
+		ComplexityMetrics:   finalResult.ComplexityMetrics,
+		DuplicationMetrics:  finalResult.DuplicationMetrics,
+		DependencyMetrics:   finalResult.DependencyMetrics,
+		SecurityFindings:    finalResult.SecurityFindings,
+		PerformanceFindings: finalResult.PerformanceFindings,
+		AISuggestions:       finalResult.AISuggestions,
+		CodeExplanations:    finalResult.CodeExplanations,
+		ContextAnalysis:     finalResult.ContextAnalysis,
 		TotalFiles:          stats.TotalFiles,
 		TotalAdditions:      stats.TotalAdditions,
 		TotalDeletions:      stats.TotalDeletions,
@@ -159,34 +311,211 @@ func RunAnalyzeTask(
 		TokensUsed:          tokensUsed,
 		TokenUsage:          tokenUsageJSON,
 		AnalysisProgress:    progressDoneJSON,
-	}
-
-	if err := tracker.Update("finalizing", "Saving analysis result", nil, stats.TotalFiles, stats.TotalFiles, false); err != nil {
-		return err
+		ErrorMessage:        finalErrorMessage,
 	}
 	if err := st.UpdateReportAnalysis(ctx, payload.ReportID, update); err != nil {
 		return err
 	}
 
-	if err := st.ReplaceReportIssues(ctx, payload.ReportID, result.Issues); err != nil {
+	if err := st.ReplaceReportIssues(ctx, payload.ReportID, finalResult.Issues); err != nil {
 		return err
 	}
 
 	_ = st.UpdateProjectLastAnalyzedAt(ctx, payload.ProjectID)
 
 	if project.WebhookURL != nil && *project.WebhookURL != "" {
-		_ = postWebhook(*project.WebhookURL, payload.ProjectID, payload.ReportID, result.Score, project.QualityThreshold)
+		_ = postWebhook(*project.WebhookURL, payload.ProjectID, payload.ReportID, finalResult.Score, project.QualityThreshold)
 	}
 
 	if publisher != nil {
-		score := result.Score
-		publisher.ReportStatus(payload.ReportID, "done", &score)
+		score := finalResult.Score
+		publisher.ReportStatus(payload.ReportID, finalStatus, &score)
 	}
 
 	// Optional: notify Studio so it can send user-facing notifications (email, etc.).
-	postStudioReportEvent(ctx, payload.ReportID)
+	if finalStatus == "done" || finalStatus == "partial_failed" {
+		postStudioReportEvent(ctx, payload.ReportID)
+	}
 
 	return nil
+}
+
+func runPhaseWithRetry(
+	ctx context.Context,
+	st *store.Store,
+	reportID string,
+	client integrations.AIClient,
+	phase string,
+	prompt string,
+	timeout time.Duration,
+) (domain.ReviewResult, int, error) {
+	const maxAttempts = 2
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		startedAt := time.Now().UTC()
+		if err := st.UpsertReportSection(ctx, store.ReportSectionUpsert{
+			ReportID: reportID,
+			Phase:    phase,
+			Attempt:  attempt,
+			Status:   "running",
+		}); err != nil {
+			return domain.ReviewResult{}, 0, err
+		}
+
+		result, err := client.Analyze(prompt, "", timeout)
+		durationMs := int(time.Since(startedAt).Milliseconds())
+		completedAt := time.Now().UTC()
+		if err != nil {
+			lastErr = err
+			errMsg := err.Error()
+			_ = st.UpsertReportSection(ctx, store.ReportSectionUpsert{
+				ReportID:     reportID,
+				Phase:        phase,
+				Attempt:      attempt,
+				Status:       "failed",
+				ErrorMessage: &errMsg,
+				DurationMs:   &durationMs,
+				CompletedAt:  &completedAt,
+			})
+			if attempt < maxAttempts && isRetryablePhaseError(err) {
+				continue
+			}
+			return domain.ReviewResult{}, durationMs, err
+		}
+
+		sectionPayload, payloadErr := buildSectionPayload(phase, result)
+		if payloadErr != nil {
+			return domain.ReviewResult{}, durationMs, payloadErr
+		}
+		tokenUsageJSON, tokensUsed := marshalTokenUsage(result.TokenUsage)
+		if err := st.UpsertReportSection(ctx, store.ReportSectionUpsert{
+			ReportID:    reportID,
+			Phase:       phase,
+			Attempt:     attempt,
+			Status:      "done",
+			Payload:     sectionPayload,
+			DurationMs:  &durationMs,
+			TokensUsed:  tokensUsed,
+			TokenUsage:  tokenUsageJSON,
+			CompletedAt: &completedAt,
+		}); err != nil {
+			return domain.ReviewResult{}, durationMs, err
+		}
+		return result, durationMs, nil
+	}
+
+	if lastErr != nil {
+		return domain.ReviewResult{}, 0, lastErr
+	}
+	return domain.ReviewResult{}, 0, fmt.Errorf("phase %s failed", phase)
+}
+
+func buildSectionPayload(phase string, result domain.ReviewResult) (json.RawMessage, error) {
+	switch phase {
+	case "core":
+		return json.Marshal(map[string]any{
+			"score":          result.Score,
+			"categoryScores": result.CategoryScores,
+			"issues":         result.Issues,
+			"summary":        result.Summary,
+			"contextAnalysis": func() any {
+				if len(result.ContextAnalysis) == 0 {
+					return nil
+				}
+				var parsed any
+				if err := json.Unmarshal(result.ContextAnalysis, &parsed); err != nil {
+					return nil
+				}
+				return parsed
+			}(),
+		})
+	case "quality":
+		return json.Marshal(map[string]any{
+			"complexityMetrics":  rawToAny(result.ComplexityMetrics),
+			"duplicationMetrics": rawToAny(result.DuplicationMetrics),
+			"dependencyMetrics":  rawToAny(result.DependencyMetrics),
+		})
+	case "security_performance":
+		return json.Marshal(map[string]any{
+			"securityFindings":    rawToAny(result.SecurityFindings),
+			"performanceFindings": rawToAny(result.PerformanceFindings),
+		})
+	case "suggestions":
+		return json.Marshal(map[string]any{
+			"aiSuggestions":    rawToAny(result.AISuggestions),
+			"codeExplanations": rawToAny(result.CodeExplanations),
+		})
+	default:
+		return nil, fmt.Errorf("unsupported phase: %s", phase)
+	}
+}
+
+func rawToAny(raw json.RawMessage) any {
+	if len(raw) == 0 {
+		return nil
+	}
+	var parsed any
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return nil
+	}
+	return parsed
+}
+
+func isRetryablePhaseError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	low := strings.ToLower(err.Error())
+	retryableHints := []string{
+		"timeout",
+		"temporarily unavailable",
+		"connection reset",
+		"eof",
+		"429",
+		"502",
+		"503",
+		"504",
+	}
+	for _, hint := range retryableHints {
+		if strings.Contains(low, hint) {
+			return true
+		}
+	}
+	return false
+}
+
+func phaseBudget(total time.Duration, percent int) time.Duration {
+	if total <= 0 {
+		return 10 * time.Minute
+	}
+	if percent <= 0 {
+		percent = 25
+	}
+	budget := time.Duration(float64(total) * (float64(percent) / 100.0))
+	minBudget := 3 * time.Minute
+	if budget < minBudget {
+		return minBudget
+	}
+	if budget > total {
+		return total
+	}
+	return budget
+}
+
+func accumulateTokenUsage(usage *domain.TokenUsage, inputTotal *int, outputTotal *int, total *int) {
+	if usage == nil {
+		return
+	}
+	*inputTotal += usage.InputTokens
+	*outputTotal += usage.OutputTokens
+	*total += usage.TotalTokens
 }
 
 func postStudioReportEvent(ctx context.Context, reportID string) {
@@ -216,6 +545,170 @@ func postStudioReportEvent(ctx context.Context, reportID string) {
 		return
 	}
 	_ = res.Body.Close()
+}
+
+func buildCorePhasePrompt(rules []domain.Rule, diff string) string {
+	diff = truncateDiff(diff, 130000)
+	rulesText := buildRulesText(rules)
+	diffBlock := "```diff\n" + diff + "\n```"
+	return fmt.Sprintf(`You are a senior code reviewer. Perform the CORE review for this diff.
+
+Review rules:
+%s
+
+Code diff:
+%s
+
+Return ONLY valid JSON with exactly these keys:
+{
+  "score": <0-100>,
+  "categoryScores": {
+    "style": <0-100>,
+    "security": <0-100>,
+    "architecture": <0-100>,
+    "performance": <0-100>,
+    "maintainability": <0-100>
+  },
+  "issues": [
+    {
+      "file": "path",
+      "line": 1,
+      "severity": "critical|high|medium|low|info",
+      "category": "category",
+      "rule": "rule",
+      "message": "issue",
+      "suggestion": "fix suggestion",
+      "codeSnippet": "snippet",
+      "fixPatch": "patch",
+      "priority": 1,
+      "impactScope": "scope",
+      "estimatedEffort": "low|medium|high"
+    }
+  ],
+  "summary": "2-4 sentence summary",
+  "contextAnalysis": {
+    "changeType": "feature|bugfix|refactor|performance|other",
+    "businessImpact": "text",
+    "riskLevel": "low|medium|high|critical",
+    "affectedModules": ["module"],
+    "breakingChanges": false
+  }
+}
+
+All text in English.`, rulesText, diffBlock)
+}
+
+func buildQualityPhasePrompt(diff string) string {
+	diff = truncateDiff(diff, 110000)
+	diffBlock := "```diff\n" + diff + "\n```"
+	return fmt.Sprintf(`You are a senior code reviewer. Perform QUALITY METRICS analysis for this diff.
+
+Code diff:
+%s
+
+Return ONLY valid JSON:
+{
+  "complexityMetrics": {
+    "cyclomaticComplexity": 0,
+    "cognitiveComplexity": 0,
+    "averageFunctionLength": 0,
+    "maxFunctionLength": 0,
+    "totalFunctions": 0
+  },
+  "duplicationMetrics": {
+    "duplicatedLines": 0,
+    "duplicatedBlocks": 0,
+    "duplicationRate": 0,
+    "duplicatedFiles": ["file.ts"]
+  },
+  "dependencyMetrics": {
+    "totalDependencies": 0,
+    "outdatedDependencies": 0,
+    "circularDependencies": ["a -> b -> a"],
+    "unusedDependencies": ["pkg"]
+  }
+}
+
+All text in English.`, diffBlock)
+}
+
+func buildSecurityPerformancePhasePrompt(diff string) string {
+	diff = truncateDiff(diff, 110000)
+	diffBlock := "```diff\n" + diff + "\n```"
+	return fmt.Sprintf(`You are a senior AppSec and performance reviewer. Analyze this diff.
+
+Code diff:
+%s
+
+Return ONLY valid JSON:
+{
+  "securityFindings": [
+    {
+      "type": "vulnerability type",
+      "severity": "critical|high|medium|low",
+      "description": "detail",
+      "file": "path",
+      "line": 1,
+      "cwe": "CWE-XXX"
+    }
+  ],
+  "performanceFindings": [
+    {
+      "type": "performance issue",
+      "description": "detail",
+      "file": "path",
+      "line": 1,
+      "impact": "impact"
+    }
+  ]
+}
+
+Use empty arrays when no findings. All text in English.`, diffBlock)
+}
+
+func buildSuggestionsPhasePrompt(diff string, coreIssues []domain.ReviewIssue) string {
+	diff = truncateDiff(diff, 90000)
+	diffBlock := "```diff\n" + diff + "\n```"
+	issueDigest := "[]"
+	if len(coreIssues) > 0 {
+		limit := 20
+		if len(coreIssues) < limit {
+			limit = len(coreIssues)
+		}
+		raw, _ := json.Marshal(coreIssues[:limit])
+		issueDigest = string(raw)
+	}
+	return fmt.Sprintf(`You are a senior engineering lead. Provide practical suggestions for this diff.
+
+Code diff:
+%s
+
+Core issues summary (for context):
+%s
+
+Return ONLY valid JSON:
+{
+  "aiSuggestions": [
+    {
+      "type": "refactor|performance|security|architecture|testing",
+      "title": "short title",
+      "description": "actionable recommendation",
+      "priority": 1,
+      "estimatedImpact": "impact summary"
+    }
+  ],
+  "codeExplanations": [
+    {
+      "file": "path",
+      "line": 1,
+      "complexity": "what is complex",
+      "explanation": "explain current logic",
+      "recommendation": "better approach"
+    }
+  ]
+}
+
+Use empty arrays if no suggestions. All text in English.`, diffBlock, issueDigest)
 }
 
 func analyzeFull(

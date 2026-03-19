@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
          from code_projects p
          left join analysis_reports r
            on r.project_id = p.id and r.org_id = $1
-           and r.status = 'done'
+           and r.status in ('done', 'partial_failed')
            and r.created_at >= now() - $2::interval
          left join analysis_issues i on i.report_id = r.id
          where p.org_id = $1
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
          from analysis_issues i
          join analysis_reports r on r.id = i.report_id
          where r.org_id = $1
-           and r.status = 'done'
+           and r.status in ('done', 'partial_failed')
            and r.created_at >= now() - $2::interval
          group by i.category
          order by count desc
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
            count(i.id) filter (where i.status in ('fixed','ignored','false_positive'))::text as resolved
          from code_projects p
          join analysis_reports r on r.project_id = p.id and r.org_id = $1
-           and r.status = 'done'
+           and r.status in ('done', 'partial_failed')
            and r.created_at >= now() - $2::interval
          join analysis_issues i on i.report_id = r.id
          where p.org_id = $1

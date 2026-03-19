@@ -53,6 +53,20 @@ type TokenUsage = {
   outputTokens?: number;
   totalTokens?: number;
 };
+type AnalysisSection = {
+  phase: 'core' | 'quality' | 'security_performance' | 'suggestions' | string;
+  attempt: number;
+  status: 'pending' | 'running' | 'done' | 'failed' | 'canceled' | string;
+  payload?: Record<string, unknown> | null;
+  errorMessage?: string | null;
+  durationMs?: number | null;
+  tokensUsed?: number | null;
+  tokenUsage?: TokenUsage | null;
+  estimatedCostUsd?: number | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  updatedAt?: string | null;
+};
 type Report = {
   id: string; status: string; score?: number;
   category_scores?: Record<string, number>;
@@ -94,6 +108,7 @@ type Report = {
   tokens_used?: number | null;
   analysis_duration_ms?: number | null;
   model_version?: string | null;
+  sections?: AnalysisSection[];
 };
 
 function scoreColorClass(s: number) {
@@ -115,6 +130,40 @@ function formatDate(d: string, dict: Dictionary) {
   if (h < 24) return dict.commits.hoursAgo.replace('{{hours}}', String(h));
   if (days < 30) return dict.commits.daysAgo.replace('{{days}}', String(days));
   return formatLocalDate(d);
+}
+
+function phaseProgressPercent(progress: AnalysisProgress | null | undefined, status: string) {
+  if (status === 'done') return 100;
+  if (status === 'failed') return 100;
+  const processed = progress?.filesProcessed ?? 0;
+  const total = progress?.filesTotal ?? 0;
+  if (total > 0) {
+    return Math.max(0, Math.min(100, Math.round((processed / total) * 100)));
+  }
+  const phase = progress?.phase ?? status;
+  switch (phase) {
+    case 'preparing':
+      return 8;
+    case 'resolving_integrations':
+      return 18;
+    case 'fetching_diff':
+      return 32;
+    case 'scanning_files':
+      return 52;
+    case 'running_core':
+      return 62;
+    case 'core_done':
+      return 72;
+    case 'running_parallel':
+      return 86;
+    case 'finalizing':
+      return 96;
+    case 'completed':
+    case 'partial_failed':
+      return 100;
+    default:
+      return status === 'running' ? 12 : 0;
+  }
 }
 
 function ReportDetailSkeleton() {
@@ -263,7 +312,7 @@ export default function ReportDetailClient({
 
   // Fetch DB issue UUIDs when report is done, to power comment threads
   useEffect(() => {
-    if (!report || report.status !== 'done') return;
+    if (!report || (report.status !== 'done' && report.status !== 'partial_failed')) return;
     fetch(`/api/reports/${report.id}/issues`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
@@ -281,43 +330,58 @@ export default function ReportDetailClient({
   }, [report]);
 
   useEffect(() => {
-    if (!report) return;
-    if (report.status !== 'pending' && report.status !== 'analyzing') return;
+    if (!report?.id) return;
+    if (report.status !== 'pending' && report.status !== 'running') return;
 
+    const activeReportId = report.id;
     let polling: ReturnType<typeof setInterval> | null = null;
     const startPolling = () => {
       if (polling) return;
-      polling = setInterval(() => pollReport(report.id), 2500);
+      polling = setInterval(() => pollReport(activeReportId), 2500);
     };
 
     let es: EventSource | null = null;
     try {
-      es = new EventSource(`/api/reports/${report.id}/stream`);
+      es = new EventSource(`/api/reports/${activeReportId}/stream`);
       es.onmessage = (event) => {
         if (!event.data) return;
         try {
           const payload = JSON.parse(event.data);
-            if (payload?.type === 'status_update') {
-              setReport((prev) => ({
-                ...(prev ?? report),
-                status: payload.status ?? prev?.status ?? report.status,
-                score: payload.score ?? prev?.score ?? report.score,
-                error_message: payload.errorMessage ?? prev?.error_message ?? report.error_message,
-                analysis_progress: payload.analysisProgress ?? prev?.analysis_progress ?? report.analysis_progress,
-                token_usage: payload.tokenUsage ?? prev?.token_usage ?? report.token_usage,
-                tokens_used: payload.tokensUsed ?? prev?.tokens_used ?? report.tokens_used,
-              }));
-              if (payload.status === 'done' || payload.status === 'failed') {
-                pollReport(report.id);
-                es?.close();
-              }
+          if (payload?.type !== 'status_update') {
+            return;
+          }
+          setReport((prev) => {
+            if (!prev || prev.id !== activeReportId) {
+              return prev;
             }
-          } catch {
+            return {
+              ...prev,
+              status: payload.status ?? prev.status,
+              score: payload.score ?? prev.score,
+              error_message: payload.errorMessage ?? prev.error_message,
+              analysis_progress: payload.analysisProgress ?? prev.analysis_progress,
+              sections: Array.isArray(payload.analysisSections) ? payload.analysisSections : prev.sections,
+              token_usage: payload.tokenUsage ?? prev.token_usage,
+              tokens_used: payload.tokensUsed ?? prev.tokens_used,
+            };
+          });
+          if (
+            payload.status === 'done' ||
+            payload.status === 'partial_done' ||
+            payload.status === 'partial_failed' ||
+            payload.status === 'failed' ||
+            payload.status === 'canceled'
+          ) {
+            void pollReport(activeReportId);
+            es?.close();
+          }
+        } catch {
           // ignore parse errors
         }
       };
       es.onerror = () => {
         es?.close();
+        es = null;
         startPolling();
       };
     } catch {
@@ -328,7 +392,7 @@ export default function ReportDetailClient({
       if (es) es.close();
       if (polling) clearInterval(polling);
     };
-  }, [report, pollReport]);
+  }, [report?.id, report?.status, pollReport]);
 
   if (loading) {
     return <ReportDetailSkeleton />;
@@ -365,13 +429,23 @@ export default function ReportDetailClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: report.project_id, commits: commitShas }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({} as { error?: string; code?: string; reportId?: string }));
       if (!res.ok) {
-        const error = (data as { error?: string }).error ?? dict.reportDetail.retryFailed;
+        if (data.code === 'AI_INTEGRATION_REBIND_REQUIRED' || data.code === 'AI_INTEGRATION_MISSING') {
+          toast.error(dict.commits.aiIntegrationRebindRequired, {
+            id: loadingToastId,
+            action: {
+              label: dict.commits.openProjectSettings,
+              onClick: () => router.push(withOrgPrefix(pathname, `/projects/${report.project_id}/settings`)),
+            },
+          });
+          return;
+        }
+        const error = data.error ?? dict.reportDetail.retryFailed;
         throw new Error(error);
       }
 
-      const nextReportId = (data as { reportId?: string }).reportId;
+      const nextReportId = data.reportId;
       if (!nextReportId) {
         throw new Error(dict.reportDetail.retryFailed);
       }
@@ -458,9 +532,10 @@ export default function ReportDetailClient({
   const statusChip = {
     done:      { variant: 'success' as const, label: dict.reports.status.done },
     failed:    { variant: 'danger' as const,  label: dict.reports.status.failed },
+    partial_failed: { variant: 'warning' as const, label: dict.reports.status.partialFailed },
     pending:   { variant: 'muted' as const, label: dict.reports.status.pending },
-    analyzing: { variant: 'accent' as const,  label: dict.reports.status.analyzing },
-  }[retrying ? 'analyzing' : report.status] ?? { variant: 'muted' as const, label: retrying ? dict.reports.status.analyzing : report.status };
+    running: { variant: 'accent' as const,  label: dict.reports.status.running },
+  }[retrying ? 'running' : report.status] ?? { variant: 'muted' as const, label: retrying ? dict.reports.status.running : report.status };
 
   function openChat(issueFile?: string) {
     setChatIssueId(issueFile);
@@ -491,6 +566,12 @@ export default function ReportDetailClient({
   const inputTokens = tokenUsage?.inputTokens ?? 0;
   const outputTokens = tokenUsage?.outputTokens ?? 0;
   const totalTokens = tokenUsage?.totalTokens ?? report.tokens_used ?? 0;
+  const progressPercent = phaseProgressPercent(progress, report.status);
+  const progressUpdatedAtMs = progress?.updatedAt ? Date.parse(progress.updatedAt) : Number.NaN;
+  const heartbeatFresh = Number.isFinite(progressUpdatedAtMs) && (Date.now() - progressUpdatedAtMs) < 20000;
+  const runtimeStateLabel = heartbeatFresh
+    ? dict.reportDetail.runtimeHealthy
+    : (report.status === 'pending' ? dict.reportDetail.runtimeWaiting : dict.reportDetail.runtimeStalled);
 
   return (
     <div className="flex flex-col h-full">
@@ -510,7 +591,7 @@ export default function ReportDetailClient({
             <div className="text-[12px] text-[hsl(var(--ds-text-2))] truncate">{report.projects?.name}</div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {report.status === 'done' && (
+            {(report.status === 'done' || report.status === 'partial_failed') && (
               <>
                 <Button variant="outline" size="sm" onClick={() => setTrendsOpen(true)} className="gap-2">
                   <BarChart3 className="size-4" />{dict.reportDetail.trendAnalysis}
@@ -520,13 +601,13 @@ export default function ReportDetailClient({
                 </Button>
               </>
             )}
-            {(report.status === 'done' || report.status === 'failed') && (
+            {(report.status === 'done' || report.status === 'failed' || report.status === 'partial_failed') && (
               <Button variant="outline" size="sm" disabled={retrying} onClick={handleRetry} className="gap-2">
                 <RefreshCw className={retrying ? 'size-3.5 animate-spin' : 'size-3.5'} />
                 {retrying ? dict.reportDetail.reanalyzing : dict.reportDetail.reanalyze}
               </Button>
             )}
-            {(report.status === 'pending' || report.status === 'analyzing') && (
+            {(report.status === 'pending' || report.status === 'running') && (
               <Button
                 variant="outline"
                 size="sm"
@@ -544,7 +625,7 @@ export default function ReportDetailClient({
       </div>
 
       {/* Analyzing */}
-      {(retrying || report.status === 'pending' || report.status === 'analyzing') && (
+      {(retrying || report.status === 'pending' || report.status === 'running') && (
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="w-full max-w-3xl rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] p-6 space-y-5">
             <div>
@@ -553,6 +634,18 @@ export default function ReportDetailClient({
               </div>
               <div className="text-[13px] text-[hsl(var(--ds-text-2))] mt-1">
                 {dict.reportDetail.analyzingSubtext}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[12px] text-[hsl(var(--ds-text-2))]">
+                <span>{dict.reportDetail.progressLabel}</span>
+                <span>{progressPercent}%</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-[hsl(var(--ds-surface-3))] overflow-hidden">
+                <div
+                  className="h-full bg-[hsl(var(--ds-accent-7))] transition-all duration-300 ease-out"
+                  style={{ width: `${progressPercent}%` }}
+                />
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -571,11 +664,67 @@ export default function ReportDetailClient({
                 <div className="text-sm font-medium mt-1">{totalTokens}</div>
               </div>
             </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-4 py-3">
+                <div className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.runtimeState}</div>
+                <div className="text-sm font-medium mt-1">{runtimeStateLabel}</div>
+              </div>
+              <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-4 py-3">
+                <div className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.lastUpdate}</div>
+                <div className="text-sm font-medium mt-1">
+                  {Number.isFinite(progressUpdatedAtMs)
+                    ? `${Math.max(0, Math.floor((Date.now() - progressUpdatedAtMs) / 1000))}s`
+                    : '--'}
+                </div>
+              </div>
+            </div>
             <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-4 py-3">
               <div className="text-[12px] text-[hsl(var(--ds-text-2))] mb-1">{dict.reportDetail.currentFile}</div>
               <code className="text-xs font-mono text-foreground break-all">
                 {progress?.currentFile ?? dict.reportDetail.pendingCurrentFile}
               </code>
+            </div>
+            <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-4 py-3 space-y-2">
+              <div className="text-[12px] text-[hsl(var(--ds-text-2))]">Phase Execution</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {(['core', 'quality', 'security_performance', 'suggestions'] as const).map((phase) => {
+                  const section = (report.sections ?? []).find((item) => item.phase === phase);
+                  const phaseLabel = phase === 'security_performance'
+                    ? 'Security + Performance'
+                    : phase === 'core'
+                      ? 'Core'
+                      : phase === 'quality'
+                        ? 'Quality'
+                        : 'Suggestions';
+                  const phaseStatus = section?.status ?? (phase === 'core' && report.status === 'running' ? 'running' : 'pending');
+                  const phaseClass = phaseStatus === 'done'
+                    ? 'text-success'
+                    : phaseStatus === 'failed'
+                      ? 'text-danger'
+                      : phaseStatus === 'running'
+                        ? 'text-primary'
+                        : 'text-[hsl(var(--ds-text-2))]';
+
+                  return (
+                    <div key={phase} className="rounded-[6px] border border-[hsl(var(--ds-border-1))] px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[12px] font-medium">{phaseLabel}</div>
+                        <div className={['text-[11px] uppercase tracking-wide', phaseClass].join(' ')}>
+                          {phaseStatus}
+                        </div>
+                      </div>
+                      {section?.errorMessage && (
+                        <div className="mt-1 text-[11px] text-danger line-clamp-2">{section.errorMessage}</div>
+                      )}
+                      {section?.durationMs != null && (
+                        <div className="mt-1 text-[11px] text-[hsl(var(--ds-text-2))]">
+                          {section.durationMs} ms
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
             <div className="text-[12px] text-[hsl(var(--ds-text-2))]">
               {dict.reportDetail.tokenBreakdown
@@ -601,9 +750,16 @@ export default function ReportDetailClient({
       )}
 
       {/* Done */}
-      {report.status === 'done' && !retrying && (
+      {(report.status === 'done' || report.status === 'partial_failed') && !retrying && (
         <div className="flex-1 overflow-auto">
           <div className="p-6 space-y-6 max-w-[1200px] mx-auto">
+            {report.status === 'partial_failed' && (
+              <Card className="border-warning/40 bg-warning/10">
+                <CardContent className="px-6 py-4 text-[13px] text-warning">
+                  Analysis finished with partial phase failures. Core result is available.
+                </CardContent>
+              </Card>
+            )}
             <Card>
               <CardContent className="px-6 py-4 flex flex-wrap gap-4">
                 <div className="text-sm">

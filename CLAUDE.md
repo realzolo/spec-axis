@@ -42,6 +42,8 @@ Unless stated otherwise, paths in this guide are relative to `apps/studio`.
 - Pipeline concurrency control: `allow | queue | cancel_previous` modes stored in `pipelines.concurrency_mode` column (included in `docs/db/init.sql`; use migration for existing DBs)
 - Notification settings UI at `/o/:orgId/settings/notifications` backed by `/api/notification-settings`
 - Dashboard org home page (`/o/:orgId`) shows 4 stat cards (projects, avg score, open issues, pipeline success rate), quick actions, per-project score list, and recent activity
+- Integration deletion is non-blocking: deleting an integration does not check `code_projects` usage references.
+- Analyze preflight uses structured AI binding errors: `/api/analyze` returns `AI_INTEGRATION_REBIND_REQUIRED` or `AI_INTEGRATION_MISSING`, and clients should guide users to rebind in Project Settings.
 
 ## Organization Model & Routing
 
@@ -84,7 +86,7 @@ Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on si
 | Lezer Highlight | ^1.2 | Diff syntax highlighting for commit review |
 | PostgreSQL | 14+ | Primary database (self-managed) |
 | Octokit | `^5.0.5` | GitHub API |
-| Anthropic SDK | `^0.78` | Claude AI, supports `ANTHROPIC_BASE_URL` |
+| Native Fetch (LLM adapters) | Built-in | Unified provider transport for AI integrations (`/chat/completions`, `/responses`, Anthropic Messages API) |
 | Go | 1.24.0 | Runner service |
 | TOML | 1.6.0 | `github.com/BurntSushi/toml` for runner config |
 | Asynq | 0.26.0 | Redis-backed job queue (runner) |
@@ -101,6 +103,7 @@ Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on si
 - **Schema requirement**: latest schema (`docs/db/init.sql`) and any required upgrade migrations must be applied before runtime. Missing required columns (for example `pipelines.concurrency_mode`) are treated as errors, not tolerated with fallback logic.
 - **Canonical provider IDs only**: Use a single provider identifier per integration type (current AI provider key is `openai-api`). Do not add alias keys.
 - **Fail-fast on unsupported providers**: Provider switch statements must throw on unknown values; no silent fallback client selection.
+- **Unified AI transport**: Studio AI integrations must use the shared fetch-based adapter path; do not add provider-specific SDK dependencies in feature/business routes.
 
 ## Naming & Design Rules
 
@@ -282,10 +285,10 @@ ANALYZE_RATE_LIMIT_ORG_MAX=            # Max analyze requests/window per org (de
 ANALYZE_RATE_LIMIT_IP_MAX=             # Auxiliary max analyze requests/window per IP hash (default 120)
 ANALYZE_DEDUPE_TTL_SEC=                # Identical analyze request result reuse TTL in seconds (default 180)
 ANALYZE_DEDUPE_LOCK_TTL_SEC=           # In-flight dedupe lock TTL in seconds (default 15)
-ANALYZE_BACKPRESSURE_PROJECT_ACTIVE_MAX= # Max active (pending/analyzing) reports per project before 503 (default 6)
-ANALYZE_BACKPRESSURE_ORG_ACTIVE_MAX=     # Max active (pending/analyzing) reports per org before 503 (default 60)
+ANALYZE_BACKPRESSURE_PROJECT_ACTIVE_MAX= # Max active (pending/running) reports per project before 503 (default 6)
+ANALYZE_BACKPRESSURE_ORG_ACTIVE_MAX=     # Max active (pending/running) reports per org before 503 (default 60)
 ANALYZE_BACKPRESSURE_RETRY_AFTER_SEC=    # Retry-After hint for backpressure rejections (default 15)
-ANALYZE_REPORT_TIMEOUT_MS=               # Auto-fail threshold for pending/analyzing reports (ms, default 1200000)
+ANALYZE_REPORT_TIMEOUT_MS=               # Auto-fail threshold for pending/running reports (ms, default 3600000)
 ANALYZE_REPORT_TIMEOUT_SWEEP_INTERVAL_MS= # Min interval between timeout sweeps in Studio workers (ms, default 30000)
 ```
 
@@ -346,7 +349,7 @@ Environment files for Studio live under `apps/studio` (e.g. `apps/studio/.env`).
 **VCS and AI integrations** are configured via web UI at **Settings > Integrations** — NOT via env vars.
 - VCS: GitHub, GitLab, Generic Git
 - AI: Any OpenAI API-format provider (Claude, GPT-4, DeepSeek, etc.)
-- AI config supports `model` (manual model ID allowed), optional `maxTokens`, `temperature`, and optional `reasoningEffort` (`none|minimal|low|medium|high|xhigh`)
+- AI config supports `model` (manual model ID allowed), required `apiStyle` (`openai|anthropic`), optional `maxTokens`, `temperature`, and optional `reasoningEffort` (`none|minimal|low|medium|high|xhigh`)
 - Add/Edit AI Integration modals provide quick `maxTokens` profiles for common workloads (quick review, deep review, log analysis, auto-fix) while still allowing manual override
 - For official OpenAI endpoint (`https://api.openai.com/v1`), reasoning-capable models (for example `gpt-5*`, `o*`, `codex*`) use `/responses`; other providers remain on `/chat/completions`
 - Project-level AI integration binding can be changed in **Project Settings > Project Configuration**; selecting "Use organization default" clears project override and falls back to org default.
@@ -380,14 +383,22 @@ If new install warnings appear, approve the dependency and update the allowlist.
 1. `POST /api/analyze` (auth required) applies admission control before enqueue:
    - request dedupe by semantic fingerprint (`org + project + commits + rules + mode`) with short Redis TTL
    - distributed rate limits (`org+user+project`, `org`, auxiliary IP hash)
-   - queue backpressure guard based on active `analysis_reports` (`pending`/`analyzing`) counts
+   - queue backpressure guard based on active `analysis_reports` (`pending`/`running`) counts
 2. Studio performs integration preflight (AI integration must decrypt/resolve successfully) before creating report/task.
-3. On accepted request, Studio creates `analysis_reports` row and enqueues runner task
+3. On accepted request, Studio creates `analysis_reports` row with immutable `analysis_snapshot` and enqueues runner task
 4. API returns `{ reportId, status: "queued", taskId }` (or deduped existing report/task when applicable)
 5. Reports support manual termination via `POST /api/reports/[id]/terminate` (Studio marks report failed and requests Runner task cancellation).
-6. Studio also auto-fails timed-out reports (`pending`/`analyzing`) based on `ANALYZE_REPORT_TIMEOUT_MS`.
-7. Runner: fetch diff by commit SHA → emit structured progress (`analysis_progress`) → AI analysis → sync `analysis_issues` → persist token usage (`tokens_used` + `token_usage`) → update status
-8. Frontend: SSE on `/api/reports/[id]/stream` (status + progress + token usage), fallback to polling every 2.5s
+6. Studio also auto-fails timed-out reports (`pending`/`running`) based on `ANALYZE_REPORT_TIMEOUT_MS`.
+7. Runner canonical report status model is `pending -> running -> done | partial_failed | failed | canceled`.
+8. Runner executes phased analysis:
+   - `core` (score/category/issues/summary/context)
+   - `quality` (complexity/duplication/dependency metrics)
+   - `security_performance` (security + performance findings)
+   - `suggestions` (refactor suggestions + code explanations)
+   Non-core phases run in parallel after core completes.
+9. Each phase is persisted in `analysis_report_sections` (`report_id + phase + attempt`), including payload, duration, token usage, and failure reason.
+10. Runner increments `analysis_reports.sse_seq` on progress/section/status updates; SSE uses sequence + snapshot diff to stream ordered updates.
+11. Frontend subscribes to `/api/reports/[id]/stream` and receives `status_update` with `status`, `score`, `analysisProgress`, `analysisSections`, `tokenUsage`, `tokensUsed`, `errorMessage`, `sequence`.
 
 ## Pipeline Engine (CI/CD)
 
@@ -477,7 +488,11 @@ toast.success('...'); toast.error('...'); toast.warning('...');
 - `POST /api/pipelines/[id]/runs` enforces concurrency gate before calling runner (409 if `queue` mode and run active)
 - Studio server calls Runner `POST /v1/pipeline-runs/{runId}/cancel` and expects `{ ok: true }` (used by `cancel_previous` concurrency mode)
 - AI integration runtime routing: official OpenAI + reasoning-capable model (or explicit `reasoningEffort`) calls `/responses`; otherwise calls `/chat/completions` (Anthropic base URL uses Messages API)
-- Report stream payload (`type: "status_update"`) includes `status`, `score`, `analysisProgress`, `tokenUsage`, `tokensUsed`, and `errorMessage`
+- AI integration protocol selection requires explicit `apiStyle`: `anthropic` forces Messages API; `openai` forces OpenAI-compatible APIs.
+- Studio AI runtime implementation is SDK-free and uses a single HTTP adapter strategy across providers (including Anthropic Messages API).
+- Runner analysis error normalization: token-limit truncation and empty upstream body are surfaced as actionable messages instead of raw JSON parse errors.
+- Runner AI client performs one automatic token-budget retry on output truncation (`max_tokens` / `max_output_tokens`) before failing.
+- Report stream payload (`type: "status_update"`) includes `status`, `score`, `analysisProgress`, `analysisSections`, `tokenUsage`, `tokensUsed`, `errorMessage`, and `sequence`
 - `GET /api/rules/templates` returns static template list; `POST /api/rules/templates/[id]/import` is admin-only
 - Report compare page: `/o/:orgId/projects/:id/reports/compare?a=reportIdA&b=reportIdB`
 - Commit compare diff: `GET /api/commits/compare?repo=...&project_id=...&base=...&head=...`
@@ -495,6 +510,7 @@ psql "$DATABASE_URL" -f docs/db/migrations/005_analysis_progress_and_token_usage
 psql "$DATABASE_URL" -f docs/db/migrations/006_commit_review_items.sql
 psql "$DATABASE_URL" -f docs/db/migrations/007_codebase_comment_threads.sql
 psql "$DATABASE_URL" -f docs/db/migrations/008_codebase_thread_projections.sql
+psql "$DATABASE_URL" -f docs/db/migrations/009_phased_analysis_sections.sql
 ```
 
 | File | Description |
@@ -505,6 +521,7 @@ psql "$DATABASE_URL" -f docs/db/migrations/008_codebase_thread_projections.sql
 | `006_commit_review_items.sql` | Adds commit review markers for per-file/line review state |
 | `007_codebase_comment_threads.sql` | Adds thread model (`codebase_comment_threads`) and links `codebase_comments.thread_id` |
 | `008_codebase_thread_projections.sql` | Adds immutable thread anchors and per-commit projection cache/status tables |
+| `009_phased_analysis_sections.sql` | Adds phased analysis sections, `analysis_snapshot`, `sse_seq`, and canonical report running status constraint |
 
 ## FAQ
 

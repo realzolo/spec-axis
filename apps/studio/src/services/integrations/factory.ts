@@ -17,8 +17,23 @@ import type {
 } from './types';
 import { GitHubClient, GitLabClient, GenericGitClient } from './vcs-clients';
 import { OpenAIAPIClient } from './ai-clients';
+import { sanitizeAIConfig } from './ai-config';
 
 type IntegrationRow = Omit<Integration, 'config'> & { config: string | IntegrationConfig | null };
+
+export type IntegrationResolutionCode =
+  | 'AI_INTEGRATION_MISSING'
+  | 'AI_INTEGRATION_REBIND_REQUIRED';
+
+export class IntegrationResolutionError extends Error {
+  constructor(
+    public readonly code: IntegrationResolutionCode,
+    message: string
+  ) {
+    super(message);
+    this.name = 'IntegrationResolutionError';
+  }
+}
 
 function parseIntegrationConfig(raw: IntegrationRow['config']): IntegrationConfig {
   if (typeof raw === 'string') {
@@ -64,8 +79,9 @@ export function createVCSClient(integration: Integration, token: string): VCSCli
  * Create an AI client from an integration
  */
 export function createAIClient(integration: Integration, apiKey: string): AIClient {
+  const aiConfig = sanitizeAIConfig(integration.config as AIConfig);
   const config: AIConfigWithSecret = {
-    ...(integration.config as AIConfig),
+    ...aiConfig,
     apiKey,
   };
 
@@ -170,6 +186,11 @@ export async function resolveAIIntegration(projectId: string): Promise<{
       const client = createAIClient(integration, apiKey);
       return { integration, client };
     }
+
+    throw new IntegrationResolutionError(
+      'AI_INTEGRATION_REBIND_REQUIRED',
+      'Project AI integration was deleted. Please rebind an AI model in Project Settings.'
+    );
   }
 
   // 2. Try org default integration
@@ -188,7 +209,8 @@ export async function resolveAIIntegration(projectId: string): Promise<{
     }
   }
 
-  throw new Error(
+  throw new IntegrationResolutionError(
+    'AI_INTEGRATION_MISSING',
     'No AI integration configured. Please add an AI model integration in Settings > Integrations.'
   );
 }

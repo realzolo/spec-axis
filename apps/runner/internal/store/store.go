@@ -18,7 +18,7 @@ type Store struct {
 	pool *pgxpool.Pool
 }
 
-var ErrReportNotAnalyzing = errors.New("report is not in analyzing status")
+var ErrReportNotRunning = errors.New("report is not in running status")
 
 type Project struct {
 	ID               string
@@ -72,6 +72,21 @@ type ReportAnalysisUpdate struct {
 	TokensUsed          *int
 	TokenUsage          json.RawMessage
 	AnalysisProgress    json.RawMessage
+	ErrorMessage        *string
+}
+
+type ReportSectionUpsert struct {
+	ReportID     string
+	Phase        string
+	Attempt      int
+	Status       string
+	Payload      json.RawMessage
+	ErrorMessage *string
+	DurationMs   *int
+	TokensUsed   *int
+	TokenUsage   json.RawMessage
+	CostUSD      *float64
+	CompletedAt  *time.Time
 }
 
 func New(ctx context.Context, url string) (*Store, error) {
@@ -162,7 +177,12 @@ func (s *Store) GetReport(ctx context.Context, reportID string) (*Report, error)
 func (s *Store) UpdateReportStatus(ctx context.Context, reportID string, status string, errorMessage *string) error {
 	_, err := s.pool.Exec(
 		ctx,
-		`update analysis_reports set status=$2, error_message=$3 where id=$1`,
+		`update analysis_reports
+		    set status=$2,
+		        error_message=$3,
+		        sse_seq=sse_seq+1,
+		        updated_at=now()
+		  where id=$1`,
 		reportID,
 		status,
 		errorMessage,
@@ -170,23 +190,24 @@ func (s *Store) UpdateReportStatus(ctx context.Context, reportID string, status 
 	return err
 }
 
-func (s *Store) MarkReportAnalyzing(ctx context.Context, reportID string) error {
+func (s *Store) MarkReportRunning(ctx context.Context, reportID string) error {
 	result, err := s.pool.Exec(
 		ctx,
 		`update analysis_reports
-		 set status='analyzing',
+		 set status='running',
 		     error_message=null,
 		     analysis_progress=null,
+		     sse_seq=sse_seq+1,
 		     updated_at=now()
 		 where id=$1
-		   and status in ('pending', 'analyzing')`,
+		   and status in ('pending', 'running')`,
 		reportID,
 	)
 	if err != nil {
 		return err
 	}
 	if result.RowsAffected() == 0 {
-		return ErrReportNotAnalyzing
+		return ErrReportNotRunning
 	}
 	return nil
 }
@@ -196,15 +217,16 @@ func (s *Store) MarkReportFailed(ctx context.Context, reportID string, message s
 		ctx,
 		`update analysis_reports
 		 set status='failed',
-		     error_message=$2,
+		     error_message=$2::text,
 		     analysis_progress=jsonb_build_object(
 		     	'phase', 'failed',
-		     	'message', $2,
+		     	'message', $2::text,
 		     	'updatedAt', now()
 		     ),
+		     sse_seq=sse_seq+1,
 		     updated_at=now()
 		 where id=$1
-		   and status in ('pending', 'analyzing')`,
+		   and status in ('pending', 'running')`,
 		reportID,
 		message,
 	)
@@ -212,7 +234,7 @@ func (s *Store) MarkReportFailed(ctx context.Context, reportID string, message s
 		return err
 	}
 	if result.RowsAffected() == 0 {
-		return ErrReportNotAnalyzing
+		return ErrReportNotRunning
 	}
 	return nil
 }
@@ -226,9 +248,10 @@ func (s *Store) UpdateReportProgress(ctx context.Context, reportID string, progr
 		ctx,
 		`update analysis_reports
 		 set analysis_progress=$2,
+		     sse_seq=sse_seq+1,
 		     updated_at=now()
 		 where id=$1
-		   and status in ('pending', 'analyzing')`,
+		   and status in ('pending', 'running')`,
 		reportID,
 		raw,
 	)
@@ -236,7 +259,7 @@ func (s *Store) UpdateReportProgress(ctx context.Context, reportID string, progr
 		return err
 	}
 	if result.RowsAffected() == 0 {
-		return ErrReportNotAnalyzing
+		return ErrReportNotRunning
 	}
 	return nil
 }
@@ -266,8 +289,10 @@ func (s *Store) UpdateReportAnalysis(ctx context.Context, reportID string, updat
 			tokens_used=$20,
 			token_usage=$21,
 			analysis_progress=$22,
-			error_message=null
-		  where id=$1 and status='analyzing'`,
+			error_message=$23,
+			sse_seq=sse_seq+1,
+			updated_at=now()
+		  where id=$1 and status='running'`,
 		reportID,
 		update.Status,
 		update.Score,
@@ -290,14 +315,59 @@ func (s *Store) UpdateReportAnalysis(ctx context.Context, reportID string, updat
 		update.TokensUsed,
 		update.TokenUsage,
 		update.AnalysisProgress,
+		update.ErrorMessage,
 	)
 	if err != nil {
 		return err
 	}
 	if result.RowsAffected() == 0 {
-		return ErrReportNotAnalyzing
+		return ErrReportNotRunning
 	}
 	return nil
+}
+
+func (s *Store) UpsertReportSection(ctx context.Context, section ReportSectionUpsert) error {
+	if section.Attempt <= 0 {
+		section.Attempt = 1
+	}
+
+	_, err := s.pool.Exec(
+		ctx,
+		`with upserted as (
+		   insert into analysis_report_sections
+		     (report_id, phase, attempt, status, payload, error_message, duration_ms, tokens_used, token_usage, estimated_cost_usd, completed_at, updated_at)
+		   values
+		     ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+		   on conflict (report_id, phase, attempt)
+		   do update set
+		     status = excluded.status,
+		     payload = excluded.payload,
+		     error_message = excluded.error_message,
+		     duration_ms = excluded.duration_ms,
+		     tokens_used = excluded.tokens_used,
+		     token_usage = excluded.token_usage,
+		     estimated_cost_usd = excluded.estimated_cost_usd,
+		     completed_at = excluded.completed_at,
+		     updated_at = now()
+		   returning report_id
+		 )
+		 update analysis_reports
+		    set sse_seq = sse_seq + 1,
+		        updated_at = now()
+		  where id = (select report_id from upserted limit 1)`,
+		section.ReportID,
+		section.Phase,
+		section.Attempt,
+		section.Status,
+		section.Payload,
+		section.ErrorMessage,
+		section.DurationMs,
+		section.TokensUsed,
+		section.TokenUsage,
+		section.CostUSD,
+		section.CompletedAt,
+	)
+	return err
 }
 
 func (s *Store) UpdateProjectLastAnalyzedAt(ctx context.Context, projectID string) error {

@@ -26,7 +26,7 @@ func LoadWithOptions(opts LoadOptions) (Config, error) {
 		ArtifactRetentionDays: 30,
 	}
 
-	analyzeTimeoutRaw := "900s"
+	analyzeTimeoutRaw := "1h"
 	pipelineTimeoutRaw := "2h"
 
 	configPath, err := resolveConfigPath(opts.ConfigPath)

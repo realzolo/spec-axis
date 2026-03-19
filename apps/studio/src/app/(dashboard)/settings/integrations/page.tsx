@@ -154,7 +154,7 @@ export default function IntegrationsPage() {
         throw new Error(data.error || i18n.deleteFailed);
       }
 
-      toast.success(i18n.deleteSuccess);
+      toast.success(i18n.deleteSuccessRebindHint);
       if (type === 'vcs') {
         setVcsIntegrations((prev) => prev.filter((item) => item.id !== integration.id));
       } else {
@@ -187,7 +187,19 @@ export default function IntegrationsPage() {
       const data = await res.json();
 
       if (data.success) {
-        toast.success(i18n.testSuccess);
+        const observedModel = data.details?.observedModel as string | undefined;
+        const expectedModel = data.details?.expectedModel as string | undefined;
+        const warnings = Array.isArray(data.details?.warnings)
+          ? (data.details.warnings as string[])
+          : [];
+        if (observedModel && expectedModel) {
+          toast.success(`${i18n.testSuccess} · ${expectedModel} -> ${observedModel}`);
+        } else {
+          toast.success(i18n.testSuccess);
+        }
+        if (warnings.length > 0) {
+          toast.warning(warnings.join(' | '));
+        }
       } else {
         toast.error(data.error || i18n.testFailed);
       }

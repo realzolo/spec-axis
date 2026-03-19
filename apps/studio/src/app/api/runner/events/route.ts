@@ -135,7 +135,7 @@ async function notifyReportDone(reportId: string) {
     [reportId]
   );
   if (!report) return;
-  if (report.status !== 'done') return;
+  if (report.status !== 'done' && report.status !== 'partial_failed') return;
   if (!report.user_id) return;
 
   const user = await queryOne<{
@@ -165,7 +165,8 @@ async function notifyReportDone(reportId: string) {
     [report.project_id]
   );
   const link = absoluteStudioUrl(`/o/${report.org_id}/reports/${report.id}`);
-  const subject = `[Spec-Axis] Report ready${project?.name ? `: ${project.name}` : ''}`;
+  const statusLabel = report.status === 'partial_failed' ? 'partial' : 'done';
+  const subject = `[Spec-Axis] Report ${statusLabel}${project?.name ? `: ${project.name}` : ''}`;
   const text = [
     `Report: ${report.id}`,
     project?.name ? `Project: ${project.name}` : '',

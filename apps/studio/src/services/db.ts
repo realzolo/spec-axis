@@ -225,13 +225,20 @@ export async function createReport(payload: {
   org_id: string;
   ruleset_snapshot: object[];
   commits: object[];
+  analysis_snapshot?: Record<string, unknown>;
 }) {
   const row = await queryOne(
     `insert into analysis_reports
-      (project_id, org_id, ruleset_snapshot, commits, status, created_at, updated_at)
-     values ($1,$2,$3,$4,'pending',now(),now())
+      (project_id, org_id, ruleset_snapshot, commits, analysis_snapshot, status, created_at, updated_at)
+     values ($1,$2,$3,$4,$5,'pending',now(),now())
      returning *`,
-    [payload.project_id, payload.org_id, JSON.stringify(payload.ruleset_snapshot), JSON.stringify(payload.commits)]
+    [
+      payload.project_id,
+      payload.org_id,
+      JSON.stringify(payload.ruleset_snapshot),
+      JSON.stringify(payload.commits),
+      JSON.stringify(payload.analysis_snapshot ?? {}),
+    ]
   );
   if (!row) throw new Error('Failed to create report');
   return row;

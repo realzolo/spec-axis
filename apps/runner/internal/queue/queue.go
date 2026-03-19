@@ -53,26 +53,27 @@ func HandleAnalyzeTask(st *store.Store, publisher *events.Publisher, timeout tim
 
 		err := analysis.RunAnalyzeTask(ctx, st, publisher, payload, timeout)
 		if err != nil {
-			if errors.Is(err, store.ErrReportNotAnalyzing) {
+			if errors.Is(err, store.ErrReportNotRunning) {
 				log.Printf("analyze task skipped finalization: %v", err)
 				return nil
 			}
 			log.Printf("analyze task failed: %v", err)
 			markErr := st.MarkReportFailed(ctx, payload.ReportID, humanAnalyzeError(err, timeout))
-			if errors.Is(markErr, store.ErrReportNotAnalyzing) {
+			if errors.Is(markErr, store.ErrReportNotRunning) {
 				log.Printf("analyze task skipped failure update due terminal report status: %v", err)
 				return nil
 			}
 			if markErr != nil {
 				log.Printf("failed to mark report failed: %v", markErr)
+				if shouldSkipRetry(err) {
+					return fmt.Errorf("non-retryable analyze failure: %v: %w", err, asynq.SkipRetry)
+				}
+				return err
 			}
 			if publisher != nil && markErr == nil {
 				publisher.ReportStatus(payload.ReportID, "failed", nil)
 			}
-			if shouldSkipRetry(err) {
-				return fmt.Errorf("non-retryable analyze failure: %v: %w", err, asynq.SkipRetry)
-			}
-			return err
+			return fmt.Errorf("analyze failed and report marked as failed: %v: %w", err, asynq.SkipRetry)
 		}
 
 		return nil
@@ -91,6 +92,15 @@ func humanAnalyzeError(err error, timeout time.Duration) string {
 			"AI request timed out after %s. Increase runner analyze_timeout/ANALYZE_TIMEOUT or reduce Max Tokens/reasoning effort.",
 			timeout.String(),
 		)
+	}
+	if strings.Contains(low, "unexpected eof") || strings.Contains(low, "eof") {
+		return "AI upstream connection dropped unexpectedly (EOF). Please retry; if this persists, verify runner network egress and AI endpoint stability."
+	}
+	if strings.Contains(low, "truncated because max tokens") || strings.Contains(low, "max_output_tokens was reached") {
+		return "AI output was truncated due token limit. Increase the model Max Tokens in Settings > Integrations, or reduce diff size and retry."
+	}
+	if strings.Contains(low, "returned empty response body") {
+		return "AI upstream returned an empty response body. Verify the configured API base URL/gateway and retry."
 	}
 	return err.Error()
 }

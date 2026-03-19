@@ -77,7 +77,7 @@ export type AnalyzeFingerprintInput = {
 export type AnalyzeDedupeResult = {
   reportId: string;
   taskId?: string;
-  status: 'queued' | 'analyzing' | 'done' | 'failed';
+  status: 'queued' | 'running' | 'done' | 'failed';
   projectId: string;
   orgId: string;
   incrementalAnalysis: boolean;
@@ -198,8 +198,8 @@ export async function checkAnalyzeBackpressure(
 ): Promise<AnalyzeRejectResponse | null> {
   const row = await queryOne<QueueDepthRow>(
     `select
-       count(*) filter (where status in ('pending', 'analyzing')) as org_active,
-       count(*) filter (where project_id = $2 and status in ('pending', 'analyzing')) as project_active
+       count(*) filter (where status in ('pending', 'running')) as org_active,
+       count(*) filter (where project_id = $2 and status in ('pending', 'running')) as project_active
      from analysis_reports
      where org_id = $1`,
     [orgId, projectId]
@@ -387,7 +387,7 @@ function isAnalyzeDedupeResult(value: unknown): value is AnalyzeDedupeResult {
 
   if (
     status !== 'queued' &&
-    status !== 'analyzing' &&
+    status !== 'running' &&
     status !== 'done' &&
     status !== 'failed'
   ) {
@@ -510,4 +510,3 @@ function sleep(ms: number) {
     setTimeout(resolve, Math.max(ms, 0));
   });
 }
-

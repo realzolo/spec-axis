@@ -46,25 +46,25 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
       [orgId]
     ),
     queryOne<{ count: string }>(
-      `select count(*)::text as count
-       from analysis_issues i
-       join analysis_reports r on r.id = i.report_id
-       where r.org_id = $1 and r.status = 'done' and i.status = 'open'`,
+       `select count(*)::text as count
+        from analysis_issues i
+        join analysis_reports r on r.id = i.report_id
+       where r.org_id = $1 and r.status in ('done', 'partial_failed') and i.status = 'open'`,
       [orgId]
     ),
     queryOne<{ avg: number | null }>(
       `select avg(score)::float as avg
        from analysis_reports
-       where org_id = $1 and status = 'done' and score is not null
+       where org_id = $1 and status in ('done', 'partial_failed') and score is not null
          and created_at >= now() - interval '14 days'`,
       [orgId]
     ),
     // Open issues created in previous 14-day window (14–28 days ago)
     queryOne<{ count: string }>(
-      `select count(*)::text as count
-       from analysis_issues i
-       join analysis_reports r on r.id = i.report_id
-       where r.org_id = $1 and r.status = 'done' and i.status = 'open'
+       `select count(*)::text as count
+        from analysis_issues i
+        join analysis_reports r on r.id = i.report_id
+       where r.org_id = $1 and r.status in ('done', 'partial_failed') and i.status = 'open'
          and r.created_at >= now() - interval '28 days'
          and r.created_at < now() - interval '14 days'`,
       [orgId]
@@ -72,14 +72,14 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
     queryOne<{ avg: number | null }>(
       `select avg(score)::float as avg
        from analysis_reports
-       where org_id = $1 and status = 'done' and score is not null
+       where org_id = $1 and status in ('done', 'partial_failed') and score is not null
          and created_at >= now() - interval '28 days'
          and created_at < now() - interval '14 days'`,
       [orgId]
     ),
     query<{
       id: string;
-      status: 'pending' | 'analyzing' | 'done' | 'failed';
+      status: 'pending' | 'running' | 'done' | 'failed';
       score: number | null;
       created_at: string;
       project_id: string;
@@ -131,7 +131,7 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
               r.project_id, p.name as project_name, r.score, r.created_at
        from analysis_reports r
        join code_projects p on p.id = r.project_id
-       where r.org_id = $1 and r.status = 'done' and r.score is not null
+       where r.org_id = $1 and r.status in ('done', 'partial_failed') and r.score is not null
          and r.created_at >= now() - interval '14 days'
        order by r.project_id, r.created_at desc`,
       [orgId]

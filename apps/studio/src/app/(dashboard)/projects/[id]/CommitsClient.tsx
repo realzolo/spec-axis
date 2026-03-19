@@ -607,8 +607,21 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId: project.id, commits: selected }),
     });
-    const data = await res.json();
-    if (!res.ok) { toast.error(data.error); setAnalyzing(false); return; }
+    const data = await res.json().catch(() => ({} as { error?: string; code?: string; reportId?: string }));
+    if (!res.ok) {
+      if (data.code === 'AI_INTEGRATION_REBIND_REQUIRED' || data.code === 'AI_INTEGRATION_MISSING') {
+        toast.error(dict.commits.aiIntegrationRebindRequired, {
+          action: {
+            label: dict.commits.openProjectSettings,
+            onClick: () => router.push(withOrgPrefix(pathname, `/projects/${project.id}/settings`)),
+          },
+        });
+      } else {
+        toast.error(data.error ?? dict.commits.analysisFailed);
+      }
+      setAnalyzing(false);
+      return;
+    }
     router.push(withOrgPrefix(pathname, `/projects/${project.id}/reports/${data.reportId}`));
   }
 

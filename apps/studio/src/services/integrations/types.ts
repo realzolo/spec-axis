@@ -50,6 +50,7 @@ export interface VCSConfigWithSecret extends VCSConfig {
  */
 export interface AIConfig {
   baseUrl?: string; // API endpoint
+  apiStyle: 'openai' | 'anthropic';
   model: string; // Model name
   maxTokens?: number;
   temperature?: number;
@@ -137,6 +138,19 @@ export interface AnalysisResult {
   }>;
 }
 
+export interface AIConnectionTestResult {
+  success: boolean;
+  endpoint: string;
+  expectedModel: string;
+  observedModel?: string;
+  checks: {
+    protocol: boolean;
+    structuredOutput: boolean;
+    modelMetadata: boolean;
+  };
+  warnings: string[];
+}
+
 /**
  * AI Client interface
  */
@@ -146,7 +160,7 @@ export interface AIClient {
   /**
    * Test connection to AI service
    */
-  testConnection(): Promise<boolean>;
+  testConnection(): Promise<AIConnectionTestResult>;
 
   /**
    * Analyze code with AI

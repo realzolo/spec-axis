@@ -2,7 +2,7 @@
  * Integration management service
  */
 
-import { query, queryOne, exec, withTransaction } from '@/lib/db';
+import { queryOne, exec, withTransaction } from '@/lib/db';
 import { storeSecret, updateSecret, deleteSecret } from '@/lib/vault';
 import { logger } from '@/services/logger';
 import type { Integration, IntegrationType, Provider, IntegrationConfig } from './types';
@@ -145,28 +145,6 @@ export async function deleteIntegration(integrationId: string, orgId: string): P
 
   if (!integration) {
     throw new Error('Integration not found');
-  }
-
-  const projects = await query(
-    `select id from code_projects
-     where vcs_integration_id = $1 or ai_integration_id = $1
-     limit 1`,
-    [integrationId]
-  );
-
-  if (projects.length > 0) {
-    throw new Error('Cannot delete integration: it is being used by one or more projects');
-  }
-
-  const pipelines = await query(
-    `select id from pipelines
-     where ai_integration_id = $1 or vcs_integration_id = $1
-     limit 1`,
-    [integrationId]
-  );
-
-  if (pipelines.length > 0) {
-    throw new Error('Cannot delete integration: it is being used by one or more pipelines');
   }
 
   await exec(

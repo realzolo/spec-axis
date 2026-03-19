@@ -263,7 +263,10 @@ create table analysis_reports (
   org_id uuid not null references organizations(id) on delete cascade,
   ruleset_snapshot jsonb not null default '[]',
   commits jsonb not null default '[]',
-  status text not null default 'pending' check (status in ('pending','analyzing','done','failed')),
+  analysis_snapshot jsonb not null default '{}',
+  status text not null default 'pending' check (
+    status in ('pending','running','partial_done','done','partial_failed','failed','canceled')
+  ),
   score int check (score between 0 and 100),
   category_scores jsonb,
   issues jsonb,
@@ -286,6 +289,7 @@ create table analysis_reports (
   tokens_used int,
   token_usage jsonb,
   model_version text,
+  sse_seq bigint not null default 0,
   user_id uuid references auth_users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -296,6 +300,29 @@ create index idx_analysis_reports_org_id on analysis_reports(org_id);
 create index idx_analysis_reports_project_id_status on analysis_reports(project_id, status);
 create index idx_analysis_reports_created_at on analysis_reports(created_at desc);
 create index idx_analysis_reports_user_id on analysis_reports(user_id);
+create index idx_analysis_reports_status on analysis_reports(status);
+
+create table analysis_report_sections (
+  id uuid primary key default gen_random_uuid(),
+  report_id uuid not null references analysis_reports(id) on delete cascade,
+  phase text not null check (phase in ('core','security_performance','quality','suggestions')),
+  attempt int not null default 1 check (attempt > 0),
+  status text not null check (status in ('pending','running','done','failed','canceled')),
+  payload jsonb,
+  error_message text,
+  duration_ms int,
+  tokens_used int,
+  token_usage jsonb,
+  estimated_cost_usd numeric(12,6),
+  started_at timestamptz not null default now(),
+  completed_at timestamptz,
+  updated_at timestamptz not null default now(),
+  unique (report_id, phase, attempt)
+);
+
+create index idx_analysis_report_sections_report_id on analysis_report_sections(report_id);
+create index idx_analysis_report_sections_report_phase on analysis_report_sections(report_id, phase, updated_at desc);
+create index idx_analysis_report_sections_phase_status on analysis_report_sections(phase, status);
 
 create table analysis_issues (
   id uuid primary key default gen_random_uuid(),
