@@ -15,6 +15,7 @@ import SettingsNav from '@/components/settings/SettingsNav';
 import { useOrgRole } from '@/lib/useOrgRole';
 import ConfirmDialog from '@/components/ui/confirm-dialog';
 import { useClientDictionary } from '@/i18n/client';
+import { getOutputLanguageLabel } from '@/lib/outputLanguage';
 
 interface Integration {
   id: string;
@@ -22,7 +23,7 @@ interface Integration {
   provider: string;
   name: string;
   is_default: boolean;
-  config: { baseUrl?: string; model?: string } & Record<string, unknown>;
+  config: { baseUrl?: string; model?: string; outputLanguage?: string } & Record<string, unknown>;
   created_at: string;
 }
 
@@ -235,6 +236,11 @@ export default function IntegrationsPage() {
               {integration.config.model && (
                 <p className="text-[12px] text-[hsl(var(--ds-text-2))]">
                   {i18n.modelLabel}: {integration.config.model}
+                </p>
+              )}
+              {integration.config.outputLanguage && (
+                <p className="text-[12px] text-[hsl(var(--ds-text-2))]">
+                  {i18n.outputLanguageLabel}: {getOutputLanguageLabel(integration.config.outputLanguage)}
                 </p>
               )}
             </div>

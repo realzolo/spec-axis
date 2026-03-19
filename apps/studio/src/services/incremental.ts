@@ -1,5 +1,6 @@
 import { resolveAIIntegration } from './integrations';
 import { ReviewResult, ReviewIssue } from './claude';
+import { DEFAULT_OUTPUT_LANGUAGE, getOutputLanguageLabel, parseOutputLanguage } from '@/lib/outputLanguage';
 
 export interface IncrementalAnalysisResult {
   changedFiles: string[];
@@ -29,7 +30,18 @@ export async function analyzeIncremental(
   projectId: string
 ): Promise<ReviewResult> {
   // Get AI client for the project
-  const { client } = await resolveAIIntegration(projectId);
+  const { client, integration } = await resolveAIIntegration(projectId);
+  let outputLanguageCode = DEFAULT_OUTPUT_LANGUAGE;
+  try {
+    const config =
+      integration && typeof integration.config === 'object' && integration.config !== null
+        ? integration.config as Record<string, unknown>
+        : {};
+    outputLanguageCode = parseOutputLanguage(config.outputLanguage);
+  } catch {
+    outputLanguageCode = DEFAULT_OUTPUT_LANGUAGE;
+  }
+  const outputLanguageInstruction = `${getOutputLanguageLabel(outputLanguageCode)} (${outputLanguageCode})`;
 
   // Extract changed files from diff
   const changedFiles = extractChangedFiles(currentDiff);
@@ -74,7 +86,7 @@ Return the standard ReviewResult JSON. In the issues array, include:
 - \`isNew\`: true/false
 - \`wasFixed\`: true/false
 
-All text fields must be in English.`;
+All text fields must be in ${outputLanguageInstruction}.`;
 
   // Use the generic AI client interface
   const result = await client.analyze(prompt, '') as ReviewResult;

@@ -134,14 +134,15 @@ func RunAnalyzeTask(
 	}
 
 	coreDiff := selectCoreDiff(filtered)
+	outputLanguage := coreClient.OutputLanguage()
 
 	var corePrompt string
 	if payload.UseIncremental {
 		previousIssues := extractPreviousIssues(payload.PreviousReport)
 		filteredIssues := filterIssuesByFiles(previousIssues, changedFiles)
-		corePrompt = buildIncrementalPrompt(payload.Rules, coreDiff, filteredIssues)
+		corePrompt = buildIncrementalPrompt(payload.Rules, coreDiff, filteredIssues, outputLanguage)
 	} else {
-		corePrompt = buildCorePhasePrompt(payload.Rules, coreDiff)
+		corePrompt = buildCorePhasePrompt(payload.Rules, coreDiff, outputLanguage)
 	}
 
 	start := time.Now()
@@ -178,18 +179,18 @@ func RunAnalyzeTask(
 	parallelPhases := []phaseSpec{
 		{
 			phase:  "quality",
-			prompt: buildQualityPhasePrompt(filtered),
+			prompt: buildQualityPhasePrompt(filtered, outputLanguage),
 			client: coreClient,
 			local:  &localQuality,
 		},
 		{
 			phase:  "security_performance",
-			prompt: buildSecurityPerformancePhasePrompt(filtered),
+			prompt: buildSecurityPerformancePhasePrompt(filtered, outputLanguage),
 			client: securityPerfClient,
 		},
 		{
 			phase:  "suggestions",
-			prompt: buildSuggestionsPhasePrompt(filtered, coreResult.Issues),
+			prompt: buildSuggestionsPhasePrompt(filtered, coreResult.Issues, outputLanguage),
 			client: suggestionsClient,
 		},
 	}
@@ -817,10 +818,11 @@ func postStudioReportEvent(ctx context.Context, reportID string) {
 	_ = res.Body.Close()
 }
 
-func buildCorePhasePrompt(rules []domain.Rule, diff string) string {
+func buildCorePhasePrompt(rules []domain.Rule, diff string, outputLanguage string) string {
 	diff = truncateDiff(diff, 130000)
 	rulesText := buildRulesText(rules)
 	diffBlock := "```diff\n" + diff + "\n```"
+	languageInstruction := outputLanguageInstruction(outputLanguage)
 	return fmt.Sprintf(`You are a senior code reviewer. Perform the CORE review for this diff.
 
 Review rules:
@@ -865,12 +867,13 @@ Return ONLY valid JSON with exactly these keys:
   }
 }
 
-All text in English.`, rulesText, diffBlock)
+All text fields must be in %s.`, rulesText, diffBlock, languageInstruction)
 }
 
-func buildQualityPhasePrompt(diff string) string {
+func buildQualityPhasePrompt(diff string, outputLanguage string) string {
 	diff = truncateDiff(diff, 110000)
 	diffBlock := "```diff\n" + diff + "\n```"
+	languageInstruction := outputLanguageInstruction(outputLanguage)
 	return fmt.Sprintf(`You are a senior code reviewer. Perform QUALITY METRICS analysis for this diff.
 
 Code diff:
@@ -899,12 +902,13 @@ Return ONLY valid JSON:
   }
 }
 
-All text in English.`, diffBlock)
+All text fields must be in %s.`, diffBlock, languageInstruction)
 }
 
-func buildSecurityPerformancePhasePrompt(diff string) string {
+func buildSecurityPerformancePhasePrompt(diff string, outputLanguage string) string {
 	diff = truncateDiff(diff, 110000)
 	diffBlock := "```diff\n" + diff + "\n```"
+	languageInstruction := outputLanguageInstruction(outputLanguage)
 	return fmt.Sprintf(`You are a senior AppSec and performance reviewer. Analyze this diff.
 
 Code diff:
@@ -933,12 +937,13 @@ Return ONLY valid JSON:
   ]
 }
 
-Use empty arrays when no findings. All text in English.`, diffBlock)
+Use empty arrays when no findings. All text fields must be in %s.`, diffBlock, languageInstruction)
 }
 
-func buildSuggestionsPhasePrompt(diff string, coreIssues []domain.ReviewIssue) string {
+func buildSuggestionsPhasePrompt(diff string, coreIssues []domain.ReviewIssue, outputLanguage string) string {
 	diff = truncateDiff(diff, 90000)
 	diffBlock := "```diff\n" + diff + "\n```"
+	languageInstruction := outputLanguageInstruction(outputLanguage)
 	issueDigest := "[]"
 	if len(coreIssues) > 0 {
 		limit := 20
@@ -978,7 +983,7 @@ Return ONLY valid JSON:
   ]
 }
 
-Use empty arrays if no suggestions. All text in English.`, diffBlock, issueDigest)
+Use empty arrays if no suggestions. All text fields must be in %s.`, diffBlock, issueDigest, languageInstruction)
 }
 
 func analyzeFull(
@@ -987,7 +992,7 @@ func analyzeFull(
 	client integrations.AIClient,
 	timeout time.Duration,
 ) (domain.ReviewResult, error) {
-	prompt := buildAnalysisPrompt(payload.Rules, diff)
+	prompt := buildAnalysisPrompt(payload.Rules, diff, client.OutputLanguage())
 	return client.Analyze(prompt, "", timeout)
 }
 
@@ -1000,7 +1005,7 @@ func analyzeIncremental(
 	previousIssues := extractPreviousIssues(payload.PreviousReport)
 	changedFiles := extractChangedFiles(diff)
 	filtered := filterIssuesByFiles(previousIssues, changedFiles)
-	prompt := buildIncrementalPrompt(payload.Rules, diff, filtered)
+	prompt := buildIncrementalPrompt(payload.Rules, diff, filtered, client.OutputLanguage())
 	return client.Analyze(prompt, "", timeout)
 }
 
@@ -1085,8 +1090,9 @@ func filterIssuesByFiles(issues []domain.ReviewIssue, files []string) []domain.R
 	return filtered
 }
 
-func buildAnalysisPrompt(rules []domain.Rule, diff string) string {
+func buildAnalysisPrompt(rules []domain.Rule, diff string, outputLanguage string) string {
 	diff = truncateDiff(diff, 150000)
+	languageInstruction := outputLanguageInstruction(outputLanguage)
 	detected := detectLanguagesInDiff(diff)
 	languageInfo := ""
 	if len(detected) > 0 {
@@ -1289,11 +1295,17 @@ Return ONLY valid JSON (no markdown):
   }
 }
 
-All text fields must be in English.`, languageInfo, rulesText, diffBlock)
+All text fields must be in %s.`, languageInfo, rulesText, diffBlock, languageInstruction)
 }
 
-func buildIncrementalPrompt(rules []domain.Rule, diff string, previousIssues []domain.ReviewIssue) string {
+func buildIncrementalPrompt(
+	rules []domain.Rule,
+	diff string,
+	previousIssues []domain.ReviewIssue,
+	outputLanguage string,
+) string {
 	diff = truncateDiff(diff, 150000)
+	languageInstruction := outputLanguageInstruction(outputLanguage)
 	rulesText := buildRulesText(rules)
 	diffBlock := "```diff\n" + diff + "\n```"
 	previousJSON := "None"
@@ -1332,7 +1344,40 @@ Return the standard ReviewResult JSON. In the issues array, include:
 - %s: true/false
 - %s: true/false
 
-All text fields must be in English.`, rulesText, diffBlock, previousJSON, isNewLabel, wasFixedLabel)
+All text fields must be in %s.`, rulesText, diffBlock, previousJSON, isNewLabel, wasFixedLabel, languageInstruction)
+}
+
+var outputLanguageNames = map[string]string{
+	"en":    "English",
+	"zh-CN": "Simplified Chinese",
+	"zh-TW": "Traditional Chinese",
+	"ja":    "Japanese",
+	"ko":    "Korean",
+	"es":    "Spanish",
+	"fr":    "French",
+	"de":    "German",
+	"pt-BR": "Portuguese (Brazil)",
+	"ru":    "Russian",
+	"it":    "Italian",
+	"nl":    "Dutch",
+	"tr":    "Turkish",
+	"pl":    "Polish",
+	"ar":    "Arabic",
+	"hi":    "Hindi",
+	"th":    "Thai",
+	"vi":    "Vietnamese",
+	"id":    "Indonesian",
+	"ms":    "Malay",
+}
+
+func outputLanguageInstruction(code string) string {
+	normalized := strings.TrimSpace(code)
+	name, ok := outputLanguageNames[normalized]
+	if !ok {
+		normalized = "en"
+		name = "English"
+	}
+	return fmt.Sprintf("%s (%s)", name, normalized)
 }
 
 func buildRulesText(rules []domain.Rule) string {

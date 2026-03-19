@@ -25,6 +25,7 @@ type VCSClient interface {
 type AIClient interface {
 	Analyze(prompt string, code string, timeout time.Duration) (domain.ReviewResult, error)
 	Model() string
+	OutputLanguage() string
 }
 
 type VCSConfig struct {
@@ -37,6 +38,7 @@ type AIConfig struct {
 	BaseURL         string
 	APIStyle        string
 	ModelName       string
+	OutputLanguage  string
 	MaxTokens       int
 	Temperature     float64
 	ReasoningEffort string
@@ -102,6 +104,7 @@ func resolveAIClientWithPhase(ctx context.Context, st *store.Store, project *sto
 		BaseURL:         readConfigString(integration.Config, "baseUrl"),
 		APIStyle:        readConfigString(integration.Config, "apiStyle"),
 		ModelName:       readConfigString(integration.Config, "model"),
+		OutputLanguage:  normalizeOutputLanguage(readConfigString(integration.Config, "outputLanguage")),
 		MaxTokens:       readConfigInt(integration.Config, "maxTokens", 4096),
 		Temperature:     readConfigFloat(integration.Config, "temperature", 0.7),
 		ReasoningEffort: readConfigString(integration.Config, "reasoningEffort"),
@@ -524,6 +527,10 @@ func (c *OpenAIAPIClient) Model() string {
 	return c.config.ModelName
 }
 
+func (c *OpenAIAPIClient) OutputLanguage() string {
+	return normalizeOutputLanguage(c.config.OutputLanguage)
+}
+
 var noTemperatureModels = []string{
 	"o1", "o1-mini", "o1-preview",
 	"o3", "o3-mini",
@@ -538,6 +545,29 @@ var reasoningModelPrefixes = []string{"o", "gpt-5", "codex"}
 var supportedAPIStyles = map[string]bool{
 	"openai":    true,
 	"anthropic": true,
+}
+
+var supportedOutputLanguageCodes = map[string]bool{
+	"en":    true,
+	"zh-CN": true,
+	"zh-TW": true,
+	"ja":    true,
+	"ko":    true,
+	"es":    true,
+	"fr":    true,
+	"de":    true,
+	"pt-BR": true,
+	"ru":    true,
+	"it":    true,
+	"nl":    true,
+	"tr":    true,
+	"pl":    true,
+	"ar":    true,
+	"hi":    true,
+	"th":    true,
+	"vi":    true,
+	"id":    true,
+	"ms":    true,
 }
 
 func supportsTemperature(model string) bool {
@@ -567,6 +597,17 @@ func normalizeReasoningEffort(value string) string {
 	default:
 		return ""
 	}
+}
+
+func normalizeOutputLanguage(value string) string {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return "en"
+	}
+	if supportedOutputLanguageCodes[normalized] {
+		return normalized
+	}
+	return "en"
 }
 
 func normalizeAPIStyle(value string) (string, error) {

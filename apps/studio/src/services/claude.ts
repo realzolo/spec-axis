@@ -4,6 +4,7 @@
 
 import { resolveAIIntegration } from './integrations';
 import { detectLanguagesInDiff, getLanguageSpecificRules, LANGUAGE_CONFIGS } from './languages';
+import { DEFAULT_OUTPUT_LANGUAGE, getOutputLanguageLabel, parseOutputLanguage } from '@/lib/outputLanguage';
 
 export interface ReviewResult {
   score: number;
@@ -108,7 +109,18 @@ export async function analyzeCode(
   projectId: string
 ): Promise<ReviewResult> {
   // Get AI client for the project
-  const { client } = await resolveAIIntegration(projectId);
+  const { client, integration } = await resolveAIIntegration(projectId);
+  let outputLanguageCode = DEFAULT_OUTPUT_LANGUAGE;
+  try {
+    const config =
+      integration && typeof integration.config === 'object' && integration.config !== null
+        ? integration.config as Record<string, unknown>
+        : {};
+    outputLanguageCode = parseOutputLanguage(config.outputLanguage);
+  } catch {
+    outputLanguageCode = DEFAULT_OUTPUT_LANGUAGE;
+  }
+  const outputLanguageInstruction = `${getOutputLanguageLabel(outputLanguageCode)} (${outputLanguageCode})`;
 
   // Detect languages in the diff
   const detectedLanguages = detectLanguagesInDiff(diff);
@@ -132,7 +144,7 @@ export async function analyzeCode(
     .map((r, i) => `${i + 1}. [${r.category.toUpperCase()}] ${r.name}: ${r.prompt}`)
     .join('\n');
 
-  const prompt = buildAnalysisPrompt(languageInfo, rulesText, diff);
+  const prompt = buildAnalysisPrompt(languageInfo, rulesText, diff, outputLanguageInstruction);
 
   // Use the generic AI client interface
   const result = await client.analyze(prompt, '');
@@ -140,7 +152,12 @@ export async function analyzeCode(
   return result as ReviewResult;
 }
 
-function buildAnalysisPrompt(languageInfo: string, rulesText: string, diff: string): string {
+function buildAnalysisPrompt(
+  languageInfo: string,
+  rulesText: string,
+  diff: string,
+  outputLanguageInstruction: string
+): string {
   return `You are a senior code reviewer. Analyze the following code changes thoroughly and provide structured feedback.
 ${languageInfo}
 ## Review Rules
@@ -314,5 +331,5 @@ Return ONLY valid JSON (no markdown):
   }
 }
 
-All text fields must be in English.`;
+All text fields must be in ${outputLanguageInstruction}.`;
 }

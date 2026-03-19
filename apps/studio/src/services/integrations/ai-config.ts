@@ -1,4 +1,5 @@
 import type { AIConfig } from './types';
+import { parseOutputLanguage } from '@/lib/outputLanguage';
 
 const WEB_UI_HOSTS = new Set([
   'platform.openai.com',
@@ -15,6 +16,7 @@ const ENDPOINT_SUFFIXES = [
   '/responses',
   '/messages',
 ];
+
 
 function trimEndpointSuffix(pathname: string): string {
   let path = pathname;
@@ -76,6 +78,7 @@ export function sanitizeAIConfig(input: unknown): AIConfig {
     model,
     baseUrl: normalizeAIBaseUrl(raw.baseUrl),
     apiStyle: 'openai',
+    outputLanguage: parseOutputLanguage(raw.outputLanguage),
   };
 
   if (typeof raw.apiStyle !== 'string') {

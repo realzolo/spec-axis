@@ -52,6 +52,7 @@ export interface AIConfig {
   baseUrl?: string; // API endpoint
   apiStyle: 'openai' | 'anthropic';
   model: string; // Model name
+  outputLanguage: string;
   maxTokens?: number;
   temperature?: number;
   reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';

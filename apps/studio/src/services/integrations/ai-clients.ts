@@ -9,23 +9,10 @@ import type {
   AIConnectionTestResult,
   AIProvider,
 } from './types';
+import { isOpenAIOfficialBase, supportsReasoningEffort, supportsTemperature } from '@/lib/aiModelCapabilities';
 
 type ReasoningEffort = NonNullable<AIConfigWithSecret['reasoningEffort']>;
 type APIStyle = NonNullable<AIConfigWithSecret['apiStyle']>;
-
-/**
- * Models that do not support the `temperature` parameter.
- * Includes OpenAI reasoning models and DeepSeek reasoner.
- */
-const NO_TEMPERATURE_MODELS = new Set([
-  'o1', 'o1-mini', 'o1-preview',
-  'o3', 'o3-mini',
-  'o4-mini',
-  'codex',
-  'codex-latest',
-  'codex-mini-latest',
-  'deepseek-reasoner',
-]);
 
 const REASONING_EFFORTS = new Set<ReasoningEffort>([
   'none',
@@ -36,22 +23,7 @@ const REASONING_EFFORTS = new Set<ReasoningEffort>([
   'xhigh',
 ]);
 
-const REASONING_MODEL_PREFIXES = ['o', 'gpt-5', 'codex'];
 const API_STYLES = new Set<APIStyle>(['openai', 'anthropic']);
-
-function supportsTemperature(model: string): boolean {
-  for (const m of NO_TEMPERATURE_MODELS) {
-    if (model === m || model.startsWith(`${m}-`)) return false;
-  }
-  return true;
-}
-
-function supportsReasoningEffort(model: string): boolean {
-  const normalizedModel = model.trim().toLowerCase();
-  return REASONING_MODEL_PREFIXES.some((prefix) => (
-    normalizedModel === prefix || normalizedModel.startsWith(`${prefix}-`)
-  ));
-}
 
 function normalizeReasoningEffort(value: unknown): ReasoningEffort | undefined {
   if (typeof value !== 'string') return undefined;
@@ -71,16 +43,6 @@ function normalizeAPIStyle(value: unknown): APIStyle {
     return normalized as APIStyle;
   }
   throw new Error('AI apiStyle must be either "openai" or "anthropic"');
-}
-
-function isOpenAIOfficialBase(baseUrl?: string): boolean {
-  if (!baseUrl) return false;
-  try {
-    const parsed = new URL(baseUrl);
-    return parsed.hostname === 'api.openai.com';
-  } catch {
-    return false;
-  }
 }
 
 function getReasoningEffort(config: AIConfigWithSecret): Exclude<ReasoningEffort, 'none'> | undefined {

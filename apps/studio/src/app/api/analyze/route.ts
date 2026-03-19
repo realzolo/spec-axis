@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
             model: typeof config.model === 'string' ? config.model : null,
             apiStyle: typeof config.apiStyle === 'string' ? config.apiStyle : null,
             baseUrl: typeof config.baseUrl === 'string' ? config.baseUrl : null,
+            outputLanguage: typeof config.outputLanguage === 'string' ? config.outputLanguage : 'en',
             maxTokens: typeof config.maxTokens === 'number' ? config.maxTokens : null,
             temperature: typeof config.temperature === 'number' ? config.temperature : null,
             reasoningEffort: typeof config.reasoningEffort === 'string' ? config.reasoningEffort : null,

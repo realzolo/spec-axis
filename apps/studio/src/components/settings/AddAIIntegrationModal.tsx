@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -8,30 +8,40 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { useClientDictionary } from '@/i18n/client';
+import {
+  DEFAULT_OUTPUT_LANGUAGE,
+  OUTPUT_LANGUAGE_OPTIONS,
+  isSupportedOutputLanguage,
+} from '@/lib/outputLanguage';
+import { getAIParameterCapabilities } from '@/lib/aiModelCapabilities';
 
 interface Props {
   onClose: () => void;
   onSuccess: () => void;
 }
 
-interface ProviderConfig {
+type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+type APIStyle = 'openai' | 'anthropic';
+
+type AIConfigDraft = {
+  baseUrl: string;
+  model: string;
+  outputLanguage: string;
+  apiStyle: APIStyle;
+  maxTokens?: number;
+  temperature?: number;
+  reasoningEffort?: ReasoningEffort;
+};
+
+interface Preset {
   name: string;
-  description: string;
-  fields: Array<{
-    key: string;
-    label: string;
-    type: string;
-    required: boolean;
-    placeholder?: string;
-    help?: string;
-    options?: string[];
-  }>;
-  docs?: string;
-  presets?: Array<{
-    name: string;
-    category?: string;
-    config: Record<string, string | number>;
-  }>;
+  category?: string;
+  config: Record<string, string | number>;
+}
+
+interface ProviderPayload {
+  docs?: string | null;
+  presets?: Preset[];
 }
 
 function asString(value: unknown): string | undefined {
@@ -47,26 +57,38 @@ function asNumber(value: unknown): number | undefined {
   return undefined;
 }
 
-const ALL_PRESET_CATEGORIES = 'all';
-
 export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
   const dict = useClientDictionary();
   const i18n = dict.settings.addAiModal;
-  const [providers, setProviders] = useState<Record<string, ProviderConfig>>({});
-  const selectedProvider = 'openai-api';
-  const [selectedCategory, setSelectedCategory] = useState(ALL_PRESET_CATEGORIES);
+
+  const [presets, setPresets] = useState<Preset[]>([]);
+  const [docsUrl, setDocsUrl] = useState<string | null>(null);
   const [selectedPreset, setSelectedPreset] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   const [name, setName] = useState('');
-  const [config, setConfig] = useState<Record<string, string | number>>({});
   const [secret, setSecret] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const [config, setConfig] = useState<AIConfigDraft>({
+    baseUrl: '',
+    model: '',
+    outputLanguage: DEFAULT_OUTPUT_LANGUAGE,
+    apiStyle: 'openai',
+  });
+
   const loadProviders = useCallback(async () => {
     try {
       const res = await fetch('/api/integrations/providers');
-      const data = await res.json();
-      setProviders(data.ai);
+      if (!res.ok) {
+        throw new Error();
+      }
+      const data = await res.json() as { ai?: Record<string, ProviderPayload> };
+      const aiProvider = data.ai?.['openai-api'];
+      if (!aiProvider) return;
+      setPresets(Array.isArray(aiProvider.presets) ? aiProvider.presets : []);
+      setDocsUrl(typeof aiProvider.docs === 'string' ? aiProvider.docs : null);
     } catch {
       toast.error(i18n.loadProvidersFailed);
     }
@@ -76,87 +98,97 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
     void loadProviders();
   }, [loadProviders]);
 
-  const providerConfig = providers[selectedProvider];
-  const allPresets = providerConfig?.presets ?? [];
-  const tokenProfiles = [
-    {
-      key: 'fast' as const,
-      label: i18n.tokenProfileFast,
-      maxTokens: 3072,
-      reasoningEffort: 'low',
-    },
-    {
-      key: 'deep' as const,
-      label: i18n.tokenProfileDeep,
-      maxTokens: 6144,
-      reasoningEffort: 'high',
-    },
-    {
-      key: 'logs' as const,
-      label: i18n.tokenProfileLogs,
-      maxTokens: 6144,
-      reasoningEffort: 'medium',
-    },
-    {
-      key: 'autofix' as const,
-      label: i18n.tokenProfileAutofix,
-      maxTokens: 8192,
-      reasoningEffort: 'high',
-    },
-  ];
-  const presetCategories = Array.from(
-    new Set(allPresets.map((preset) => preset.category).filter((value): value is string => Boolean(value)))
-  );
-  const filteredPresets = allPresets.filter((preset) => (
-    selectedCategory === ALL_PRESET_CATEGORIES || preset.category === selectedCategory
-  ));
+  const presetLabel = useCallback((preset: Preset): string => {
+    if (!preset.category) return preset.name;
+    return `${preset.category} · ${preset.name}`;
+  }, []);
 
-  function categoryLabel(category: string): string {
-    switch (category) {
-      case 'anthropic':
-        return i18n.categoryAnthropic;
-      case 'openai-gpt':
-        return i18n.categoryOpenAIGpt;
-      case 'openai-reasoning':
-        return i18n.categoryOpenAIReasoning;
-      case 'openai-codex':
-        return i18n.categoryOpenAICodex;
-      case 'google-gemini':
-        return i18n.categoryGoogleGemini;
-      case 'deepseek':
-        return i18n.categoryDeepSeek;
-      case 'mistral':
-        return i18n.categoryMistral;
-      case 'llama-groq':
-        return i18n.categoryLlamaGroq;
-      case 'xai-grok':
-        return i18n.categoryXaiGrok;
-      default:
-        return category;
+  const selectedPresetEntity = useMemo(
+    () => presets.find((preset) => preset.name === selectedPreset),
+    [presets, selectedPreset]
+  );
+  const parameterCapabilities = useMemo(
+    () =>
+      getAIParameterCapabilities({
+        model: config.model,
+        apiStyle: config.apiStyle,
+        baseUrl: config.baseUrl,
+      }),
+    [config.apiStyle, config.baseUrl, config.model]
+  );
+
+  useEffect(() => {
+    if (!selectedPresetEntity) return;
+    const presetConfig = selectedPresetEntity.config;
+    const presetOutputLanguage = asString(presetConfig.outputLanguage);
+    const outputLanguage = presetOutputLanguage && isSupportedOutputLanguage(presetOutputLanguage)
+      ? presetOutputLanguage
+      : DEFAULT_OUTPUT_LANGUAGE;
+    const apiStyle = asString(presetConfig.apiStyle) === 'anthropic' ? 'anthropic' : 'openai';
+    setConfig((prev) => {
+      const next: AIConfigDraft = {
+        ...prev,
+        baseUrl: asString(presetConfig.baseUrl) ?? prev.baseUrl,
+        model: asString(presetConfig.model) ?? prev.model,
+        outputLanguage,
+        apiStyle,
+      };
+      const maxTokens = asNumber(presetConfig.maxTokens);
+      if (maxTokens !== undefined) {
+        next.maxTokens = maxTokens;
+      }
+      const temperature = asNumber(presetConfig.temperature);
+      if (temperature !== undefined) {
+        next.temperature = temperature;
+      }
+      const reasoningEffort = asString(presetConfig.reasoningEffort) as ReasoningEffort | undefined;
+      if (reasoningEffort !== undefined) {
+        next.reasoningEffort = reasoningEffort;
+      }
+      return next;
+    });
+    if (!name.trim()) {
+      setName(selectedPresetEntity.name);
     }
+  }, [name, selectedPresetEntity]);
+
+  function updateConfig<K extends keyof AIConfigDraft>(key: K, value: AIConfigDraft[K]) {
+    setConfig((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function clearOptionalField(key: 'maxTokens' | 'temperature' | 'reasoningEffort') {
+    setConfig((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }
 
   useEffect(() => {
-    if (selectedPreset && !filteredPresets.some((preset) => preset.name === selectedPreset)) {
-      setSelectedPreset('');
-    }
-  }, [filteredPresets, selectedPreset]);
+    setConfig((prev) => {
+      let changed = false;
+      const next: AIConfigDraft = { ...prev };
+      if (!parameterCapabilities.temperature.supported && next.temperature !== undefined) {
+        delete next.temperature;
+        changed = true;
+      }
+      if (!parameterCapabilities.reasoningEffort.supported && next.reasoningEffort !== undefined) {
+        delete next.reasoningEffort;
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [parameterCapabilities.reasoningEffort.supported, parameterCapabilities.temperature.supported]);
 
-  function handlePresetChange(presetName: string) {
-    setSelectedPreset(presetName);
-    const preset = providerConfig?.presets?.find((p) => p.name === presetName);
-    if (preset) {
-      setConfig(preset.config);
-      setName(preset.name);
+  function getReasoningEffortUnsupportedMessage(): string {
+    switch (parameterCapabilities.reasoningEffort.reason) {
+      case 'api_style_not_supported':
+        return i18n.reasoningUnsupportedApiStyle;
+      case 'requires_openai_official_base':
+        return i18n.reasoningUnsupportedBaseUrl;
+      default:
+        return i18n.reasoningUnsupportedModel;
     }
-  }
-
-  function applyTokenProfile(profile: (typeof tokenProfiles)[number]) {
-    setConfig((prev) => ({
-      ...prev,
-      maxTokens: profile.maxTokens,
-      reasoningEffort: profile.reasoningEffort,
-    }));
   }
 
   async function handleSubmit() {
@@ -164,15 +196,37 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
       toast.error(i18n.nameRequired);
       return;
     }
-
     if (!secret.trim()) {
       toast.error(i18n.apiKeyRequired);
       return;
     }
-
-    if (!config.model) {
+    if (!config.model.trim()) {
       toast.error(i18n.modelRequired);
       return;
+    }
+    if (!config.baseUrl.trim()) {
+      toast.error(i18n.baseUrlRequired);
+      return;
+    }
+
+    const payloadConfig: Record<string, unknown> = {
+      baseUrl: config.baseUrl.trim(),
+      model: config.model.trim(),
+      outputLanguage: config.outputLanguage,
+      apiStyle: config.apiStyle,
+    };
+    if (typeof config.maxTokens === 'number' && Number.isFinite(config.maxTokens)) {
+      payloadConfig.maxTokens = config.maxTokens;
+    }
+    if (
+      parameterCapabilities.temperature.supported &&
+      typeof config.temperature === 'number' &&
+      Number.isFinite(config.temperature)
+    ) {
+      payloadConfig.temperature = config.temperature;
+    }
+    if (parameterCapabilities.reasoningEffort.supported && config.reasoningEffort) {
+      payloadConfig.reasoningEffort = config.reasoningEffort;
     }
 
     setLoading(true);
@@ -182,19 +236,17 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'ai',
-          provider: selectedProvider,
-          name,
-          config,
-          secret,
+          provider: 'openai-api',
+          name: name.trim(),
+          config: payloadConfig,
+          secret: secret.trim(),
           isDefault,
         }),
       });
-
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || i18n.createFailed);
       }
-
       toast.success(i18n.createSuccess);
       onSuccess();
     } catch (error) {
@@ -206,65 +258,34 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-[640px] overflow-hidden p-0">
+      <DialogContent className="max-w-[620px] overflow-hidden p-0">
         <DialogHeader>
           <DialogTitle className="text-[16px] font-semibold">{i18n.title}</DialogTitle>
         </DialogHeader>
 
         <div className="max-h-[calc(90vh-132px)] overflow-y-auto px-6 py-5 space-y-4">
-          {allPresets.length > 0 && (
+          {presets.length > 0 && (
             <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] p-3">
-              <label className="text-[12px] font-medium text-[hsl(var(--ds-text-2))] mb-1.5 block">
-                {i18n.quickSetup}
-              </label>
-              <div className="space-y-2">
-                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder={i18n.quickSetupCategoryPlaceholder} />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-80">
-                    <SelectItem value={ALL_PRESET_CATEGORIES}>{i18n.allCategories}</SelectItem>
-                    {presetCategories.map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {categoryLabel(category)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <p className="text-[12px] text-[hsl(var(--ds-text-2))] mt-1">
-                {i18n.quickSetupCategoryHelp}
-              </p>
-
-              <label className="text-[12px] font-medium text-[hsl(var(--ds-text-2))] mb-1.5 mt-3 block">
+              <label className="mb-1.5 block text-[12px] font-medium text-[hsl(var(--ds-text-2))]">
                 {i18n.quickSetupModel}
               </label>
-              <Select
-                {...(selectedPreset ? { value: selectedPreset } : {})}
-                onValueChange={(value) => handlePresetChange(value)}
-              >
+              <Select value={selectedPreset} onValueChange={setSelectedPreset}>
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder={i18n.quickSetupModelPlaceholder} />
                 </SelectTrigger>
                 <SelectContent className="max-h-80">
-                  {filteredPresets.map((p) => (
-                    <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
+                  {presets.map((preset) => (
+                    <SelectItem key={preset.name} value={preset.name}>
+                      {presetLabel(preset)}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {filteredPresets.length === 0 && (
-                <p className="text-[12px] text-[hsl(var(--ds-text-2))] mt-1">
-                  {i18n.noPresetsInCategory}
-                </p>
-              )}
-              <p className="text-[12px] text-[hsl(var(--ds-text-2))] mt-1">
-                {i18n.configureManually}
-              </p>
             </div>
           )}
 
           <div>
-            <label className="text-[12px] font-medium text-[hsl(var(--ds-text-2))] mb-1.5 block">{i18n.name}</label>
+            <label className="mb-1.5 block text-[12px] font-medium text-[hsl(var(--ds-text-2))]">{i18n.name}</label>
             <Input
               className="h-9"
               placeholder={i18n.namePlaceholder}
@@ -274,7 +295,51 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
           </div>
 
           <div>
-            <label className="text-[12px] font-medium text-[hsl(var(--ds-text-2))] mb-1.5 block">{i18n.apiKeyLabel}</label>
+            <label className="mb-1.5 block text-[12px] font-medium text-[hsl(var(--ds-text-2))]">
+              {i18n.baseUrl}
+            </label>
+            <Input
+              className="h-9"
+              placeholder="https://api.openai.com/v1"
+              value={config.baseUrl}
+              onChange={(e) => updateConfig('baseUrl', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-[12px] font-medium text-[hsl(var(--ds-text-2))]">
+              {i18n.model}
+            </label>
+            <Input
+              className="h-9"
+              placeholder="gpt-5.4"
+              value={config.model}
+              onChange={(e) => updateConfig('model', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-[12px] font-medium text-[hsl(var(--ds-text-2))]">
+              {i18n.outputLanguage}
+            </label>
+            <Select value={config.outputLanguage} onValueChange={(value) => updateConfig('outputLanguage', value)}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder={i18n.outputLanguagePlaceholder} />
+              </SelectTrigger>
+              <SelectContent className="max-h-80">
+                {OUTPUT_LANGUAGE_OPTIONS.map((option) => (
+                  <SelectItem key={option.code} value={option.code}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-[12px] font-medium text-[hsl(var(--ds-text-2))]">
+              {i18n.apiKeyLabel}
+            </label>
             <Input
               className="h-9"
               type="password"
@@ -282,116 +347,120 @@ export default function AddAIIntegrationModal({ onClose, onSuccess }: Props) {
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
             />
-            {providerConfig?.docs && (
+            {docsUrl && (
               <a
-                href={providerConfig.docs}
+                href={docsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-primary hover:underline mt-1 inline-block"
+                className="mt-1 inline-block text-xs text-primary hover:underline"
               >
                 {i18n.apiKeyDocs}
               </a>
             )}
           </div>
 
-          {providerConfig?.fields
-            .filter((f) => f.key !== 'apiKey')
-            .map((field) => (
-              <div key={field.key}>
-                <label className="text-[12px] font-medium text-[hsl(var(--ds-text-2))] mb-1.5 block">
-                  {field.label}
-                  {field.required && ' *'}
-                </label>
-                {field.type === 'select' && field.options ? (
-                  (() => {
-                    const selectedValue = asString(config[field.key]);
-                    return (
-                      <Select
-                        {...(selectedValue ? { value: selectedValue } : {})}
-                        onValueChange={(value) =>
-                          setConfig((prev) => ({ ...prev, [field.key]: value }))
-                        }
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder={field.placeholder} />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-80">
-                          {field.options.map((opt) => (
-                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    );
-                  })()
-                ) : field.type === 'number' ? (
+          <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] p-3">
+            <button
+              type="button"
+              className="w-full text-left text-[12px] font-medium text-foreground"
+              onClick={() => setShowAdvanced((prev) => !prev)}
+            >
+              {showAdvanced ? i18n.advancedHide : i18n.advancedShow}
+            </button>
+            {showAdvanced && (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <label className="mb-1.5 block text-[12px] font-medium text-[hsl(var(--ds-text-2))]">
+                    {i18n.apiStyle}
+                  </label>
+                  <Select value={config.apiStyle} onValueChange={(value) => updateConfig('apiStyle', value as APIStyle)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="openai">openai</SelectItem>
+                      <SelectItem value="anthropic">anthropic</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-[12px] font-medium text-[hsl(var(--ds-text-2))]">
+                    {i18n.maxTokensOptional}
+                  </label>
                   <Input
                     className="h-9"
                     type="number"
-                    step={field.key === 'temperature' ? '0.1' : '1'}
-                    placeholder={field.placeholder}
-                    value={config[field.key] ?? ''}
+                    placeholder="4096"
+                    value={config.maxTokens ?? ''}
                     onChange={(e) => {
-                      const v = parseFloat(e.target.value);
-                      if (Number.isNaN(v)) {
-                        setConfig((prev) => { const next = { ...prev }; delete next[field.key]; return next; });
-                      } else {
-                        setConfig((prev) => ({ ...prev, [field.key]: v }));
+                      const parsed = Number(e.target.value);
+                      if (Number.isNaN(parsed)) {
+                        clearOptionalField('maxTokens');
+                        return;
                       }
+                      updateConfig('maxTokens', parsed);
                     }}
                   />
-                ) : (
-                  <Input
-                    className="h-9"
-                    type={field.type}
-                    placeholder={field.placeholder}
-                    value={String(config[field.key] ?? '')}
-                    onChange={(e) =>
-                      setConfig((prev) => ({ ...prev, [field.key]: e.target.value }))
-                    }
-                  />
-                )}
-                {field.help && (
-                  <p className="text-[12px] text-[hsl(var(--ds-text-2))] mt-1">{field.help}</p>
-                )}
-                {field.key === 'maxTokens' && (
-                  <div className="mt-2 rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] p-2.5">
-                    <p className="text-[12px] font-medium text-[hsl(var(--ds-text-2))]">
-                      {i18n.tokenRecommendationTitle}
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-[12px] font-medium text-[hsl(var(--ds-text-2))]">
+                    {i18n.temperatureOptional}
+                  </label>
+                  {parameterCapabilities.temperature.supported ? (
+                    <Input
+                      className="h-9"
+                      type="number"
+                      step="0.1"
+                      placeholder="0.7"
+                      value={config.temperature ?? ''}
+                      onChange={(e) => {
+                        const parsed = Number(e.target.value);
+                        if (Number.isNaN(parsed)) {
+                          clearOptionalField('temperature');
+                          return;
+                        }
+                        updateConfig('temperature', parsed);
+                      }}
+                    />
+                  ) : (
+                    <p className="text-[12px] text-[hsl(var(--ds-text-2))]">
+                      {i18n.temperatureUnsupported}
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {tokenProfiles.map((profile) => {
-                        const currentMaxTokens = asNumber(config.maxTokens);
-                        const currentReasoningEffort = asString(config.reasoningEffort);
-                        const active = currentMaxTokens === profile.maxTokens &&
-                          currentReasoningEffort === profile.reasoningEffort;
-                        return (
-                          <button
-                            key={profile.key}
-                            type="button"
-                            onClick={() => applyTokenProfile(profile)}
-                            className={
-                              active
-                                ? 'h-7 rounded-[6px] border border-foreground bg-foreground px-2.5 text-[12px] text-background'
-                                : 'h-7 rounded-[6px] border border-[hsl(var(--ds-border-2))] bg-[hsl(var(--ds-surface-1))] px-2.5 text-[12px] text-foreground hover:bg-[hsl(var(--ds-surface-2))]'
-                            }
-                          >
-                            {profile.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="mt-2 text-[12px] text-[hsl(var(--ds-text-2))]">
-                      {i18n.tokenRecommendationHint}
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-[12px] font-medium text-[hsl(var(--ds-text-2))]">
+                    {i18n.reasoningEffortOptional}
+                  </label>
+                  {parameterCapabilities.reasoningEffort.supported ? (
+                    <Select
+                      {...(config.reasoningEffort ? { value: config.reasoningEffort } : {})}
+                      onValueChange={(value) => updateConfig('reasoningEffort', value as ReasoningEffort)}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder={i18n.reasoningEffortPlaceholder} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">none</SelectItem>
+                        <SelectItem value="minimal">minimal</SelectItem>
+                        <SelectItem value="low">low</SelectItem>
+                        <SelectItem value="medium">medium</SelectItem>
+                        <SelectItem value="high">high</SelectItem>
+                        <SelectItem value="xhigh">xhigh</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="text-[12px] text-[hsl(var(--ds-text-2))]">
+                      {getReasoningEffortUnsupportedMessage()}
                     </p>
-                  </div>
-                )}
-                {field.key === 'model' && (
-                  <p className="text-[12px] text-[hsl(var(--ds-text-2))] mt-1">
-                    {i18n.manualModelIdHelp}
-                  </p>
-                )}
+                  )}
+                </div>
               </div>
-            ))}
+            )}
+          </div>
 
           <div className="flex items-center gap-2 pt-1">
             <Switch id="isDefault" checked={isDefault} onCheckedChange={setIsDefault} />

@@ -3,6 +3,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { OUTPUT_LANGUAGE_OPTIONS } from '@/lib/outputLanguage';
 
 export const dynamic = 'force-dynamic';
 
@@ -131,6 +132,15 @@ export async function GET() {
             help: 'Model identifier',
           },
           {
+            key: 'outputLanguage',
+            label: 'Output Language',
+            type: 'select',
+            required: false,
+            placeholder: 'Select output language',
+            help: 'Language used for analysis summaries, issue descriptions, and suggestions.',
+            options: OUTPUT_LANGUAGE_OPTIONS.map((option) => option.code),
+          },
+          {
             key: 'maxTokens',
             label: 'Max Tokens',
             type: 'number',
@@ -156,6 +166,7 @@ export async function GET() {
           },
         ],
         docs: null,  // no single docs URL — provider-specific (e.g. platform.openai.com, console.anthropic.com)
+        outputLanguages: OUTPUT_LANGUAGE_OPTIONS,
         presets: [
           // Anthropic
           {
