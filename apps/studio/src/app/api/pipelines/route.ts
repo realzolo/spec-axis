@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { requireUser, unauthorized } from '@/services/auth';
-import { getActiveOrgId, getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES } from '@/services/orgs';
+import { getActiveOrgId, getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES, requireProjectAccess } from '@/services/orgs';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { formatErrorResponse } from '@/services/retry';
-import { createPipelineSchema, validateRequest } from '@/services/validation';
+import { createPipelineSchema, projectIdSchema, validateRequest } from '@/services/validation';
 import { createPipeline, listPipelines } from '@/services/runnerClient';
 
 export const dynamic = 'force-dynamic';
@@ -20,9 +20,20 @@ export async function GET(request: NextRequest) {
 
   try {
     const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
-    const projectId = request.nextUrl.searchParams.get('projectId') || undefined;
+    const projectIdRaw = request.nextUrl.searchParams.get('projectId');
+    let projectId: string | undefined;
+    if (projectIdRaw) {
+      projectId = projectIdSchema.parse(projectIdRaw);
+      await requireProjectAccess(projectId, user.id);
+    }
+
     const data = await listPipelines(orgId, projectId);
-    return NextResponse.json(data);
+    if (!projectId) {
+      return NextResponse.json(data);
+    }
+
+    const filtered = data.filter((item) => item.project_id === projectId);
+    return NextResponse.json(filtered);
   } catch (err) {
     const { error, statusCode } = formatErrorResponse(err);
     return NextResponse.json({ error }, { status: statusCode });
@@ -60,6 +71,7 @@ export async function POST(request: NextRequest) {
       createdBy: user.id,
     };
     if (validated.projectId) {
+      await requireProjectAccess(validated.projectId, user.id);
       payload.projectId = validated.projectId;
     }
     const result = await createPipeline(payload);

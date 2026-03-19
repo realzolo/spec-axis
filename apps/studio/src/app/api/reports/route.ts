@@ -5,7 +5,7 @@ import { logger } from '@/services/logger';
 import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
-import { getActiveOrgId } from '@/services/orgs';
+import { getActiveOrgId, requireProjectAccess } from '@/services/orgs';
 import { isRunnerAuthorized } from '@/services/runnerAuth';
 import { projectIdSchema } from '@/services/validation';
 import { query } from '@/lib/db';
@@ -54,7 +54,15 @@ export async function GET(request: NextRequest) {
     await failTimedOutReports();
 
     const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
-    const data = await withRetry(() => getReports(orgId));
+    const rawProjectId = request.nextUrl.searchParams.get('projectId');
+    let scopedProjectId: string | undefined;
+    if (rawProjectId) {
+      const parsedProjectId = projectIdSchema.parse(rawProjectId);
+      await withRetry(() => requireProjectAccess(parsedProjectId, user.id));
+      scopedProjectId = parsedProjectId;
+    }
+
+    const data = await withRetry(() => getReports(orgId, scopedProjectId));
     logger.info(`Reports fetched: ${data.length} reports`);
     return NextResponse.json(data);
   } catch (err) {

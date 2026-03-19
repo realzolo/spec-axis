@@ -269,9 +269,22 @@ export async function deleteReport(id: string) {
   await exec(`delete from analysis_reports where id = $1`, [id]);
 }
 
-export async function getReports(orgId: string) {
+export async function getReports(orgId: string, projectId?: string) {
   if (!orgId) {
     throw new Error('orgId is required');
+  }
+  if (projectId) {
+    return query(
+      `select r.id, r.status, r.score, r.category_scores, r.commits, r.created_at,
+              p.name, p.repo
+       from analysis_reports r
+       join code_projects p on p.id = r.project_id
+       where r.org_id = $1
+         and r.project_id = $2
+       order by r.created_at desc
+       limit 50`,
+      [orgId, projectId]
+    );
   }
   return query(
     `select r.id, r.status, r.score, r.category_scores, r.commits, r.created_at,
