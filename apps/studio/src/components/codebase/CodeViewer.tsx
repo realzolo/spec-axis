@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useRef } from 'react';
-import type { Extension } from '@codemirror/state';
 import { Compartment, EditorState } from '@codemirror/state';
 import {
   EditorView,
@@ -10,12 +9,9 @@ import {
   drawSelection,
   highlightSpecialChars,
 } from '@codemirror/view';
-import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language';
-import { javascript } from '@codemirror/lang-javascript';
-import { json } from '@codemirror/lang-json';
-import { markdown } from '@codemirror/lang-markdown';
-import { html } from '@codemirror/lang-html';
-import { css } from '@codemirror/lang-css';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
+import { resolveLanguageSupportForPath } from '@/lib/codeLanguage';
 
 export type CodeSelectionPayload = {
   lineStart: number;
@@ -32,7 +28,7 @@ export type CodeLineClickPayload = {
   clientY: number;
 };
 
-type CodeEditorProps = {
+type CodeViewerProps = {
   value: string;
   language: string;
   onSelection?: (payload: CodeSelectionPayload) => void;
@@ -76,20 +72,32 @@ const editorTheme = EditorView.theme({
   },
 });
 
-export default function CodeEditor({
+const codeHighlightStyle = HighlightStyle.define([
+  { tag: tags.comment, color: 'hsl(var(--ds-text-2))', fontStyle: 'italic' },
+  { tag: [tags.keyword, tags.modifier, tags.operatorKeyword], color: 'hsl(var(--ds-accent-8))' },
+  { tag: [tags.typeName, tags.className], color: 'hsl(var(--ds-accent-9))' },
+  { tag: [tags.string, tags.regexp], color: 'hsl(var(--ds-success-7))' },
+  { tag: [tags.number, tags.bool, tags.null], color: 'hsl(var(--ds-warning-7))' },
+  { tag: [tags.propertyName, tags.attributeName], color: 'hsl(var(--ds-accent-9))' },
+  { tag: [tags.tagName], color: 'hsl(var(--ds-danger-7))' },
+  { tag: [tags.variableName], color: 'hsl(var(--ds-text-1))' },
+  { tag: [tags.operator, tags.punctuation], color: 'hsl(var(--ds-text-1))' },
+]);
+
+export default function CodeViewer({
   value,
   language,
   onSelection,
   onLineClick,
   onReady,
   className,
-}: CodeEditorProps) {
+}: CodeViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const languageCompartment = useMemo(() => new Compartment(), []);
   const onSelectionRef = useRef(onSelection);
   const onLineClickRef = useRef(onLineClick);
-  const initialLanguageRef = useRef<Extension | null>(null);
+  const onReadyRef = useRef(onReady);
   const initialValueRef = useRef(value);
 
   useEffect(() => {
@@ -100,10 +108,9 @@ export default function CodeEditor({
     onLineClickRef.current = onLineClick;
   }, [onLineClick]);
 
-  const languageExtension = useMemo(() => languageForPath(language), [language]);
-  if (initialLanguageRef.current === null) {
-    initialLanguageRef.current = languageExtension;
-  }
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -165,8 +172,8 @@ export default function CodeEditor({
         drawSelection(),
         EditorState.readOnly.of(true),
         EditorView.editable.of(false),
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        languageCompartment.of(initialLanguageRef.current ? [initialLanguageRef.current] : []),
+        syntaxHighlighting(codeHighlightStyle, { fallback: true }),
+        languageCompartment.of([]),
         domHandlers,
         editorTheme,
       ],
@@ -178,13 +185,13 @@ export default function CodeEditor({
     });
 
     viewRef.current = view;
-    onReady?.(view);
+    onReadyRef.current?.(view);
 
     return () => {
       view.destroy();
       viewRef.current = null;
     };
-  }, [languageCompartment, onReady]);
+  }, [languageCompartment]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -199,37 +206,23 @@ export default function CodeEditor({
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
-    view.dispatch({
-      effects: languageCompartment.reconfigure(languageExtension ? [languageExtension] : []),
-    });
-  }, [languageCompartment, languageExtension]);
+
+    let cancelled = false;
+
+    const applyLanguage = async () => {
+      const resolved = await resolveLanguageSupportForPath(language);
+      if (cancelled) return;
+      view.dispatch({
+        effects: languageCompartment.reconfigure(resolved ? [resolved] : []),
+      });
+    };
+
+    void applyLanguage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [language, languageCompartment]);
 
   return <div ref={containerRef} className={className} />;
-}
-
-function languageForPath(filePath: string) {
-  const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
-  switch (ext) {
-    case 'ts':
-    case 'tsx':
-    case 'js':
-    case 'jsx':
-    case 'mjs':
-    case 'cjs':
-      return javascript({ typescript: ext.startsWith('t') });
-    case 'json':
-      return json();
-    case 'md':
-    case 'markdown':
-      return markdown();
-    case 'html':
-    case 'htm':
-      return html();
-    case 'css':
-    case 'scss':
-    case 'less':
-      return css();
-    default:
-      return null;
-  }
 }

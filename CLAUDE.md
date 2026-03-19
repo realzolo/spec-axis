@@ -78,7 +78,7 @@ Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on si
 | Tailwind CSS | v4.2.1 | Design tokens live in `apps/studio/src/app/globals.css` |
 | Geist Font | 1.7.x | Geist Sans/Mono via `geist` package |
 | Radix UI Primitives | ^2.1.4 | `@radix-ui/react-primitive` (Radix Select/Popper dependency) |
-| CodeMirror | 6.x | Read-only codebase editor preview |
+| CodeMirror | 6.x | Read-only codebase viewer (`CodeViewer`) with dynamic language loading via `@codemirror/language-data` |
 | react-diff-viewer-continued | ^4.2.0 | Split diff viewer for commit detail modal (IDE-style review UI) |
 | React Flow (XYFlow) | ^12.7 | Pipeline DAG builder |
 | Lezer Highlight | ^1.2 | Diff syntax highlighting for commit review |
@@ -127,6 +127,8 @@ This project does **not** use HeroUI. UI is built from:
 
 Rules:
 - Prefer `components/ui/*` wrappers over direct Radix usage to keep styling and behavior consistent.
+- Direct `@radix-ui/*` imports are forbidden outside `src/components/ui/*` and enforced by ESLint (`no-restricted-imports`).
+- Language-aware code rendering must use shared resolver `src/lib/codeLanguage.ts` (`@codemirror/language-data`), not ad-hoc direct `@codemirror/lang-*` imports in feature components.
 - Do not introduce compatibility props or dual APIs (for example `foo` vs `Foo`, `onPress` vs `onClick`). Pick one naming and enforce it.
 - Do not add framework-specific naming that implies legacy support (for example `legacy*`, `compat*`, `polyfill*`).
 - Interactive containers (cards/rows/panels) must be keyboard accessible (`role`, `tabIndex`, `Enter/Space` handling) when not using native interactive elements.
@@ -233,6 +235,7 @@ apps/
         locale.ts               # getLocale() — reads NEXT_LOCALE cookie
         orgPath.ts              # /o/:orgId path helpers
         useOrgRole.ts           # client hook for org role + admin gating
+        codeLanguage.ts         # Shared CodeMirror language resolver (dynamic loading via language-data)
         projectContext.tsx      # ProjectDataProvider + useProject() hook
         ruleTemplates.ts        # Static built-in rule template data
       services/

@@ -64,7 +64,12 @@ export default function EditAIIntegrationModal({ integration, onClose, onSuccess
   const [secret, setSecret] = useState('');
   const [isDefault, setIsDefault] = useState(integration.is_default);
   const [loading, setLoading] = useState(false);
-  const tokenProfiles = [
+  const tokenProfiles: Array<{
+    key: 'fast' | 'deep' | 'logs' | 'autofix';
+    label: string;
+    maxTokens: number;
+    reasoningEffort: NonNullable<AIConfigForm['reasoningEffort']>;
+  }> = [
     {
       key: 'fast' as const,
       label: i18n.tokenProfileFast,

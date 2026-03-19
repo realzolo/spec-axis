@@ -30,7 +30,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import CodeEditor, { type CodeLineClickPayload, type CodeSelectionPayload } from '@/components/codebase/CodeEditor';
+import CodeViewer, { type CodeLineClickPayload, type CodeSelectionPayload } from '@/components/codebase/CodeViewer';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { formatLocalDateTime } from '@/lib/dateFormat';
@@ -97,10 +97,19 @@ type DraftSelection = {
   anchor: { x: number; y: number };
 };
 
+type CachedValue<T> = {
+  value: T;
+  expiresAt: number;
+};
+
 const COMPOSER_WIDTH = 360;
 const COMPOSER_PADDING = 12;
 const COMPOSER_EST_HEIGHT = 280;
 const MAX_SELECTION_TEXT = 1200;
+const TREE_CACHE_TTL_MS = 20_000;
+const FILE_CACHE_TTL_MS = 60_000;
+const TREE_CACHE_MAX_ENTRIES = 240;
+const FILE_CACHE_MAX_ENTRIES = 180;
 
 function isCommitSha(value: string) {
   return /^[0-9a-f]{7,40}$/i.test(value.trim());
@@ -163,6 +172,8 @@ export default function CodebaseClient({
   const editorViewRef = useRef<EditorView | null>(null);
   const pendingScrollLineRef = useRef<number | null>(null);
   const handledDeepLinkKeyRef = useRef<string | null>(null);
+  const treeCacheRef = useRef<Map<string, CachedValue<TreeResponse>>>(new Map());
+  const fileCacheRef = useRef<Map<string, CachedValue<FileResponse>>>(new Map());
 
   const availableBranches = useMemo(() => {
     return Array.from(new Set(branches.map((item) => item.trim()).filter(Boolean)));
@@ -221,22 +232,39 @@ export default function CodebaseClient({
     setFileLoading(true);
     setFileError(null);
     setFilePath(path);
-    setFileData(null);
     try {
       const normalizedOverride = refOverride?.trim() || '';
       const effectiveRef = normalizedOverride || activeRef;
       if (normalizedOverride && normalizedOverride !== branch) {
         setBranch(normalizedOverride);
       }
+      const shouldForceSync = forceSync ? true : forceSyncUntil > Date.now();
+      const cacheKey = makeFileCacheKey(project.id, effectiveRef, path);
+      if (!shouldForceSync) {
+        const cached = getCachedValue(fileCacheRef.current, cacheKey);
+        if (cached) {
+          if (fileRequestId.current !== requestId) return;
+          setFileData(cached);
+          setComments([]);
+          setDraftSelection(null);
+          setDraftBody('');
+          setAssigneeIds([]);
+          setCommentError(null);
+          setFileLoading(false);
+          return;
+        }
+      }
+
+      setFileData(null);
       const params = new URLSearchParams();
       if (effectiveRef) params.set('ref', effectiveRef);
-      const shouldForceSync = forceSync ? true : forceSyncUntil > Date.now();
       params.set('sync', shouldForceSync ? '1' : '0');
       params.set('path', path);
       const res = await fetch(`/api/projects/${project.id}/codebase/file?${params.toString()}`);
       if (!res.ok) throw new Error('file_fetch_failed');
       const data = (await res.json()) as FileResponse;
       if (fileRequestId.current !== requestId) return;
+      setCachedValue(fileCacheRef.current, cacheKey, data, FILE_CACHE_TTL_MS, FILE_CACHE_MAX_ENTRIES);
       setFileData(data);
       setComments([]);
       setDraftSelection(null);
@@ -306,18 +334,30 @@ export default function CodebaseClient({
     let active = true;
 
     async function loadTree() {
+      const shouldForceSync = forceSyncUntil > Date.now();
+      const cacheKey = makeTreeCacheKey(project.id, activeRef, currentPath);
+      if (!shouldForceSync) {
+        const cached = getCachedValue(treeCacheRef.current, cacheKey);
+        if (cached) {
+          setEntries(cached.entries || []);
+          setTreeError(null);
+          setTreeLoading(false);
+          return;
+        }
+      }
+
       setTreeLoading(true);
       setTreeError(null);
       try {
         const params = new URLSearchParams();
         if (activeRef) params.set('ref', activeRef);
-        const shouldForceSync = forceSyncUntil > Date.now();
         params.set('sync', shouldForceSync ? '1' : '0');
         if (currentPath) params.set('path', currentPath);
         const res = await fetch(`/api/projects/${project.id}/codebase/tree?${params.toString()}`);
         if (!res.ok) throw new Error('tree_fetch_failed');
         const data = (await res.json()) as TreeResponse;
         if (!active || treeRequestId.current !== requestId) return;
+        setCachedValue(treeCacheRef.current, cacheKey, data, TREE_CACHE_TTL_MS, TREE_CACHE_MAX_ENTRIES);
         setEntries(data.entries || []);
       } catch (err) {
         if (!active || treeRequestId.current !== requestId) return;
@@ -489,6 +529,8 @@ export default function CodebaseClient({
       if (!res.ok) {
         throw new Error('sync_failed');
       }
+      treeCacheRef.current.clear();
+      fileCacheRef.current.clear();
       setSyncMessage(dict.projects.codebaseSyncSuccess);
       setForceSyncUntil(Date.now() + 10_000);
       setRefreshKey((value) => value + 1);
@@ -586,7 +628,7 @@ export default function CodebaseClient({
       const view = editorViewRef.current;
       if (!view) return;
 
-      // The CodeEditor updates its document in an effect. Wait a few frames
+      // The CodeViewer updates its document in an effect. Wait a few frames
       // so the view reflects the latest `fileData.content` before scrolling.
       if (attempt < 5) {
         const current = view.state.doc.toString();
@@ -865,7 +907,7 @@ export default function CodebaseClient({
 
               {!fileLoading && !fileError && shouldRenderFile && fileData && (
                 <div className="h-full">
-                  <CodeEditor
+                  <CodeViewer
                     value={fileData.content}
                     language={filePath ?? ''}
                     onSelection={handleSelection}
@@ -1085,6 +1127,39 @@ export default function CodebaseClient({
       </div>
     </div>
   );
+}
+
+function makeTreeCacheKey(projectId: string, ref: string, treePath: string) {
+  return `${projectId}::${ref || 'HEAD'}::${treePath || '.'}`;
+}
+
+function makeFileCacheKey(projectId: string, ref: string, filePath: string) {
+  return `${projectId}::${ref || 'HEAD'}::${filePath}`;
+}
+
+function getCachedValue<T>(cache: Map<string, CachedValue<T>>, key: string): T | null {
+  const hit = cache.get(key);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    cache.delete(key);
+    return null;
+  }
+  return hit.value;
+}
+
+function setCachedValue<T>(
+  cache: Map<string, CachedValue<T>>,
+  key: string,
+  value: T,
+  ttlMs: number,
+  maxEntries: number,
+) {
+  cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+  if (cache.size <= maxEntries) return;
+  const first = cache.keys().next().value;
+  if (first) {
+    cache.delete(first);
+  }
 }
 
 function formatBytes(bytes: number) {

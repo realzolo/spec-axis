@@ -37,13 +37,9 @@ import { withOrgPrefix } from '@/lib/orgPath';
 import ReactDiffViewer, { DiffMethod, LineNumberPrefix } from 'react-diff-viewer-continued';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatLocalDate } from '@/lib/dateFormat';
-import { javascript } from '@codemirror/lang-javascript';
-import { json } from '@codemirror/lang-json';
-import { html } from '@codemirror/lang-html';
-import { css } from '@codemirror/lang-css';
-import { markdown } from '@codemirror/lang-markdown';
 import type { LanguageSupport } from '@codemirror/language';
 import { classHighlighter, highlightTree } from '@lezer/highlight';
+import { resolveLanguageSupportForPath } from '@/lib/codeLanguage';
 
 type Commit = { sha: string; message: string; author: string; date: string };
 type Project = { id: string; name: string; repo: string; default_branch: string; ruleset_id?: string };
@@ -124,35 +120,6 @@ function escapeHtml(value: string) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
-}
-
-const languageCache = new Map<string, LanguageSupport>();
-
-function getLanguageSupport(path: string | undefined) {
-  if (!path) return null;
-  const ext = path.split('.').pop()?.toLowerCase() ?? '';
-  if (!ext) return null;
-  if (languageCache.has(ext)) {
-    return languageCache.get(ext) ?? null;
-  }
-  let language: LanguageSupport | null = null;
-  if (ext === 'ts' || ext === 'tsx') {
-    language = javascript({ typescript: true, jsx: ext === 'tsx' });
-  } else if (ext === 'js' || ext === 'jsx') {
-    language = javascript({ jsx: ext === 'jsx' });
-  } else if (ext === 'json') {
-    language = json();
-  } else if (ext === 'css' || ext === 'scss' || ext === 'less') {
-    language = css();
-  } else if (ext === 'html' || ext === 'htm') {
-    language = html();
-  } else if (ext === 'md' || ext === 'markdown') {
-    language = markdown();
-  }
-  if (language) {
-    languageCache.set(ext, language);
-  }
-  return language;
 }
 
 function highlightLine(source: string, language: LanguageSupport) {
@@ -540,6 +507,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
   const [statusFilter, setStatusFilter] = useState<'all' | 'A' | 'M' | 'D'>('all');
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(false);
+  const [diffLanguage, setDiffLanguage] = useState<LanguageSupport | null>(null);
   const [detailMode, setDetailMode] = useState<DiffMode>('commit');
   const [compareBase, setCompareBase] = useState(project.default_branch);
   const [compareHead, setCompareHead] = useState(project.default_branch);
@@ -759,9 +727,29 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
     () => (baseDiffContent ? normalizeDiffContent(baseDiffContent, diffOptions) : null),
     [baseDiffContent, diffOptions],
   );
-  const diffLanguage = useMemo(() => {
-    if (!diffOptions.syntaxHighlight || !activeDiffFile) return null;
-    return getLanguageSupport(activeDiffFile.newPath || activeDiffFile.oldPath);
+  useEffect(() => {
+    if (!diffOptions.syntaxHighlight || !activeDiffFile) {
+      setDiffLanguage(null);
+      return;
+    }
+    const targetPath = activeDiffFile.newPath || activeDiffFile.oldPath;
+    if (!targetPath) {
+      setDiffLanguage(null);
+      return;
+    }
+    let cancelled = false;
+    resolveLanguageSupportForPath(targetPath)
+      .then((language) => {
+        if (cancelled) return;
+        setDiffLanguage(language);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDiffLanguage(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [activeDiffFile, diffOptions.syntaxHighlight]);
   const highlightEnabled = useMemo(() => {
     if (!diffOptions.syntaxHighlight || !diffLanguage || !baseDiffContent) return false;
@@ -948,7 +936,11 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
     return Array.from(highlights);
   }, [commentAnchor, commentLineIds, reviewedLineIds]);
 
-  const syntaxCache = useMemo(() => new Map<string, string>(), [activeDiffFile?.key, diffOptions.syntaxHighlight]);
+  const syntaxCacheRef = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    syntaxCacheRef.current.clear();
+  }, [activeDiffFile, diffOptions.syntaxHighlight, diffLanguage]);
 
   const renderContent = useCallback((source?: string) => {
     const normalizedSource = typeof source === 'string' ? source : '';
@@ -958,15 +950,15 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
     if (normalizedSource.length === 0) {
       return <span>&nbsp;</span>;
     }
-    const cached = syntaxCache.get(normalizedSource);
+    const cached = syntaxCacheRef.current.get(normalizedSource);
     if (cached) {
       return <span dangerouslySetInnerHTML={{ __html: cached }} />;
     }
     const html = highlightLine(normalizedSource, diffLanguage);
     const value = html || escapeHtml(normalizedSource);
-    syntaxCache.set(normalizedSource, value);
+    syntaxCacheRef.current.set(normalizedSource, value);
     return <span dangerouslySetInnerHTML={{ __html: value }} />;
-  }, [diffLanguage, diffOptions.syntaxHighlight, syntaxCache]);
+  }, [diffLanguage, highlightEnabled]);
 
   const renderGutter = useCallback((data: {
     lineNumber: number;
@@ -1050,7 +1042,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
       refreshChangeAnchors();
     }, 80);
     return () => window.clearTimeout(timer);
-  }, [detailOpen, activeDiffFile?.key, activeDiffContent?.oldValue, activeDiffContent?.newValue, diffOptions.showDiffOnly, diffOptions.contextLines, refreshChangeAnchors]);
+  }, [detailOpen, activeDiffFile, activeDiffContent?.oldValue, activeDiffContent?.newValue, diffOptions.showDiffOnly, diffOptions.contextLines, refreshChangeAnchors]);
 
   const goToChange = useCallback((direction: 'next' | 'prev') => {
     if (changeAnchors.length === 0) return;
@@ -1180,7 +1172,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
     const top = rect.top - containerRect.top + container.scrollTop;
-    const [prefix, lineText] = lineId.split('-');
+    const [, lineText] = lineId.split('-');
     const lineNumber = Number(lineText);
     if (!Number.isFinite(lineNumber)) return;
     setCommentAnchor({

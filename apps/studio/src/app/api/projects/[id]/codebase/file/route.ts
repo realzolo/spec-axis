@@ -49,7 +49,7 @@ export async function GET(
             orgId: project.org_id,
             projectId,
             repo: project.repo,
-            ref: requestedRef,
+            ...(requestedRef ? { ref: requestedRef } : {}),
           },
           path,
           { syncPolicy }
