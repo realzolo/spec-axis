@@ -187,6 +187,23 @@ export class GitHubClient implements VCSClient {
     }
   }
 
+  async getCompareDiff(owner: string, repo: string, base: string, head: string): Promise<string> {
+    try {
+      const { data } = await this.octokit.request('GET /repos/{owner}/{repo}/compare/{base}...{head}', {
+        owner,
+        repo,
+        base,
+        head,
+        mediaType: { format: 'diff' },
+      });
+
+      return data as unknown as string;
+    } catch (error) {
+      console.error('Failed to get compare diff:', error);
+      throw new Error('Failed to fetch compare diff from GitHub');
+    }
+  }
+
   async getAuthenticatedUser(): Promise<{
     login: string;
     name: string | null;
@@ -322,6 +339,29 @@ export class GitLabClient implements VCSClient {
       throw new Error('Failed to fetch commit diff from GitLab');
     }
   }
+
+  async getCompareDiff(owner: string, repo: string, base: string, head: string): Promise<string> {
+    try {
+      const projectPath = encodeURIComponent(`${owner}/${repo}`);
+      const data = await this.fetch(
+        `/projects/${projectPath}/repository/compare?from=${encodeURIComponent(base)}&to=${encodeURIComponent(head)}`
+      ) as { diffs?: GitLabDiffLite[] };
+
+      const diffs = data.diffs;
+      if (!Array.isArray(diffs)) {
+        throw new Error('Invalid GitLab compare response');
+      }
+
+      return diffs
+        .map((diff) => {
+          return `diff --git a/${diff.old_path} b/${diff.new_path}\n${diff.diff}`;
+        })
+        .join('\n');
+    } catch (error) {
+      console.error('Failed to get compare diff:', error);
+      throw new Error('Failed to fetch compare diff from GitLab');
+    }
+  }
 }
 
 /**
@@ -362,6 +402,10 @@ export class GenericGitClient implements VCSClient {
   }
 
   async getCommitDiff(): Promise<string> {
+    throw new Error('Generic Git client requires specific implementation');
+  }
+
+  async getCompareDiff(): Promise<string> {
     throw new Error('Generic Git client requires specific implementation');
   }
 }

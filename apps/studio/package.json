@@ -18,6 +18,7 @@
     "@codemirror/language": "^6.11.0",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.28.2",
+    "@lezer/highlight": "^1.2.3",
     "@node-rs/argon2": "^2.0.2",
     "@octokit/rest": "^22.0.1",
     "@radix-ui/react-dialog": "^1.1.6",

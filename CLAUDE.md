@@ -81,6 +81,7 @@ Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on si
 | CodeMirror | 6.x | Read-only codebase editor preview |
 | react-diff-viewer-continued | ^4.2.0 | Split diff viewer for commit detail modal (IDE-style review UI) |
 | React Flow (XYFlow) | ^12.7 | Pipeline DAG builder |
+| Lezer Highlight | ^1.2 | Diff syntax highlighting for commit review |
 | PostgreSQL | 14+ | Primary database (self-managed) |
 | Octokit | `^5.0.5` | GitHub API |
 | Anthropic SDK | `^0.78` | Claude AI, supports `ANTHROPIC_BASE_URL` |
@@ -461,6 +462,8 @@ toast.success('...'); toast.error('...'); toast.warning('...');
 - Report stream payload (`type: "status_update"`) includes `status`, `score`, `analysisProgress`, `tokenUsage`, `tokensUsed`, and `errorMessage`
 - `GET /api/rules/templates` returns static template list; `POST /api/rules/templates/[id]/import` is admin-only
 - Report compare page: `/o/:orgId/projects/:id/reports/compare?a=reportIdA&b=reportIdB`
+- Commit compare diff: `GET /api/commits/compare?repo=...&project_id=...&base=...&head=...`
+- Commit review markers: `GET/POST/DELETE /api/projects/:id/commits/review` for per-file/line reviewed state
 
 ## DB Migrations
 
@@ -471,6 +474,7 @@ Incremental migrations live in `docs/db/migrations/` and are used to upgrade exi
 psql "$DATABASE_URL" -f docs/db/migrations/004_api_tokens.sql
 psql "$DATABASE_URL" -f docs/db/migrations/add_concurrency_mode.sql
 psql "$DATABASE_URL" -f docs/db/migrations/005_analysis_progress_and_token_usage.sql
+psql "$DATABASE_URL" -f docs/db/migrations/006_commit_review_items.sql
 ```
 
 | File | Description |
@@ -478,6 +482,7 @@ psql "$DATABASE_URL" -f docs/db/migrations/005_analysis_progress_and_token_usage
 | `004_api_tokens.sql` | Adds `api_tokens` table and related indexes |
 | `add_concurrency_mode.sql` | Adds `concurrency_mode TEXT NOT NULL DEFAULT 'allow'` to `pipelines` table |
 | `005_analysis_progress_and_token_usage.sql` | Adds `analysis_progress JSONB` and `token_usage JSONB` to `analysis_reports` |
+| `006_commit_review_items.sql` | Adds commit review markers for per-file/line review state |
 
 ## FAQ
 

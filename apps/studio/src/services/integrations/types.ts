@@ -114,6 +114,11 @@ export interface VCSClient {
    * Get diff for a specific commit
    */
   getCommitDiff(owner: string, repo: string, sha: string): Promise<string>;
+
+  /**
+   * Get diff between two refs
+   */
+  getCompareDiff(owner: string, repo: string, base: string, head: string): Promise<string>;
 }
 
 /**

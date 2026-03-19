@@ -469,3 +469,37 @@
   position: relative;
   z-index: 1;
 }
+
+.commit-diff-viewer .cm-comment {
+  color: hsl(var(--ds-text-2));
+  font-style: italic;
+}
+
+.commit-diff-viewer .cm-keyword,
+.commit-diff-viewer .cm-typeName {
+  color: hsl(var(--ds-accent-8));
+}
+
+.commit-diff-viewer .cm-string,
+.commit-diff-viewer .cm-regexp {
+  color: hsl(var(--ds-success-7));
+}
+
+.commit-diff-viewer .cm-number,
+.commit-diff-viewer .cm-atom {
+  color: hsl(var(--ds-warning-7));
+}
+
+.commit-diff-viewer .cm-propertyName,
+.commit-diff-viewer .cm-attributeName {
+  color: hsl(var(--ds-accent-9));
+}
+
+.commit-diff-viewer .cm-tagName {
+  color: hsl(var(--ds-danger-7));
+}
+
+.commit-diff-viewer .cm-operator,
+.commit-diff-viewer .cm-punctuation {
+  color: hsl(var(--ds-text-1));
+}
