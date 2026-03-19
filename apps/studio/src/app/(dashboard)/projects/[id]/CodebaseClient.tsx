@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { EditorView } from '@codemirror/view';
 import {
+  CheckCircle2,
+  CircleDot,
   ChevronDown,
   Copy,
   FileText,
@@ -81,6 +82,12 @@ type CommentAssignee = {
 
 type CodebaseComment = {
   id: string;
+  thread_id: string;
+  thread_status: 'open' | 'resolved';
+  thread_line: number;
+  thread_line_end?: number | null;
+  resolved_at?: string | null;
+  resolved_by?: string | null;
   line: number;
   line_end?: number | null;
   selection_text?: string | null;
@@ -90,11 +97,23 @@ type CodebaseComment = {
   assignees?: CommentAssignee[] | null;
 };
 
+type CodebaseCommentThread = {
+  id: string;
+  status: 'open' | 'resolved';
+  line: number;
+  lineEnd: number;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  comments: CodebaseComment[];
+};
+
 type DraftSelection = {
   lineStart: number;
   lineEnd: number;
+  threadId?: string;
   text: string;
-  anchor: { x: number; y: number };
+  from?: number;
+  to?: number;
 };
 
 type CachedValue<T> = {
@@ -102,9 +121,7 @@ type CachedValue<T> = {
   expiresAt: number;
 };
 
-const COMPOSER_WIDTH = 360;
-const COMPOSER_PADDING = 12;
-const COMPOSER_EST_HEIGHT = 280;
+const COMPOSER_WIDTH = 420;
 const MAX_SELECTION_TEXT = 1200;
 const TREE_CACHE_TTL_MS = 20_000;
 const FILE_CACHE_TTL_MS = 60_000;
@@ -131,6 +148,8 @@ export default function CodebaseClient({
   branches: string[];
   dict: Dictionary;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const [branch, setBranch] = useState<string>(branches[0] ?? project.default_branch);
@@ -143,13 +162,19 @@ export default function CodebaseClient({
   const deferredSearch = useDeferredValue(search);
 
   const [filePath, setFilePath] = useState<string | null>(null);
+  const [anchorLine, setAnchorLine] = useState<number | null>(null);
+  const [commentSelectionRange, setCommentSelectionRange] = useState<{ from: number; to: number } | null>(null);
   const [fileData, setFileData] = useState<FileResponse | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const [comments, setComments] = useState<CodebaseComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [threadFilter, setThreadFilter] = useState<'all' | 'open' | 'resolved' | 'mine'>('all');
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [draftSelection, setDraftSelection] = useState<DraftSelection | null>(null);
+  const [inlineThreadTop, setInlineThreadTop] = useState<number | null>(null);
   const [draftBody, setDraftBody] = useState('');
   const [commentSaving, setCommentSaving] = useState(false);
   const [members, setMembers] = useState<OrgMember[]>([]);
@@ -165,15 +190,30 @@ export default function CodebaseClient({
   const treeRequestId = useRef(0);
   const fileRequestId = useRef(0);
   const commentRequestId = useRef(0);
-  const draftRef = useRef<HTMLTextAreaElement | null>(null);
+  const replyRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
   const codeContainerRef = useRef<HTMLDivElement | null>(null);
   const codeScrollerRef = useRef<HTMLElement | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const pendingScrollLineRef = useRef<number | null>(null);
   const handledDeepLinkKeyRef = useRef<string | null>(null);
+  const handledCommentDeepLinkRef = useRef<string | null>(null);
+  const urlSyncReadyRef = useRef(false);
   const treeCacheRef = useRef<Map<string, CachedValue<TreeResponse>>>(new Map());
   const fileCacheRef = useRef<Map<string, CachedValue<FileResponse>>>(new Map());
+
+  const updateInlineThreadPosition = useCallback((lineNumber: number) => {
+    const view = editorViewRef.current;
+    const container = codeContainerRef.current;
+    if (!view || !container) return;
+    const safeLine = Math.max(1, Math.min(view.state.doc.lines, Math.trunc(lineNumber)));
+    const lineInfo = view.state.doc.line(safeLine);
+    const coords = view.coordsAtPos(lineInfo.from);
+    if (!coords) return;
+    const containerRect = container.getBoundingClientRect();
+    const top = coords.bottom - containerRect.top + 8;
+    setInlineThreadTop(Math.max(12, top));
+  }, []);
 
   const availableBranches = useMemo(() => {
     return Array.from(new Set(branches.map((item) => item.trim()).filter(Boolean)));
@@ -199,6 +239,7 @@ export default function CodebaseClient({
   const deepLinkPath = searchParams.get('path');
   const deepLinkRef = searchParams.get('ref');
   const deepLinkLine = searchParams.get('line');
+  const deepLinkCommentId = searchParams.get('commentId');
 
   useEffect(() => {
     if (!project.org_id) return;
@@ -227,6 +268,24 @@ export default function CodebaseClient({
     };
   }, [project.org_id]);
 
+  useEffect(() => {
+    let active = true;
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!active) return;
+        const email = typeof data?.user?.email === 'string' ? data.user.email : null;
+        setCurrentUserEmail(email);
+      })
+      .catch(() => {
+        if (!active) return;
+        setCurrentUserEmail(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const loadFile = useCallback(async (path: string, forceSync?: boolean, refOverride?: string) => {
     const requestId = ++fileRequestId.current;
     setFileLoading(true);
@@ -246,6 +305,7 @@ export default function CodebaseClient({
           if (fileRequestId.current !== requestId) return;
           setFileData(cached);
           setComments([]);
+          setActiveThreadId(null);
           setDraftSelection(null);
           setDraftBody('');
           setAssigneeIds([]);
@@ -267,6 +327,7 @@ export default function CodebaseClient({
       setCachedValue(fileCacheRef.current, cacheKey, data, FILE_CACHE_TTL_MS, FILE_CACHE_MAX_ENTRIES);
       setFileData(data);
       setComments([]);
+      setActiveThreadId(null);
       setDraftSelection(null);
       setDraftBody('');
       setAssigneeIds([]);
@@ -308,26 +369,87 @@ export default function CodebaseClient({
     }
   }, [activeRef, project.id]);
 
-  // Deep link support: open a file (optionally at a specific ref + line).
+  // Deep link support: open a file (optionally at a specific ref).
   useEffect(() => {
-    if (!deepLinkPath) return;
-    const deepLinkKey = `${deepLinkPath}|${deepLinkRef ?? ''}|${deepLinkLine ?? ''}`;
+    if (!deepLinkPath) {
+      handledDeepLinkKeyRef.current = null;
+      const nextRef = deepLinkRef?.trim() ?? '';
+      if (nextRef && nextRef !== branch) {
+        setBranch(nextRef);
+      }
+      urlSyncReadyRef.current = true;
+      return;
+    }
+    const deepLinkKey = `${deepLinkPath}|${deepLinkRef ?? ''}`;
     if (handledDeepLinkKeyRef.current === deepLinkKey) return;
     handledDeepLinkKeyRef.current = deepLinkKey;
 
     const targetPath = deepLinkPath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
-    if (!targetPath) return;
+    if (!targetPath) {
+      urlSyncReadyRef.current = true;
+      return;
+    }
 
     const refOverride = deepLinkRef?.trim() || undefined;
+    const sameFile = filePath === targetPath;
+    const sameRef = !refOverride || refOverride === activeRef;
+    setCurrentPath(parentDir(targetPath));
 
+    if (sameFile && sameRef) {
+      urlSyncReadyRef.current = true;
+      return;
+    }
+
+    void loadFileRef.current(targetPath, false, refOverride);
+    urlSyncReadyRef.current = true;
+  }, [activeRef, branch, deepLinkPath, deepLinkRef, filePath]);
+
+  // Deep link support: line anchor sync is independent from file loading.
+  useEffect(() => {
+    if (!deepLinkPath) return;
     const parsedLine = deepLinkLine ? Number(deepLinkLine) : Number.NaN;
-    pendingScrollLineRef.current = Number.isFinite(parsedLine)
+    const normalizedLine = Number.isFinite(parsedLine)
       ? Math.max(1, Math.trunc(parsedLine))
       : null;
+    pendingScrollLineRef.current = normalizedLine;
+    setAnchorLine(normalizedLine);
+  }, [deepLinkLine, deepLinkPath]);
 
-    setCurrentPath(parentDir(targetPath));
-    void loadFileRef.current(targetPath, false, refOverride);
-  }, [deepLinkLine, deepLinkPath, deepLinkRef]);
+  // Keep URL in sync with current codebase anchor state so refresh/back keeps context.
+  useEffect(() => {
+    if (!urlSyncReadyRef.current) return;
+    const params = new URLSearchParams(searchParams.toString());
+    const nextRef = activeRef.trim();
+
+    if (nextRef) {
+      params.set('ref', nextRef);
+    } else {
+      params.delete('ref');
+    }
+
+    if (filePath) {
+      params.set('path', filePath);
+      if (anchorLine && anchorLine > 0) {
+        params.set('line', String(anchorLine));
+      } else {
+        params.delete('line');
+      }
+      if (activeThreadId) {
+        params.set('commentId', activeThreadId);
+      } else {
+        params.delete('commentId');
+      }
+    } else {
+      params.delete('path');
+      params.delete('line');
+      params.delete('commentId');
+    }
+
+    const nextQuery = params.toString();
+    const currentQuery = searchParams.toString();
+    if (nextQuery === currentQuery) return;
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [activeRef, activeThreadId, anchorLine, filePath, pathname, router, searchParams]);
 
   useEffect(() => {
     const requestId = ++treeRequestId.current;
@@ -377,7 +499,7 @@ export default function CodebaseClient({
   useEffect(() => {
     if (!draftSelection) return;
     const handle = requestAnimationFrame(() => {
-      draftRef.current?.focus();
+      replyRef.current?.focus();
     });
     return () => cancelAnimationFrame(handle);
   }, [draftSelection]);
@@ -401,13 +523,13 @@ export default function CodebaseClient({
     const container = codeScrollerRef.current;
     if (!container) return;
     const handleScroll = () => {
-      closeComposer();
+      updateInlineThreadPosition(draftSelection.lineStart);
     };
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       container.removeEventListener('scroll', handleScroll);
     };
-  }, [draftSelection]);
+  }, [draftSelection, updateInlineThreadPosition]);
 
   useEffect(() => {
     closeComposer();
@@ -441,6 +563,9 @@ export default function CodebaseClient({
     setCurrentPath('');
     setEntries([]);
     setFilePath(null);
+    setActiveThreadId(null);
+    setAnchorLine(null);
+    setCommentSelectionRange(null);
     setFileData(null);
     setFileError(null);
     setComments([]);
@@ -456,6 +581,9 @@ export default function CodebaseClient({
     if (entry.type === 'tree') {
       setCurrentPath(entry.path);
       setFilePath(null);
+      setActiveThreadId(null);
+      setAnchorLine(null);
+      setCommentSelectionRange(null);
       setFileData(null);
       setFileError(null);
       setDraftSelection(null);
@@ -464,6 +592,8 @@ export default function CodebaseClient({
       setCommentError(null);
       return;
     }
+    setAnchorLine(null);
+    setCommentSelectionRange(null);
     void loadFile(entry.path);
   };
 
@@ -484,6 +614,124 @@ export default function CodebaseClient({
     return fileData.content.split('\n');
   }, [fileData]);
 
+  const allThreads = useMemo<CodebaseCommentThread[]>(() => {
+    const byThread = new Map<string, CodebaseCommentThread>();
+    for (const comment of comments) {
+      const lineStart = Math.max(1, Math.trunc(comment.thread_line ?? comment.line));
+      const lineEnd = Math.max(lineStart, Math.trunc(comment.thread_line_end ?? comment.line_end ?? comment.line));
+      const existing = byThread.get(comment.thread_id);
+      if (!existing) {
+        byThread.set(comment.thread_id, {
+          id: comment.thread_id,
+          status: comment.thread_status,
+          line: lineStart,
+          lineEnd,
+          resolvedAt: comment.resolved_at ?? null,
+          resolvedBy: comment.resolved_by ?? null,
+          comments: [comment],
+        });
+        continue;
+      }
+      existing.comments.push(comment);
+      existing.status = comment.thread_status;
+      existing.line = Math.min(existing.line, lineStart);
+      existing.lineEnd = Math.max(existing.lineEnd, lineEnd);
+      existing.resolvedAt = comment.resolved_at ?? existing.resolvedAt;
+      existing.resolvedBy = comment.resolved_by ?? existing.resolvedBy;
+    }
+    const threads = Array.from(byThread.values());
+    for (const thread of threads) {
+      thread.comments.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+    }
+    threads.sort((a, b) => a.line - b.line || Date.parse(a.comments[0]?.created_at ?? '') - Date.parse(b.comments[0]?.created_at ?? ''));
+    return threads;
+  }, [comments]);
+
+  const threadById = useMemo(() => {
+    return new Map(allThreads.map((thread) => [thread.id, thread]));
+  }, [allThreads]);
+
+  const filteredThreads = useMemo(() => {
+    return allThreads.filter((thread) => {
+      if (threadFilter === 'open' && thread.status !== 'open') return false;
+      if (threadFilter === 'resolved' && thread.status !== 'resolved') return false;
+      if (threadFilter === 'mine') {
+        const me = currentUserEmail?.toLowerCase();
+        if (!me) return false;
+        return thread.comments.some((comment) => comment.author_email.toLowerCase() === me);
+      }
+      return true;
+    });
+  }, [allThreads, currentUserEmail, threadFilter]);
+
+  const composerThread = useMemo(() => {
+    if (!draftSelection?.threadId) return null;
+    return threadById.get(draftSelection.threadId) ?? null;
+  }, [draftSelection?.threadId, threadById]);
+
+  const composerThreadComments = useMemo(() => {
+    if (composerThread) return composerThread.comments;
+    if (!draftSelection) return [];
+    return allThreads
+      .filter((thread) => rangesOverlap(
+        draftSelection.lineStart,
+        draftSelection.lineEnd,
+        thread.line,
+        thread.lineEnd
+      ))
+      .flatMap((thread) => thread.comments);
+  }, [allThreads, composerThread, draftSelection]);
+
+  useEffect(() => {
+    if (!draftSelection?.threadId) return;
+    const thread = threadById.get(draftSelection.threadId);
+    if (!thread) return;
+    updateInlineThreadPosition(thread.line);
+  }, [draftSelection?.threadId, threadById, updateInlineThreadPosition]);
+
+  const commentLineNumbers = useMemo(() => {
+    const lineSet = new Set<number>();
+    for (const thread of filteredThreads) {
+      const start = thread.line;
+      const end = thread.lineEnd;
+      // Avoid rendering massive ranges as individual highlights.
+      if (end - start > 120) {
+        lineSet.add(start);
+        lineSet.add(end);
+        continue;
+      }
+      for (let line = start; line <= end; line += 1) {
+        lineSet.add(line);
+      }
+    }
+    return Array.from(lineSet).sort((a, b) => a - b);
+  }, [filteredThreads]);
+
+  const commentLinePreviews = useMemo<Record<number, string>>(() => {
+    const previews: Record<number, string> = {};
+    for (const thread of filteredThreads) {
+      const latest = thread.comments[thread.comments.length - 1];
+      if (!latest) continue;
+      const raw = latest.body.replace(/\s+/g, ' ').trim();
+      const preview = raw.length > 68 ? `${raw.slice(0, 68)}...` : raw;
+      previews[thread.line] = preview || latest.author_email;
+    }
+    return previews;
+  }, [filteredThreads]);
+
+  const visibleThreadNavigator = useMemo(() => {
+    if (filteredThreads.length === 0) return [];
+    return filteredThreads.map((thread) => thread.id);
+  }, [filteredThreads]);
+
+  useEffect(() => {
+    if (!activeThreadId) return;
+    if (threadById.has(activeThreadId)) return;
+    setActiveThreadId(null);
+    setDraftSelection(null);
+    setInlineThreadTop(null);
+  }, [activeThreadId, threadById]);
+
   const handleSubmitComment = async () => {
     if (!filePath || !draftSelection || !draftBody.trim()) return;
     if (!fileData?.commit) {
@@ -497,26 +745,97 @@ export default function CodebaseClient({
       const res = await fetch(`/api/projects/${project.id}/codebase/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ref: fileData.ref || activeRef,
-          commit: fileData.commit,
-          path: filePath,
-          line: draftSelection.lineStart,
-          line_end: lineEnd,
-          selection_text: selectionText || undefined,
-          assignees: assigneeIds.length ? assigneeIds : undefined,
-          body: draftBody.trim(),
-        }),
+        body: JSON.stringify(
+          draftSelection.threadId
+            ? {
+                thread_id: draftSelection.threadId,
+                assignees: assigneeIds.length ? assigneeIds : undefined,
+                body: draftBody.trim(),
+              }
+            : {
+                ref: fileData.ref || activeRef,
+                commit: fileData.commit,
+                path: filePath,
+                line: draftSelection.lineStart,
+                line_end: lineEnd,
+                selection_text: selectionText || undefined,
+                assignees: assigneeIds.length ? assigneeIds : undefined,
+                body: draftBody.trim(),
+              }
+        ),
       });
       if (!res.ok) throw new Error('comment_create_failed');
-      closeComposer();
-      await loadComments(filePath);
+      const created = await res.json() as CodebaseComment;
+      setComments((prev) => {
+        const next = [...prev, created];
+        next.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+        return next;
+      });
+      setActiveThreadId(created.thread_id);
+      setAnchorLine(created.thread_line ?? created.line);
+      setDraftBody('');
+      setCommentError(null);
+      void loadComments(filePath, fileData.commit);
     } catch (err) {
       setCommentError(err instanceof Error ? err.message : 'comment_create_failed');
     } finally {
       setCommentSaving(false);
     }
   };
+
+  const focusThread = useCallback((threadId: string, options?: { openComposer?: boolean }) => {
+    const thread = threadById.get(threadId);
+    if (!thread) return;
+    setActiveThreadId(thread.id);
+    setAnchorLine(thread.line);
+    pendingScrollLineRef.current = thread.line;
+    updateInlineThreadPosition(thread.line);
+    setDraftSelection({
+      lineStart: thread.line,
+      lineEnd: thread.lineEnd,
+      threadId: thread.id,
+      text: '',
+    });
+    setCommentSelectionRange(null);
+    if (options?.openComposer) {
+      setDraftBody('');
+    }
+  }, [threadById, updateInlineThreadPosition]);
+
+  const handleThreadStatusChange = useCallback(async (threadId: string, nextStatus: 'open' | 'resolved') => {
+    const res = await fetch(`/api/projects/${project.id}/codebase/comments`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ thread_id: threadId, status: nextStatus }),
+    });
+    if (!res.ok) {
+      throw new Error('thread_update_failed');
+    }
+    setComments((prev) => prev.map((comment) => (
+      comment.thread_id === threadId
+        ? {
+            ...comment,
+            thread_status: nextStatus,
+          }
+        : comment
+    )));
+    if (filePath) {
+      void loadComments(filePath, fileData?.commit ?? null);
+    }
+  }, [fileData?.commit, filePath, loadComments, project.id]);
+
+  useEffect(() => {
+    if (!deepLinkCommentId) {
+      handledCommentDeepLinkRef.current = null;
+      return;
+    }
+    if (allThreads.length === 0) return;
+    if (handledCommentDeepLinkRef.current === deepLinkCommentId) return;
+    if (!threadById.has(deepLinkCommentId)) return;
+    handledCommentDeepLinkRef.current = deepLinkCommentId;
+    focusThread(deepLinkCommentId);
+  }, [allThreads.length, deepLinkCommentId, focusThread, threadById]);
+
 
   const handleSync = async () => {
     if (syncing) return;
@@ -566,23 +885,105 @@ export default function CodebaseClient({
       .filter((member): member is OrgMember => Boolean(member));
   }, [assigneeIds, memberById]);
 
-  const openComposer = (lineStart: number, lineEnd: number, text: string, clientX: number, clientY: number) => {
-    if (typeof window === 'undefined') return;
-    const maxX = Math.max(COMPOSER_PADDING, window.innerWidth - COMPOSER_WIDTH - COMPOSER_PADDING);
-    const maxY = Math.max(COMPOSER_PADDING, window.innerHeight - COMPOSER_EST_HEIGHT - COMPOSER_PADDING);
-    const anchorX = clamp(clientX, COMPOSER_PADDING, maxX);
-    const anchorY = clamp(clientY + 8, COMPOSER_PADDING, maxY);
+  const openComposer = useCallback((
+    lineStart: number,
+    lineEnd: number,
+    text: string,
+    selectionRange?: { from: number; to: number } | null,
+    threadId?: string
+  ) => {
     const selectionText = normalizeSelectionText(text);
     setDraftSelection({
       lineStart,
       lineEnd,
+      ...(threadId ? { threadId } : {}),
       text: selectionText,
-      anchor: { x: anchorX, y: anchorY },
+      ...(selectionRange ? { from: selectionRange.from, to: selectionRange.to } : {}),
     });
+    if (threadId) {
+      setActiveThreadId(threadId);
+    }
+    updateInlineThreadPosition(lineStart);
+    setCommentSelectionRange(selectionRange ?? null);
     setDraftBody('');
     setCommentError(null);
     setAssigneeIds([]);
-  };
+  }, [updateInlineThreadPosition]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName.toLowerCase();
+      const isTypingTarget = Boolean(
+        target?.isContentEditable ||
+        tag === 'input' ||
+        tag === 'textarea' ||
+        tag === 'select'
+      );
+      if (isTypingTarget) return;
+      const key = event.key.toLowerCase();
+
+      if (key === 'c') {
+        event.preventDefault();
+        if (activeThreadId) {
+          focusThread(activeThreadId, { openComposer: true });
+          return;
+        }
+        if (anchorLine) {
+          openComposer(anchorLine, anchorLine, '', null);
+        }
+        return;
+      }
+
+      if (visibleThreadNavigator.length === 0) return;
+      const currentIndex = activeThreadId
+        ? visibleThreadNavigator.indexOf(activeThreadId)
+        : -1;
+
+      if (key === 'j') {
+        event.preventDefault();
+        const nextIndex = currentIndex >= 0
+          ? (currentIndex + 1) % visibleThreadNavigator.length
+          : 0;
+        const nextThreadId = visibleThreadNavigator[nextIndex];
+        if (!nextThreadId) return;
+        focusThread(nextThreadId);
+        return;
+      }
+
+      if (key === 'k') {
+        event.preventDefault();
+        const nextIndex = currentIndex >= 0
+          ? (currentIndex - 1 + visibleThreadNavigator.length) % visibleThreadNavigator.length
+          : visibleThreadNavigator.length - 1;
+        const nextThreadId = visibleThreadNavigator[nextIndex];
+        if (!nextThreadId) return;
+        focusThread(nextThreadId);
+        return;
+      }
+
+      if (key === 'r' && activeThreadId) {
+        event.preventDefault();
+        const active = threadById.get(activeThreadId);
+        if (!active) return;
+        const nextStatus = active.status === 'resolved' ? 'open' : 'resolved';
+        void handleThreadStatusChange(activeThreadId, nextStatus);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [
+    activeThreadId,
+    anchorLine,
+    focusThread,
+    handleThreadStatusChange,
+    openComposer,
+    threadById,
+    visibleThreadNavigator,
+  ]);
 
   const handleLineClick = (payload: CodeLineClickPayload) => {
     let lineStart = payload.line;
@@ -592,13 +993,28 @@ export default function CodebaseClient({
       lineEnd = Math.max(lastLineClicked, payload.line);
     }
     setLastLineClicked(payload.line);
-    openComposer(lineStart, lineEnd, '', payload.clientX, payload.clientY);
+    const thread = allThreads.find((item) => payload.line >= item.line && payload.line <= item.lineEnd);
+    setAnchorLine(lineStart);
+    if (thread) {
+      focusThread(thread.id);
+      return;
+    }
+    setActiveThreadId(null);
+    openComposer(lineStart, lineEnd, '', null);
   };
 
   const handleSelection = (payload: CodeSelectionPayload) => {
     const text = payload.text.trim();
     if (!text) return;
-    openComposer(payload.lineStart, payload.lineEnd, text, payload.clientX, payload.clientY);
+    setActiveThreadId(null);
+    setAnchorLine(payload.lineStart);
+    openComposer(
+      payload.lineStart,
+      payload.lineEnd,
+      text,
+      { from: payload.from, to: payload.to },
+      undefined
+    );
   };
 
   const handleEditorReady = useCallback((view: EditorView) => {
@@ -609,6 +1025,9 @@ export default function CodebaseClient({
 
   const closeComposer = () => {
     setDraftSelection(null);
+    setInlineThreadTop(null);
+    setActiveThreadId(null);
+    setCommentSelectionRange(null);
     setDraftBody('');
     setCommentError(null);
     setAssigneeIds([]);
@@ -719,6 +1138,9 @@ export default function CodebaseClient({
             onClick={() => {
               setCurrentPath('');
               setFilePath(null);
+              setActiveThreadId(null);
+              setAnchorLine(null);
+              setCommentSelectionRange(null);
               setFileData(null);
               setFileError(null);
               setDraftSelection(null);
@@ -743,6 +1165,9 @@ export default function CodebaseClient({
                   if (!isClickable) return;
                   setCurrentPath(nextPath);
                   setFilePath(null);
+                  setActiveThreadId(null);
+                  setAnchorLine(null);
+                  setCommentSelectionRange(null);
                   setFileData(null);
                   setFileError(null);
                   setDraftSelection(null);
@@ -792,6 +1217,9 @@ export default function CodebaseClient({
               onClick={() => {
                 setCurrentPath(parentPath);
                 setFilePath(null);
+                setActiveThreadId(null);
+                setAnchorLine(null);
+                setCommentSelectionRange(null);
                 setFileData(null);
                 setFileError(null);
                 setDraftSelection(null);
@@ -866,12 +1294,48 @@ export default function CodebaseClient({
             </div>
             {filePath && (
               <div className="flex items-center gap-3 text-[12px] text-[hsl(var(--ds-text-2))]">
+                <span>{dict.projects.codebaseCommentsCount.replace('{{count}}', String(comments.length))}</span>
+                {commentsLoading && <Skeleton className="h-3 w-12" />}
                 {fileData && !fileData.isBinary && !fileData.truncated && (
                   <span>{dict.projects.codebaseLines.replace('{{count}}', String(lines.length))}</span>
                 )}
                 {fileData && (
                   <span>{formatBytes(fileData.size)}</span>
                 )}
+                <div className="hidden md:flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant={threadFilter === 'all' ? 'secondary' : 'ghost'}
+                    className="h-7 px-2 text-[11px]"
+                    onClick={() => setThreadFilter('all')}
+                  >
+                    {dict.common.all}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={threadFilter === 'open' ? 'secondary' : 'ghost'}
+                    className="h-7 px-2 text-[11px]"
+                    onClick={() => setThreadFilter('open')}
+                  >
+                    {dict.projects.codebaseThreadOpen}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={threadFilter === 'resolved' ? 'secondary' : 'ghost'}
+                    className="h-7 px-2 text-[11px]"
+                    onClick={() => setThreadFilter('resolved')}
+                  >
+                    {dict.projects.codebaseThreadResolved}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={threadFilter === 'mine' ? 'secondary' : 'ghost'}
+                    className="h-7 px-2 text-[11px]"
+                    onClick={() => setThreadFilter('mine')}
+                  >
+                    {dict.projects.codebaseThreadMine}
+                  </Button>
+                </div>
                 <Button variant="ghost" size="sm" onClick={handleCopyPath}>
                   <Copy className="size-3.5" />
                   {dict.projects.codebaseCopyPath}
@@ -912,6 +1376,10 @@ export default function CodebaseClient({
                     language={filePath ?? ''}
                     onSelection={handleSelection}
                     onLineClick={handleLineClick}
+                    commentLines={commentLineNumbers}
+                    commentLinePreviews={commentLinePreviews}
+                    activeCommentLine={draftSelection?.lineStart ?? anchorLine}
+                    commentSelectionRange={commentSelectionRange}
                     onReady={handleEditorReady}
                     className="h-full"
                   />
@@ -922,11 +1390,16 @@ export default function CodebaseClient({
                 <div className="px-6 py-6 text-[12px] text-[hsl(var(--ds-text-2))]">{dict.projects.codebaseSelectFile}</div>
               )}
 
-              {draftSelection && typeof document !== 'undefined' && createPortal(
+              {draftSelection && shouldRenderFile && (
                 <div
                   ref={composerRef}
-                  className="fixed z-50"
-                  style={{ left: draftSelection.anchor.x, top: draftSelection.anchor.y, width: COMPOSER_WIDTH }}
+                  className="absolute z-30"
+                  style={{
+                    left: 52,
+                    right: 12,
+                    top: inlineThreadTop ?? 18,
+                    maxWidth: COMPOSER_WIDTH,
+                  }}
                 >
                   <div className="relative rounded-[12px] border border-[hsl(var(--ds-border-2))] bg-[hsl(var(--ds-background-2))]">
                     <button
@@ -937,7 +1410,65 @@ export default function CodebaseClient({
                     >
                       <X className="size-3.5" />
                     </button>
-                    <div className="px-4 pt-5 pb-2 flex items-center gap-2">
+                    <div className="px-4 pt-4 pb-2 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-[12px]">
+                        {composerThread?.status === 'resolved' ? (
+                          <CheckCircle2 className="size-4 text-success" />
+                        ) : (
+                          <CircleDot className="size-4 text-[hsl(var(--ds-accent-8))]" />
+                        )}
+                        <span className="font-medium text-foreground">
+                          {dict.projects.codebaseLine} {draftSelection.lineStart}
+                          {draftSelection.lineEnd > draftSelection.lineStart ? `-${draftSelection.lineEnd}` : ''}
+                        </span>
+                        {composerThread && (
+                          <span className={cn(
+                            'rounded-[999px] px-2 py-0.5 text-[10px]',
+                            composerThread.status === 'resolved'
+                              ? 'bg-success/15 text-success'
+                              : 'bg-[hsl(var(--ds-accent-7))/0.15] text-[hsl(var(--ds-accent-8))]'
+                          )}>
+                            {composerThread.status === 'resolved'
+                              ? dict.projects.codebaseThreadResolved
+                              : dict.projects.codebaseThreadOpen}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {composerThread && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-[11px]"
+                            onClick={() => {
+                              const next = composerThread.status === 'resolved' ? 'open' : 'resolved';
+                              void handleThreadStatusChange(composerThread.id, next);
+                            }}
+                          >
+                            {composerThread.status === 'resolved'
+                              ? dict.projects.codebaseReopenThread
+                              : dict.projects.codebaseResolveThread}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    {selectedAssignees.length > 0 ? (
+                      <div className="px-4 pb-2 flex flex-wrap gap-1">
+                        {selectedAssignees.map((member) => (
+                          <span
+                            key={member.user_id}
+                            className="rounded-[4px] bg-[hsl(var(--ds-surface-2))] px-2 py-0.5 text-[10px] text-[hsl(var(--ds-text-2))]"
+                          >
+                            {member.email}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="px-4 pb-2 text-[11px] text-[hsl(var(--ds-text-2))]">
+                        {dict.projects.codebaseNoAssignees}
+                      </div>
+                    )}
+                    <div className="px-4 pb-2 flex items-center gap-2">
                       <Users className="size-3.5 text-[hsl(var(--ds-text-2))]" />
                       <span className="text-[11px] text-[hsl(var(--ds-text-2))]">{dict.projects.codebaseAssignees}</span>
                       <DropdownMenu>
@@ -975,29 +1506,53 @@ export default function CodebaseClient({
                         <span className="text-[11px] text-danger">{dict.common.error}</span>
                       )}
                     </div>
-                    {selectedAssignees.length > 0 ? (
-                      <div className="px-4 pb-2 flex flex-wrap gap-1">
-                        {selectedAssignees.map((member) => (
-                          <span
-                            key={member.user_id}
-                            className="rounded-[4px] bg-[hsl(var(--ds-surface-2))] px-2 py-0.5 text-[10px] text-[hsl(var(--ds-text-2))]"
-                          >
-                            {member.email}
+                    <div className="px-3 pb-2">
+                      <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))/60]">
+                        <div className="px-3 py-2 text-[11px] text-[hsl(var(--ds-text-2))] flex items-center justify-between">
+                          <span>
+                            {dict.projects.codebaseLine} {draftSelection.lineStart}
+                            {draftSelection.lineEnd > draftSelection.lineStart ? `-${draftSelection.lineEnd}` : ''}
                           </span>
-                        ))}
+                          <span>{dict.projects.codebaseCommentsCount.replace('{{count}}', String(composerThreadComments.length))}</span>
+                        </div>
+                        {commentsLoading ? (
+                          <div className="px-3 pb-2 text-[11px] text-[hsl(var(--ds-text-2))]">{dict.common.loading}</div>
+                        ) : composerThreadComments.length === 0 ? (
+                          <div className="px-3 pb-2 text-[11px] text-[hsl(var(--ds-text-2))]">
+                            {dict.projects.codebaseNoComments}
+                          </div>
+                        ) : (
+                          <div className="max-h-36 overflow-y-auto border-t border-[hsl(var(--ds-border-1))] divide-y divide-[hsl(var(--ds-border-1))]">
+                            {composerThreadComments.map((comment) => {
+                              const lineEnd = comment.line_end && comment.line_end !== comment.line
+                                ? `${comment.line}-${comment.line_end}`
+                                : `${comment.line}`;
+                              return (
+                                <div key={comment.id} className="px-3 py-2">
+                                  <div className="flex items-center justify-between text-[10px] text-[hsl(var(--ds-text-2))]">
+                                    <span className="truncate">{comment.author_email}</span>
+                                    <span>{formatDate(comment.created_at)}</span>
+                                  </div>
+                                  <div className="mt-1 text-[11px] text-[hsl(var(--ds-text-2))]">
+                                    {dict.projects.codebaseLine} {lineEnd}
+                                  </div>
+                                  <div className="mt-1 text-[12px] text-foreground whitespace-pre-wrap break-words">
+                                    {comment.body}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <div className="px-4 pb-2 text-[11px] text-[hsl(var(--ds-text-2))]">
-                        {dict.projects.codebaseNoAssignees}
-                      </div>
-                    )}
+                    </div>
                     <div className="px-4 py-3">
                       <Textarea
-                        ref={draftRef}
+                        ref={replyRef}
                         value={draftBody}
                         onChange={(event) => setDraftBody(event.target.value)}
-                        placeholder={dict.projects.codebaseThreadPlaceholder}
-                        className="min-h-[110px] border-0 bg-transparent px-0 py-0 text-xs focus-visible:border-0"
+                        placeholder={composerThread ? dict.projects.codebaseReplyPlaceholder : dict.projects.codebaseThreadPlaceholder}
+                        className="min-h-[92px] border-0 bg-transparent px-0 py-0 text-xs focus-visible:border-0"
                         onKeyDown={(event) => {
                           if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
                             event.preventDefault();
@@ -1011,7 +1566,7 @@ export default function CodebaseClient({
                     </div>
                     <div className="flex items-center justify-between border-t border-[hsl(var(--ds-border-1))] px-3 py-2 text-[hsl(var(--ds-text-2))]">
                       <div className="text-[11px] text-[hsl(var(--ds-text-2))]">
-                        {dict.projects.codebaseMarkdownHint}
+                        {dict.projects.codebaseMarkdownHint} · {dict.projects.codebaseThreadShortcuts}
                       </div>
                       <Button
                         size="sm"
@@ -1019,14 +1574,9 @@ export default function CodebaseClient({
                         disabled={!draftBody.trim() || commentSaving}
                       >
                         <Send className="size-3.5" />
-                        {dict.projects.codebaseCommentSubmit}
+                        {composerThread ? dict.projects.codebaseReplySubmit : dict.projects.codebaseCommentSubmit}
                       </Button>
                     </div>
-                  </div>
-                  <div className="mt-2 flex items-center justify-end text-[11px] text-[hsl(var(--ds-text-2))]">
-                    <Button variant="ghost" size="sm" onClick={closeComposer}>
-                      {dict.common.cancel}
-                    </Button>
                   </div>
                   {commentSaving && (
                     <div className="mt-2">
@@ -1036,91 +1586,14 @@ export default function CodebaseClient({
                   {commentError && (
                     <div className="mt-2 text-xs text-danger">{dict.common.error}</div>
                   )}
-                </div>,
-                document.body
+                </div>
               )}
             </div>
           </div>
 
-          {filePath && (
-            <div className="border-t border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))/60]">
-              <div className="px-6 py-3 text-[12px] text-[hsl(var(--ds-text-2))] flex items-center justify-between">
-                <span>
-                  {dict.projects.codebaseCommentsCount.replace('{{count}}', String(comments.length))}
-                </span>
-                {commentsLoading && <Skeleton className="h-3 w-20" />}
-                {!commentsLoading && commentError && <span className="text-danger">{dict.common.error}</span>}
-              </div>
-
-              {commentsLoading && (
-                <div className="px-6 pb-6 space-y-3">
-                  {Array.from({ length: 3 }).map((_, index) => (
-                    <div key={`comment-skeleton-${index}`} className="flex gap-3">
-                      <Skeleton className="size-7 rounded-[4px]" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-3 w-40" />
-                        <Skeleton className="h-3 w-full" />
-                        <Skeleton className="h-3 w-5/6" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {!commentsLoading && !commentError && comments.length === 0 && (
-                <div className="px-6 pb-6 text-[12px] text-[hsl(var(--ds-text-2))]">
-                  {dict.projects.codebaseNoComments}
-                </div>
-              )}
-
-              {!commentsLoading && comments.length > 0 && (
-                <div className="divide-y divide-border">
-                  {comments.map((comment) => {
-                    const lineEnd = comment.line_end && comment.line_end !== comment.line
-                      ? `${comment.line}-${comment.line_end}`
-                      : `${comment.line}`;
-                    return (
-                      <div
-                        key={comment.id}
-                        className="flex gap-3 px-6 py-4"
-                      >
-                        <div className="size-7 rounded-[4px] bg-muted flex items-center justify-center text-[10px] font-medium text-[hsl(var(--ds-text-2))]">
-                          {initialsFromEmail(comment.author_email)}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="font-medium text-foreground">{comment.author_email}</span>
-                            <span className="text-[hsl(var(--ds-text-2))]">{formatDate(comment.created_at)}</span>
-                            <span className="text-[hsl(var(--ds-text-2))]">
-                              {dict.projects.codebaseLine} {lineEnd}
-                            </span>
-                          </div>
-                          {comment.selection_text && (
-                            <pre className="mt-2 rounded-md bg-[hsl(var(--ds-surface-1))] px-3 py-2 text-[11px] text-[hsl(var(--ds-text-2))] whitespace-pre-wrap">
-                              {comment.selection_text}
-                            </pre>
-                          )}
-                          {comment.assignees && comment.assignees.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {comment.assignees.map((assignee) => (
-                                <span
-                                  key={`${comment.id}-${assignee.user_id}`}
-                                  className="rounded-[4px] bg-[hsl(var(--ds-surface-2))] px-2 py-0.5 text-[10px] text-[hsl(var(--ds-text-2))]"
-                                >
-                                  {assignee.email ?? assignee.user_id.slice(0, 8)}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          <div className="mt-2 text-xs whitespace-pre-wrap text-foreground">
-                            {comment.body}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+          {filePath && commentError && !draftSelection && (
+            <div className="border-t border-[hsl(var(--ds-border-1))] bg-danger/10 px-6 py-2 text-[12px] text-danger">
+              {dict.common.error}
             </div>
           )}
         </div>
@@ -1174,19 +1647,10 @@ function formatDate(value: string) {
   return formatLocalDateTime(value);
 }
 
-function initialsFromEmail(email: string) {
-  if (!email) return 'U';
-  const name = email.split('@')[0] ?? '';
-  const parts = name.split(/[._-]+/).filter(Boolean);
-  const first = parts[0]?.[0] ?? name[0] ?? 'U';
-  const second = parts[1]?.[0] ?? name[1] ?? '';
-  return `${first}${second}`.toUpperCase();
-}
-
-function clamp(value: number, min: number, max: number) {
-  if (value < min) return min;
-  if (value > max) return max;
-  return value;
+function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number) {
+  const left = Math.max(Math.trunc(aStart), Math.trunc(bStart));
+  const right = Math.min(Math.trunc(aEnd), Math.trunc(bEnd));
+  return left <= right;
 }
 
 function normalizeSelectionText(text: string) {

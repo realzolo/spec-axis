@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   Check,
   ChevronDown,
@@ -74,6 +74,8 @@ function NavItem({
 export default function Sidebar({ dict }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const orgMenuTriggerId = useId();
+  const userMenuTriggerId = useId();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -167,7 +169,7 @@ export default function Sidebar({ dict }: SidebarProps) {
       <div className="px-3 py-3 border-b border-border shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button type="button" className="flex items-center gap-2 w-full h-9 px-2 rounded-[6px] hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100 outline-none group">
+            <button id={orgMenuTriggerId} type="button" className="flex items-center gap-2 w-full h-9 px-2 rounded-[6px] hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100 outline-none group">
               {/* Org avatar */}
               <span className="flex h-[22px] w-[22px] items-center justify-center rounded-[4px] bg-[hsl(var(--ds-surface-3))] text-[10px] font-bold text-foreground shrink-0">
                 {orgInitial}
@@ -223,7 +225,7 @@ export default function Sidebar({ dict }: SidebarProps) {
       <div className="px-3 py-3 border-t border-border shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button type="button" className="flex items-center gap-2.5 w-full h-9 px-2 rounded-[6px] hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100 outline-none">
+            <button id={userMenuTriggerId} type="button" className="flex items-center gap-2.5 w-full h-9 px-2 rounded-[6px] hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100 outline-none">
               <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[hsl(var(--ds-surface-3))] shrink-0">
                 <User className="size-3 text-[hsl(var(--ds-text-2))]" />
               </span>

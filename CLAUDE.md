@@ -415,8 +415,17 @@ If new install warnings appear, approve the dependency and update the allowlist.
 `CodebaseService` manages per-project local Git mirrors and per-job workspaces for AI analysis and pipeline tasks.
 Mirrors are cache-only (not a source of truth) and are synced on demand or on a schedule; workspaces are isolated and must be cleaned after each job.
 Codebase browsing uses the same mirror cache and enforces a max preview size for files.
-Line-level comments for code browsing are stored in `codebase_comments` and scoped by org, project, repo, commit SHA, and path (with `ref` retained for display). Optional line ranges (`line_end`) and selection text (`selection_text`) capture multi-line or partial-text comments.
-Comment assignees are stored in `codebase_comment_assignees` and attached to codebase comments.
+Code comments are modeled as threads:
+- `codebase_comment_threads` stores thread-level anchor + lifecycle (`open` / `resolved`) at file/line scope.
+- `codebase_comments` stores individual messages (replies) under `thread_id`.
+- `codebase_comment_assignees` stores optional assignees per message.
+Thread anchors are scoped by org, project, repo, commit SHA, and path (`ref` retained for display/navigation). Optional line ranges (`line_end`) and selection text (`selection_text`) support multi-line or partial-text discussions.
+Codebase comments API contract:
+- `GET /api/projects/:id/codebase/comments` returns flattened comments enriched with thread metadata (`thread_id`, `thread_status`, `thread_line`, `thread_line_end`, `resolved_by`, `resolved_at`).
+- `POST /api/projects/:id/codebase/comments` accepts either:
+  - a new thread payload (`ref`, `commit`, `path`, `line`, optional `line_end`, `selection_text`) + `body`, or
+  - a reply payload (`thread_id`) + `body`.
+- `PATCH /api/projects/:id/codebase/comments` updates thread status (`open` / `resolved`).
 Codebase tree/file endpoints accept `sync=0` to skip mirror fetch for faster browsing (manual sync still available).
 Automatic mirror sync can be triggered by:
 - GitHub `push` webhooks (forces mirror fetch for matching projects).
@@ -458,7 +467,7 @@ toast.success('...'); toast.error('...'); toast.warning('...');
 - Rules learning endpoints are admin-only (org-scoped)
 - Public pages accessible without login: `/`, `/login`, `/verify`, `/reset`, `/auth/*`, `/invite/*`, `/terms`, `/privacy`
 - Dashboard routes must be accessed via `/o/:orgId/...` (middleware rewrites internally)
-- Project detail tabs support deep links via query params: `?tab=commits|codebase|stats|config`. Codebase supports `ref`, `path`, `line` for jump-to-location.
+- Project detail tabs support deep links via query params: `?tab=commits|codebase|stats|config`. Codebase supports `ref`, `path`, `line`, `commentId` for jump-to-location/thread.
 - `PATCH /api/pipelines/[id]` updates `concurrency_mode` in Studio DB (schema must include `pipelines.concurrency_mode`; present in `init.sql`)
 - `POST /api/pipelines/[id]/runs` enforces concurrency gate before calling runner (409 if `queue` mode and run active)
 - Studio server calls Runner `POST /v1/pipeline-runs/{runId}/cancel` and expects `{ ok: true }` (used by `cancel_previous` concurrency mode)
@@ -479,6 +488,7 @@ psql "$DATABASE_URL" -f docs/db/migrations/004_api_tokens.sql
 psql "$DATABASE_URL" -f docs/db/migrations/add_concurrency_mode.sql
 psql "$DATABASE_URL" -f docs/db/migrations/005_analysis_progress_and_token_usage.sql
 psql "$DATABASE_URL" -f docs/db/migrations/006_commit_review_items.sql
+psql "$DATABASE_URL" -f docs/db/migrations/007_codebase_comment_threads.sql
 ```
 
 | File | Description |
@@ -487,6 +497,7 @@ psql "$DATABASE_URL" -f docs/db/migrations/006_commit_review_items.sql
 | `add_concurrency_mode.sql` | Adds `concurrency_mode TEXT NOT NULL DEFAULT 'allow'` to `pipelines` table |
 | `005_analysis_progress_and_token_usage.sql` | Adds `analysis_progress JSONB` and `token_usage JSONB` to `analysis_reports` |
 | `006_commit_review_items.sql` | Adds commit review markers for per-file/line review state |
+| `007_codebase_comment_threads.sql` | Adds thread model (`codebase_comment_threads`) and links `codebase_comments.thread_id` |
 
 ## FAQ
 

@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import {
   ChevronDown, ChevronUp, AlertTriangle, AlertCircle, Info, Zap,
-  Copy, Check, MessageCircle, FileCode, Send, User,
+  Copy, Check, MessageCircle, FileCode, Send, User, RefreshCw, ArrowUpDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 import { formatLocalDateTime } from '@/lib/dateFormat';
@@ -31,7 +33,15 @@ type IssueComment = {
   author: string;
   content: string;
   created_at: string;
+  pending?: boolean;
 };
+
+type CommentSortOrder = 'oldest' | 'newest';
+
+const COMMENT_PREVIEW_CHAR_LIMIT = 280;
+const COMMENT_PREVIEW_LINE_LIMIT = 6;
+const COMMENT_MAX_LENGTH = 4000;
+const COMMENT_COMPOSER_MAX_HEIGHT = 180;
 
 export default function IssueCard({
   issue,
@@ -55,8 +65,12 @@ export default function IssueCard({
   const [commentsLoaded, setCommentsLoaded] = useState(false);
   const [comments, setComments] = useState<IssueComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [commentSortOrder, setCommentSortOrder] = useState<CommentSortOrder>('oldest');
+  const [expandedCommentIds, setExpandedCommentIds] = useState<Record<string, boolean>>({});
+  const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const SEV_CONFIG = {
     critical: { icon: AlertCircle, iconClass: 'text-danger', badgeClass: 'bg-danger/10 text-danger', label: dict.reportDetail.severity.critical },
@@ -74,9 +88,23 @@ export default function IssueCard({
     toast.success(dict.common.copied);
   }
 
-  const loadComments = useCallback(async () => {
-    if (!issueId || !reportId || commentsLoaded) return;
+  const autoResizeComposer = useCallback(() => {
+    const target = commentInputRef.current;
+    if (!target) return;
+    target.style.height = '0px';
+    target.style.height = `${Math.min(target.scrollHeight, COMMENT_COMPOSER_MAX_HEIGHT)}px`;
+    target.style.overflowY = target.scrollHeight > COMMENT_COMPOSER_MAX_HEIGHT ? 'auto' : 'hidden';
+  }, []);
+
+  useEffect(() => {
+    autoResizeComposer();
+  }, [commentText, expanded, autoResizeComposer]);
+
+  const loadComments = useCallback(async (force = false) => {
+    if (!issueId || !reportId) return;
+    if (commentsLoaded && !force) return;
     setCommentsLoading(true);
+    setCommentsError(null);
     try {
       const res = await fetch(`/api/reports/${reportId}/issues/${issueId}`);
       if (!res.ok) throw new Error('failed');
@@ -84,7 +112,7 @@ export default function IssueCard({
       setComments(Array.isArray(data.issue_comments) ? data.issue_comments : []);
       setCommentsLoaded(true);
     } catch {
-      // silently ignore
+      setCommentsError('comments_fetch_failed');
     } finally {
       setCommentsLoading(false);
     }
@@ -98,20 +126,67 @@ export default function IssueCard({
     }
   }
 
+  const sortedComments = useMemo(() => {
+    const list = [...comments];
+    list.sort((a, b) => {
+      const aTs = Date.parse(a.created_at);
+      const bTs = Date.parse(b.created_at);
+      if (Number.isNaN(aTs) || Number.isNaN(bTs)) return 0;
+      return commentSortOrder === 'oldest' ? aTs - bTs : bTs - aTs;
+    });
+    return list;
+  }, [comments, commentSortOrder]);
+
+  const isLongComment = useCallback((content: string) => {
+    if (content.length > COMMENT_PREVIEW_CHAR_LIMIT) return true;
+    return content.split('\n').length > COMMENT_PREVIEW_LINE_LIMIT;
+  }, []);
+
+  const previewComment = useCallback((content: string) => {
+    if (!isLongComment(content)) return content;
+    const collapsed = content.slice(0, COMMENT_PREVIEW_CHAR_LIMIT).trimEnd();
+    return `${collapsed}...`;
+  }, [isLongComment]);
+
+  const toggleCommentExpanded = useCallback((commentId: string) => {
+    setExpandedCommentIds((prev) => ({ ...prev, [commentId]: !prev[commentId] }));
+  }, []);
+
+  const handleSortToggle = useCallback(() => {
+    setCommentSortOrder((prev) => (prev === 'oldest' ? 'newest' : 'oldest'));
+  }, []);
+
   async function handleSubmitComment() {
     if (!commentText.trim() || !issueId || !reportId) return;
+    const body = commentText.trim();
+    const optimisticId = `pending-${Date.now()}`;
+    const optimisticComment: IssueComment = {
+      id: optimisticId,
+      author: 'You',
+      content: body,
+      created_at: new Date().toISOString(),
+      pending: true,
+    };
+    setComments((prev) => [...prev, optimisticComment]);
+    setCommentText('');
     setSubmitting(true);
+    setCommentsError(null);
     try {
       const res = await fetch(`/api/reports/${reportId}/issues/${issueId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ author: 'You', content: commentText.trim() }),
+        body: JSON.stringify({ author: 'You', content: body }),
       });
       if (!res.ok) throw new Error('failed');
-      const newComment = await res.json();
-      setComments(prev => [...prev, newComment]);
-      setCommentText('');
+      const newComment = await res.json() as IssueComment;
+      setComments((prev) => prev.map((comment) => (
+        comment.id === optimisticId
+          ? newComment
+          : comment
+      )));
     } catch {
+      setComments((prev) => prev.filter((comment) => comment.id !== optimisticId));
+      setCommentText(body);
       toast.error(dict.reportDetail.postCommentFailed);
     } finally {
       setSubmitting(false);
@@ -250,66 +325,160 @@ export default function IssueCard({
           {/* ── Comment Thread ─────────────────────────────── */}
           {issueId && reportId && (
             <div className="pt-2 border-t border-[hsl(var(--ds-border-1))]">
-              <div className="text-xs font-semibold text-[hsl(var(--ds-text-2))] mb-3 flex items-center gap-1.5">
-                <MessageCircle className="size-3.5" />
-                {dict.reportDetail.discussion}
-                {comments.length > 0 && (
-                  <span className="ml-1 rounded-full bg-[hsl(var(--ds-surface-2))] px-1.5 py-0.5 text-[10px]">{comments.length}</span>
-                )}
+·              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="text-xs font-semibold text-[hsl(var(--ds-text-2))] flex items-center gap-1.5">
+                  <MessageCircle className="size-3.5" />
+                  {dict.reportDetail.discussion}
+                  <span className="ml-1 rounded-full bg-[hsl(var(--ds-surface-2))] px-1.5 py-0.5 text-[10px]">
+                    {comments.length}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-[11px]"
+                    onClick={handleSortToggle}
+                  >
+                    <ArrowUpDown className="size-3.5" />
+                    {commentSortOrder === 'oldest'
+                      ? dict.reportDetail.commentsOldestFirst
+                      : dict.reportDetail.commentsNewestFirst}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-7"
+                    onClick={() => void loadComments(true)}
+                    disabled={commentsLoading}
+                    aria-label={dict.common.refresh}
+                    title={dict.common.refresh}
+                  >
+                    {commentsLoading ? (
+                      <Spinner size="sm" className="h-3.5 w-3.5" />
+                    ) : (
+                      <RefreshCw className="size-3.5" />
+                    )}
+                  </Button>
+                </div>
               </div>
 
-              {commentsLoading && (
+              {commentsLoading && comments.length === 0 && (
                 <div className="text-[12px] text-[hsl(var(--ds-text-2))] py-2">{dict.reportDetail.loadingComments}</div>
               )}
 
-              {!commentsLoading && comments.length > 0 && (
-                <div className="space-y-3 mb-3">
-                  {comments.map(c => (
-                    <div key={c.id} className="flex gap-2.5">
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[hsl(var(--ds-surface-2))] shrink-0 mt-0.5">
-                        <User className="size-3 text-[hsl(var(--ds-text-2))]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-[12px] font-medium text-foreground">{c.author}</span>
-                          <span className="text-[11px] text-[hsl(var(--ds-text-2))]">{formatLocalDateTime(c.created_at)}</span>
-                        </div>
-                        <div className="text-[13px] text-foreground leading-relaxed whitespace-pre-wrap">{c.content}</div>
-                      </div>
-                    </div>
-                  ))}
+              {!commentsLoading && commentsError && comments.length === 0 && (
+                <div className="mb-3 rounded-[8px] border border-danger/40 bg-danger/10 px-3 py-2 text-[12px] text-danger flex items-center justify-between gap-2">
+                  <span>{dict.reportDetail.loadCommentsFailed}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[11px]"
+                    onClick={() => void loadComments(true)}
+                  >
+                    {dict.common.refresh}
+                  </Button>
                 </div>
               )}
 
-              {!commentsLoading && comments.length === 0 && (
+              {!commentsLoading && comments.length > 0 && (
+                <div className="mb-3 max-h-[280px] overflow-y-auto rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] p-2 space-y-2">
+                  {sortedComments.map((comment) => {
+                    const isExpanded = expandedCommentIds[comment.id] ?? false;
+                    const shouldCollapse = isLongComment(comment.content) && !isExpanded;
+                    return (
+                      <div key={comment.id} className="rounded-[6px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-3 py-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[hsl(var(--ds-surface-2))] shrink-0">
+                              <User className="size-3 text-[hsl(var(--ds-text-2))]" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 text-[12px]">
+                                <span className="font-medium text-foreground truncate">{comment.author}</span>
+                                {comment.pending && (
+                                  <span className="text-[10px] text-[hsl(var(--ds-text-2))]">{dict.common.loading}</span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-[hsl(var(--ds-text-2))]">{formatLocalDateTime(comment.created_at)}</div>
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-6 shrink-0"
+                            onClick={() => {
+                              void handleCopy(comment.content);
+                            }}
+                            title={dict.common.copy}
+                            aria-label={dict.common.copy}
+                          >
+                            <Copy className="size-3" />
+                          </Button>
+                        </div>
+                        <div className="mt-2 text-[13px] text-foreground leading-relaxed whitespace-pre-wrap break-words">
+                          {shouldCollapse ? previewComment(comment.content) : comment.content}
+                        </div>
+                        {isLongComment(comment.content) && (
+                          <button
+                            type="button"
+                            className="mt-1 text-[11px] text-[hsl(var(--ds-accent-8))] hover:underline"
+                            onClick={() => toggleCommentExpanded(comment.id)}
+                          >
+                            {isExpanded ? dict.reportDetail.collapseComment : dict.reportDetail.expandComment}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {!commentsLoading && !commentsError && comments.length === 0 && (
                 <p className="text-[12px] text-[hsl(var(--ds-text-2))] mb-3">{dict.reportDetail.noComments}</p>
               )}
 
               {/* Comment input */}
-              <div className="flex gap-2">
-                <textarea
+              <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] p-2">
+                <Textarea
+                  ref={commentInputRef}
                   value={commentText}
-                  onChange={e => setCommentText(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault();
+                  onChange={(event) => setCommentText(event.target.value.slice(0, COMMENT_MAX_LENGTH))}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                      event.preventDefault();
                       void handleSubmitComment();
                     }
                   }}
                   placeholder={dict.reportDetail.commentPlaceholder}
-                  rows={2}
-                  className="flex-1 text-[13px] rounded-[6px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-[hsl(var(--ds-border-2))] placeholder:text-[hsl(var(--ds-text-2))]"
+                  rows={1}
+                  className="min-h-[42px] max-h-[180px] resize-none border-0 bg-transparent px-2 py-1 hover:bg-transparent focus-visible:border-0 focus-visible:ring-0"
                 />
-                <Button
-                  size="icon"
-                  variant="outline"
-                  className="h-auto px-3 self-end rounded-[6px]"
-                  disabled={!commentText.trim() || submitting}
-                  onClick={handleSubmitComment}
-                  aria-label={dict.reportDetail.postComment}
-                >
-                  <Send className="size-3.5" />
-                </Button>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-[hsl(var(--ds-text-2))]">
+                    {dict.reportDetail.commentShortcutHint}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-[hsl(var(--ds-text-2))]">
+                      {commentText.length}/{COMMENT_MAX_LENGTH}
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 px-2.5"
+                      disabled={!commentText.trim() || submitting}
+                      onClick={handleSubmitComment}
+                      aria-label={dict.reportDetail.postComment}
+                    >
+                      {submitting ? <Spinner size="sm" className="h-3.5 w-3.5" /> : <Send className="size-3.5" />}
+                      {dict.reportDetail.postComment}
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
           )}

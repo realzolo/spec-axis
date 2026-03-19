@@ -1,9 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useRef } from 'react';
-import { Compartment, EditorState } from '@codemirror/state';
+import { Compartment, EditorState, RangeSetBuilder } from '@codemirror/state';
 import {
+  Decoration,
   EditorView,
+  GutterMarker,
+  gutter,
   lineNumbers,
   highlightActiveLineGutter,
   drawSelection,
@@ -16,6 +19,8 @@ import { resolveLanguageSupportForPath } from '@/lib/codeLanguage';
 export type CodeSelectionPayload = {
   lineStart: number;
   lineEnd: number;
+  from: number;
+  to: number;
   text: string;
   clientX: number;
   clientY: number;
@@ -33,6 +38,10 @@ type CodeViewerProps = {
   language: string;
   onSelection?: (payload: CodeSelectionPayload) => void;
   onLineClick?: (payload: CodeLineClickPayload) => void;
+  commentLines?: number[];
+  commentLinePreviews?: Record<number, string>;
+  activeCommentLine?: number | null;
+  commentSelectionRange?: { from: number; to: number } | null;
   onReady?: (view: EditorView) => void;
   className?: string;
 };
@@ -70,6 +79,48 @@ const editorTheme = EditorView.theme({
   '.cm-selectionBackground': {
     backgroundColor: 'hsl(var(--accent) / 0.25)',
   },
+  '.cm-line.cm-line-commented': {
+    backgroundColor: 'hsl(var(--ds-accent-7) / 0.10)',
+    boxShadow: 'inset 2px 0 0 hsl(var(--ds-accent-7) / 0.60)',
+  },
+  '.cm-line.cm-line-comment-active': {
+    backgroundColor: 'hsl(var(--ds-accent-8) / 0.16)',
+    boxShadow: 'inset 3px 0 0 hsl(var(--ds-accent-8) / 0.90)',
+  },
+  '.cm-comment-gutter': {
+    width: '10px',
+  },
+  '.cm-comment-gutter .cm-gutterElement': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+  },
+  '.cm-comment-marker': {
+    width: '6px',
+    height: '6px',
+    borderRadius: '999px',
+    backgroundColor: 'hsl(var(--ds-accent-7) / 0.75)',
+  },
+  '.cm-comment-marker-active': {
+    width: '7px',
+    height: '7px',
+    borderRadius: '999px',
+    backgroundColor: 'hsl(var(--ds-accent-8))',
+    boxShadow: '0 0 0 2px hsl(var(--ds-accent-8) / 0.2)',
+  },
+  '.cm-comment-marker-empty': {
+    width: '6px',
+    height: '6px',
+    borderRadius: '999px',
+    opacity: 0,
+  },
+  '.cm-comment-selection': {
+    textDecoration: 'underline 2px hsl(var(--ds-accent-8) / 0.95)',
+    textUnderlineOffset: '2px',
+    textDecorationSkipInk: 'auto',
+    backgroundColor: 'hsl(var(--ds-accent-8) / 0.07)',
+  },
 });
 
 const codeHighlightStyle = HighlightStyle.define([
@@ -89,12 +140,17 @@ export default function CodeViewer({
   language,
   onSelection,
   onLineClick,
+  commentLines = [],
+  commentLinePreviews = {},
+  activeCommentLine = null,
+  commentSelectionRange = null,
   onReady,
   className,
 }: CodeViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const languageCompartment = useMemo(() => new Compartment(), []);
+  const commentVisualCompartment = useMemo(() => new Compartment(), []);
   const onSelectionRef = useRef(onSelection);
   const onLineClickRef = useRef(onLineClick);
   const onReadyRef = useRef(onReady);
@@ -136,6 +192,8 @@ export default function CodeViewer({
         handler({
           lineStart: Math.min(fromLine, toLine),
           lineEnd: Math.max(fromLine, toLine),
+          from: selection.from,
+          to: selection.to,
           text,
           clientX: coords.left,
           clientY: coords.bottom,
@@ -146,8 +204,20 @@ export default function CodeViewer({
         if (event.button !== 0) return false;
         const handler = onLineClickRef.current;
         if (!handler) return false;
+
+        // Keep text selection behavior independent from click-to-open thread.
+        if (!view.state.selection.main.empty) return false;
+
         const target = event.target as HTMLElement | null;
-        if (!target || !target.closest('.cm-gutters')) return false;
+        if (!target) return false;
+
+        // Support two click entry points:
+        // 1) gutter line numbers/markers (create/open comment on line)
+        // 2) highlighted comment lines in content area (open existing thread)
+        const clickedGutter = Boolean(target.closest('.cm-gutters'));
+        const clickedCommentedLine = Boolean(target.closest('.cm-line-commented, .cm-line-comment-active'));
+        if (!clickedGutter && !clickedCommentedLine) return false;
+
         const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
         if (pos == null) return false;
         const line = view.state.doc.lineAt(pos).number;
@@ -166,6 +236,7 @@ export default function CodeViewer({
     const state = EditorState.create({
       doc: initialValueRef.current,
       extensions: [
+        commentVisualCompartment.of([]),
         lineNumbers(),
         highlightActiveLineGutter(),
         highlightSpecialChars(),
@@ -191,7 +262,7 @@ export default function CodeViewer({
       view.destroy();
       viewRef.current = null;
     };
-  }, [languageCompartment]);
+  }, [commentVisualCompartment, languageCompartment]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -224,5 +295,150 @@ export default function CodeViewer({
     };
   }, [language, languageCompartment]);
 
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    const effect = commentVisualCompartment.reconfigure(
+      buildCommentVisualExtension(view, {
+        commentLines,
+        commentLinePreviews,
+        activeCommentLine,
+        commentSelectionRange,
+      })
+    );
+    view.dispatch({ effects: effect });
+  }, [activeCommentLine, commentLinePreviews, commentLines, commentSelectionRange, commentVisualCompartment, value]);
+
   return <div ref={containerRef} className={className} />;
 }
+
+function buildCommentVisualExtension(
+  view: EditorView,
+  options: {
+    commentLines: number[];
+    commentLinePreviews: Record<number, string>;
+    activeCommentLine: number | null;
+    commentSelectionRange: { from: number; to: number } | null;
+  }
+) {
+  const { commentLines, commentLinePreviews, activeCommentLine, commentSelectionRange } = options;
+  const normalizedLines = Array.from(new Set(
+    commentLines
+      .map((line) => Math.trunc(line))
+      .filter((line) => Number.isFinite(line) && line > 0)
+  )).sort((a, b) => a - b);
+
+  const lineSet = new Set(normalizedLines);
+  return [
+    EditorView.decorations.of(
+      buildCommentLineDecorations(view, normalizedLines, activeCommentLine)
+    ),
+    EditorView.decorations.of(
+      buildCommentSelectionDecoration(view, commentSelectionRange)
+    ),
+    gutter({
+      class: 'cm-comment-gutter',
+      markers: () => buildCommentLineMarkers(view, normalizedLines, activeCommentLine, commentLinePreviews),
+      initialSpacer: () => (lineSet.size > 0 ? inactiveCommentMarker : emptyCommentMarker),
+      lineMarker: (_view, blockInfo) => {
+        const lineNumber = view.state.doc.lineAt(blockInfo.from).number;
+        if (!lineSet.has(lineNumber)) return null;
+        const preview = commentLinePreviews[lineNumber];
+        return activeCommentLine === lineNumber
+          ? new CommentMarker('cm-comment-marker-active', preview)
+          : new CommentMarker('cm-comment-marker', preview);
+      },
+    }),
+  ];
+}
+
+function buildCommentLineDecorations(
+  view: EditorView,
+  commentLines: number[],
+  activeCommentLine: number | null
+) {
+  const builder = new RangeSetBuilder<Decoration>();
+
+  for (const lineNumber of commentLines) {
+    if (lineNumber > view.state.doc.lines) continue;
+    const line = view.state.doc.line(lineNumber);
+    builder.add(
+      line.from,
+      line.from,
+      Decoration.line({
+        class: activeCommentLine === lineNumber ? 'cm-line-comment-active' : 'cm-line-commented',
+      })
+    );
+  }
+
+  return builder.finish();
+}
+
+function buildCommentSelectionDecoration(
+  view: EditorView,
+  commentSelectionRange: { from: number; to: number } | null
+) {
+  const builder = new RangeSetBuilder<Decoration>();
+  if (!commentSelectionRange) {
+    return builder.finish();
+  }
+  const docLength = view.state.doc.length;
+  const from = clamp(commentSelectionRange.from, 0, docLength);
+  const to = clamp(commentSelectionRange.to, 0, docLength);
+  if (to <= from) return builder.finish();
+  builder.add(from, to, Decoration.mark({ class: 'cm-comment-selection' }));
+  return builder.finish();
+}
+
+function buildCommentLineMarkers(
+  view: EditorView,
+  commentLines: number[],
+  activeCommentLine: number | null,
+  commentLinePreviews: Record<number, string>
+) {
+  const builder = new RangeSetBuilder<GutterMarker>();
+  for (const lineNumber of commentLines) {
+    if (lineNumber > view.state.doc.lines) continue;
+    const from = view.state.doc.line(lineNumber).from;
+    const preview = commentLinePreviews[lineNumber];
+    builder.add(
+      from,
+      from,
+      activeCommentLine === lineNumber
+        ? new CommentMarker('cm-comment-marker-active', preview)
+        : new CommentMarker('cm-comment-marker', preview)
+    );
+  }
+  return builder.finish();
+}
+
+function clamp(value: number, min: number, max: number) {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+
+class CommentMarker extends GutterMarker {
+  constructor(
+    private readonly markerClassName: string,
+    private readonly preview?: string
+  ) {
+    super();
+  }
+
+  eq(other: CommentMarker) {
+    return other.markerClassName === this.markerClassName && other.preview === this.preview;
+  }
+
+  toDOM() {
+    const element = document.createElement('span');
+    element.className = this.markerClassName;
+    if (this.preview) {
+      element.title = this.preview;
+    }
+    return element;
+  }
+}
+
+const inactiveCommentMarker = new CommentMarker('cm-comment-marker');
+const emptyCommentMarker = new CommentMarker('cm-comment-marker-empty');

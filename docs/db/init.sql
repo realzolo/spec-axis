@@ -506,8 +506,36 @@ create index idx_review_comments_review_run_id on review_comments(review_run_id)
 -- ============================================================
 -- Codebase comments
 -- ============================================================
+create table codebase_comment_threads (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references organizations(id) on delete cascade,
+  project_id uuid not null references code_projects(id) on delete cascade,
+  repo text not null,
+  ref text not null,
+  commit_sha text not null check (commit_sha ~* '^[0-9a-f]{7,40}$'),
+  path text not null,
+  line int not null check (line > 0),
+  line_end int,
+  status text not null default 'open' check (status in ('open', 'resolved')),
+  author_id uuid references auth_users(id) on delete set null,
+  author_email citext,
+  resolved_by uuid references auth_users(id) on delete set null,
+  resolved_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint codebase_comment_threads_line_end_check
+    check (line_end is null or line_end >= line)
+);
+
+create index idx_codebase_threads_project on codebase_comment_threads(project_id);
+create index idx_codebase_threads_file on codebase_comment_threads(project_id, ref, path);
+create index idx_codebase_threads_status on codebase_comment_threads(project_id, status);
+create index idx_codebase_threads_line on codebase_comment_threads(project_id, ref, path, line);
+create index idx_codebase_threads_commit on codebase_comment_threads(project_id, commit_sha, path);
+
 create table codebase_comments (
   id uuid primary key default gen_random_uuid(),
+  thread_id uuid not null references codebase_comment_threads(id) on delete cascade,
   org_id uuid not null references organizations(id) on delete cascade,
   project_id uuid not null references code_projects(id) on delete cascade,
   repo text not null,
@@ -526,6 +554,7 @@ create table codebase_comments (
 );
 
 create index idx_codebase_comments_project on codebase_comments(project_id);
+create index idx_codebase_comments_thread on codebase_comments(thread_id);
 create index idx_codebase_comments_file on codebase_comments(project_id, ref, path);
 create index idx_codebase_comments_line on codebase_comments(project_id, ref, path, line);
 create index idx_codebase_comments_line_end on codebase_comments(project_id, ref, path, line_end);
