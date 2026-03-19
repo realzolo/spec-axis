@@ -84,10 +84,16 @@ type CodebaseComment = {
   id: string;
   thread_id: string;
   thread_status: 'open' | 'resolved';
-  thread_line: number;
+  thread_line?: number | null;
   thread_line_end?: number | null;
   resolved_at?: string | null;
   resolved_by?: string | null;
+  projection_status?: 'exact' | 'shifted' | 'ambiguous' | 'outdated' | 'missing' | null;
+  projection_confidence?: number | null;
+  projection_reason_code?: string | null;
+  projection_target_commit?: string | null;
+  anchor_commit_sha?: string | null;
+  anchor_path?: string | null;
   line: number;
   line_end?: number | null;
   selection_text?: string | null;
@@ -201,6 +207,7 @@ export default function CodebaseClient({
   const urlSyncReadyRef = useRef(false);
   const treeCacheRef = useRef<Map<string, CachedValue<TreeResponse>>>(new Map());
   const fileCacheRef = useRef<Map<string, CachedValue<FileResponse>>>(new Map());
+  const suppressOutsideComposerCloseRef = useRef(false);
 
   const updateInlineThreadPosition = useCallback((lineNumber: number) => {
     const view = editorViewRef.current;
@@ -213,6 +220,13 @@ export default function CodebaseClient({
     const containerRect = container.getBoundingClientRect();
     const top = coords.bottom - containerRect.top + 8;
     setInlineThreadTop(Math.max(12, top));
+  }, []);
+
+  const markCommentInteractionStart = useCallback(() => {
+    suppressOutsideComposerCloseRef.current = true;
+    queueMicrotask(() => {
+      suppressOutsideComposerCloseRef.current = false;
+    });
   }, []);
 
   const availableBranches = useMemo(() => {
@@ -507,9 +521,15 @@ export default function CodebaseClient({
   useEffect(() => {
     if (!draftSelection) return;
     const handleMouseDown = (event: MouseEvent) => {
+      if (suppressOutsideComposerCloseRef.current) return;
       const target = event.target as Node;
       if (composerRef.current?.contains(target)) return;
-      if (codeContainerRef.current?.contains(target)) return;
+      if (codeContainerRef.current?.contains(target)) {
+        const targetElement = target instanceof Element ? target : target.parentElement;
+        if (targetElement && isCommentInteractionTarget(targetElement)) {
+          return;
+        }
+      }
       closeComposer();
     };
     window.addEventListener('mousedown', handleMouseDown);
@@ -617,7 +637,9 @@ export default function CodebaseClient({
   const allThreads = useMemo<CodebaseCommentThread[]>(() => {
     const byThread = new Map<string, CodebaseCommentThread>();
     for (const comment of comments) {
-      const lineStart = Math.max(1, Math.trunc(comment.thread_line ?? comment.line));
+      const resolvedLine = comment.thread_line ?? comment.line;
+      if (!resolvedLine) continue;
+      const lineStart = Math.max(1, Math.trunc(resolvedLine));
       const lineEnd = Math.max(lineStart, Math.trunc(comment.thread_line_end ?? comment.line_end ?? comment.line));
       const existing = byThread.get(comment.thread_id);
       if (!existing) {
@@ -1376,6 +1398,7 @@ export default function CodebaseClient({
                     language={filePath ?? ''}
                     onSelection={handleSelection}
                     onLineClick={handleLineClick}
+                    onCommentInteractionStart={markCommentInteractionStart}
                     commentLines={commentLineNumbers}
                     commentLinePreviews={commentLinePreviews}
                     activeCommentLine={draftSelection?.lineStart ?? anchorLine}
@@ -1431,6 +1454,11 @@ export default function CodebaseClient({
                             {composerThread.status === 'resolved'
                               ? dict.projects.codebaseThreadResolved
                               : dict.projects.codebaseThreadOpen}
+                          </span>
+                        )}
+                        {composerThread?.comments.some((comment) => comment.projection_status === 'shifted') && (
+                          <span className="rounded-[999px] px-2 py-0.5 text-[10px] bg-warning/15 text-warning">
+                            {dict.projects.codebaseThreadShifted}
                           </span>
                         )}
                       </div>
@@ -1506,6 +1534,11 @@ export default function CodebaseClient({
                         <span className="text-[11px] text-danger">{dict.common.error}</span>
                       )}
                     </div>
+                    {composerThread?.comments[0]?.anchor_commit_sha && (
+                      <div className="px-4 pb-2 text-[11px] text-[hsl(var(--ds-text-2))]">
+                        {dict.projects.codebaseThreadAnchoredAt.replace('{{commit}}', composerThread.comments[0].anchor_commit_sha.slice(0, 7))}
+                      </div>
+                    )}
                     <div className="px-3 pb-2">
                       <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))/60]">
                         <div className="px-3 py-2 text-[11px] text-[hsl(var(--ds-text-2))] flex items-center justify-between">
@@ -1658,4 +1691,16 @@ function normalizeSelectionText(text: string) {
   if (!trimmed) return '';
   if (trimmed.length <= MAX_SELECTION_TEXT) return trimmed;
   return `${trimmed.slice(0, MAX_SELECTION_TEXT)}...`;
+}
+
+function isCommentInteractionTarget(target: Element) {
+  return Boolean(
+    target.closest('.cm-comment-marker') ||
+    target.closest('.cm-comment-marker-active') ||
+    target.closest('.cm-line-commented') ||
+    target.closest('.cm-line-comment-active') ||
+    target.closest('.cm-comment-gutter') ||
+    target.closest('.cm-lineNumbers') ||
+    target.closest('.cm-comment-selection')
+  );
 }

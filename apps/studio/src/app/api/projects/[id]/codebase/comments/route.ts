@@ -5,6 +5,12 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 
 import { query, withTransaction } from '@/lib/db';
+import { codebaseService } from '@/services/CodebaseService';
+import {
+  computeThreadProjection,
+  type ThreadAnchorSnapshot,
+  type ThreadProjectionStatus,
+} from '@/services/codebaseProjection';
 import { logger } from '@/services/logger';
 import { projectIdSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
@@ -15,6 +21,7 @@ import { requireProjectAccess } from '@/services/orgs';
 export const dynamic = 'force-dynamic';
 
 const rateLimiter = createRateLimiter(RATE_LIMITS.general);
+const PROJECTION_ALGORITHM_VERSION = 'projection-v1';
 
 const createCommentSchema = z.object({
   thread_id: z.string().uuid().optional(),
@@ -46,6 +53,36 @@ const patchThreadSchema = z.object({
   status: z.enum(['open', 'resolved']),
 });
 
+type ThreadAnchorRow = {
+  id: string;
+  status: 'open' | 'resolved';
+  line: number;
+  line_end: number | null;
+  ref: string;
+  commit_sha: string;
+  path: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  anchor_commit_sha: string | null;
+  anchor_path: string | null;
+  anchor_line_start: number | null;
+  anchor_line_end: number | null;
+  anchor_selection_text: string | null;
+  anchor_context_before: string | null;
+  anchor_context_after: string | null;
+  anchor_blob_sha: string | null;
+};
+
+type ThreadProjectionRow = {
+  thread_id: string;
+  projected_path: string | null;
+  projected_line_start: number | null;
+  projected_line_end: number | null;
+  status: ThreadProjectionStatus;
+  confidence: number | null;
+  reason_code: string;
+};
+
 // List comments for a file (optionally filter by line)
 export async function GET(
   request: NextRequest,
@@ -69,61 +106,126 @@ export async function GET(
     if (!project.org_id || !project.repo) {
       return NextResponse.json({ error: 'Project is not configured' }, { status: 400 });
     }
-    const ref = request.nextUrl.searchParams.get('ref') || project.default_branch;
-    const commit = request.nextUrl.searchParams.get('commit');
+
+    const requestedRefRaw = request.nextUrl.searchParams.get('ref') || project.default_branch;
+    const requestedRef = requestedRefRaw?.trim() || undefined;
+    const requestedCommit = request.nextUrl.searchParams.get('commit');
     const path = request.nextUrl.searchParams.get('path') || '';
     const lineParam = request.nextUrl.searchParams.get('line');
-    const line = lineParam ? Number(lineParam) : undefined;
+    const parsedLine = lineParam ? Number(lineParam) : Number.NaN;
+    const line = Number.isFinite(parsedLine)
+      ? Math.max(1, Math.trunc(parsedLine))
+      : null;
 
     if (!path) {
       return NextResponse.json({ error: 'path is required' }, { status: 400 });
     }
-    if (commit && !/^[0-9a-f]{7,40}$/i.test(commit)) {
+    if (requestedCommit && !/^[0-9a-f]{7,40}$/i.test(requestedCommit)) {
       return NextResponse.json({ error: 'Invalid commit' }, { status: 400 });
     }
 
+    const targetCommit = requestedCommit || (
+      await codebaseService.resolveRevision({
+        orgId: project.org_id,
+        projectId,
+        repo: project.repo,
+        ...(requestedRef ? { ref: requestedRef } : {}),
+      })
+    ).commit;
+
     const comments = await withRetry(async () => {
-      const params: unknown[] = [projectId, project.org_id, project.repo, path];
-      let sql = `
-        select c.*,
-               t.id as thread_id,
-               t.status as thread_status,
-               t.line as thread_line,
-               t.line_end as thread_line_end,
-               t.resolved_by,
-               t.resolved_at,
-               coalesce(
-                 jsonb_agg(
-                   jsonb_build_object('user_id', a.user_id, 'email', a.email)
-                   order by a.created_at
-                 ) filter (where a.id is not null),
-                 '[]'::jsonb
-               ) as assignees
-        from codebase_comments c
-        join codebase_comment_threads t on t.id = c.thread_id
-        left join codebase_comment_assignees a on a.comment_id = c.id
-        where t.project_id = $1
-          and t.org_id = $2
-          and t.repo = $3
-          and t.path = $4
-      `;
+      const threads = await query<ThreadAnchorRow>(
+        `select t.id,
+                t.status,
+                t.line,
+                t.line_end,
+                t.ref,
+                t.commit_sha,
+                t.path,
+                t.resolved_by,
+                t.resolved_at,
+                a.anchor_commit_sha,
+                a.anchor_path,
+                a.anchor_line_start,
+                a.anchor_line_end,
+                a.anchor_selection_text,
+                a.anchor_context_before,
+                a.anchor_context_after,
+                a.anchor_blob_sha
+         from codebase_comment_threads t
+         left join codebase_thread_anchors a on a.thread_id = t.id
+         where t.project_id = $1
+           and t.org_id = $2
+           and t.repo = $3`,
+        [projectId, project.org_id, project.repo]
+      );
 
-      if (commit) {
-        params.push(commit);
-        sql += ` and t.commit_sha = $${params.length}`;
-      } else {
-        params.push(ref);
-        sql += ` and t.ref = $${params.length}`;
+      if (threads.length === 0) {
+        return [];
       }
 
-      if (Number.isFinite(line)) {
-        params.push(line);
-        sql += ` and t.line <= $${params.length} and coalesce(t.line_end, t.line) >= $${params.length}`;
+      const projections = await ensureThreadProjections({
+        projectId,
+        projectOrgId: project.org_id,
+        projectRepo: project.repo,
+        targetCommit,
+        threads,
+      });
+
+      const visibleThreadIds = threads
+        .map((thread) => {
+          const projection = projections.get(thread.id);
+          if (!projection) return null;
+          if (projection.projected_path !== path) return null;
+          if (projection.status !== 'exact' && projection.status !== 'shifted') return null;
+          if (line != null) {
+            const start = projection.projected_line_start;
+            const end = projection.projected_line_end;
+            if (start == null || end == null) return null;
+            if (line < start || line > end) return null;
+          }
+          return thread.id;
+        })
+        .filter((id): id is string => Boolean(id));
+
+      if (visibleThreadIds.length === 0) {
+        return [];
       }
 
-      sql += ` group by c.id, t.id order by t.line asc, c.created_at asc`;
-
-      return query<Record<string, unknown>>(sql, params);
+      return query<Record<string, unknown>>(
+        `select c.*,
+                t.id as thread_id,
+                t.status as thread_status,
+                p.projected_line_start as thread_line,
+                p.projected_line_end as thread_line_end,
+                t.resolved_by,
+                t.resolved_at,
+                p.status as projection_status,
+                p.confidence as projection_confidence,
+                p.reason_code as projection_reason_code,
+                p.target_commit_sha as projection_target_commit,
+                ta.anchor_commit_sha,
+                ta.anchor_path,
+                coalesce(ca_agg.assignees, '[]'::jsonb) as assignees
+         from codebase_comments c
+         join codebase_comment_threads t on t.id = c.thread_id
+         join codebase_thread_projections p on p.thread_id = t.id and p.target_commit_sha = $5
+         left join codebase_thread_anchors ta on ta.thread_id = t.id
+         left join lateral (
+           select jsonb_agg(
+                    jsonb_build_object('user_id', a.user_id, 'email', a.email)
+                    order by a.created_at
+                  ) as assignees
+           from codebase_comment_assignees a
+           where a.comment_id = c.id
+         ) ca_agg on true
+         where t.project_id = $1
+           and t.org_id = $2
+           and t.repo = $3
+           and t.id = any($4::uuid[])
+         order by p.projected_line_start asc, c.created_at asc`,
+        [projectId, project.org_id, project.repo, visibleThreadIds, targetCommit]
+      );
     });
 
     return NextResponse.json(comments);
@@ -162,6 +264,15 @@ export async function POST(
       return NextResponse.json({ error: 'Project is not configured' }, { status: 400 });
     }
 
+    const anchorSnapshot = validated.thread_id
+      ? null
+      : await buildThreadAnchorSnapshot({
+          orgId: project.org_id,
+          projectId,
+          repo: project.repo,
+          input: validated,
+        });
+
     const comment = await withRetry(async () => {
       const selectionText = validated.selection_text?.trim();
 
@@ -174,6 +285,7 @@ export async function POST(
           userId: user.id,
           userEmail: user.email ?? 'unknown',
           input: validated,
+          anchorSnapshot,
         });
 
         const insertResult = await client.query(
@@ -345,6 +457,238 @@ export async function PATCH(
   }
 }
 
+async function ensureThreadProjections(args: {
+  projectId: string;
+  projectOrgId: string;
+  projectRepo: string;
+  targetCommit: string;
+  threads: ThreadAnchorRow[];
+}) {
+  const {
+    projectId,
+    projectOrgId,
+    projectRepo,
+    targetCommit,
+    threads,
+  } = args;
+
+  const threadIds = threads.map((thread) => thread.id);
+  const existing = await query<ThreadProjectionRow>(
+    `select thread_id,
+            projected_path,
+            projected_line_start,
+            projected_line_end,
+            status,
+            confidence,
+            reason_code
+     from codebase_thread_projections
+     where project_id = $1
+       and org_id = $2
+       and repo = $3
+       and target_commit_sha = $4
+       and thread_id = any($5::uuid[])`,
+    [projectId, projectOrgId, projectRepo, targetCommit, threadIds]
+  );
+  const map = new Map(existing.map((row) => [row.thread_id, row]));
+
+  const missing = threads.filter((thread) => !map.has(thread.id));
+  if (missing.length === 0) return map;
+
+  await query(
+    `insert into codebase_thread_projection_jobs
+      (project_id, org_id, repo, target_commit_sha, status, attempt, created_at, updated_at)
+     values ($1,$2,$3,$4,'running',1,now(),now())
+     on conflict (project_id, target_commit_sha)
+     do update set status = 'running',
+                   updated_at = now(),
+                   attempt = codebase_thread_projection_jobs.attempt + 1,
+                   error_message = null`,
+    [projectId, projectOrgId, projectRepo, targetCommit]
+  );
+
+  let hasErrors = false;
+  let firstErrorMessage: string | null = null;
+  for (const thread of missing) {
+    const anchor: ThreadAnchorSnapshot = {
+      anchorCommitSha: thread.anchor_commit_sha ?? thread.commit_sha,
+      anchorPath: thread.anchor_path ?? thread.path,
+      anchorLineStart: thread.anchor_line_start ?? thread.line,
+      anchorLineEnd: thread.anchor_line_end ?? thread.line_end ?? thread.line,
+      anchorSelectionText: thread.anchor_selection_text,
+      anchorContextBefore: thread.anchor_context_before,
+      anchorContextAfter: thread.anchor_context_after,
+      anchorBlobSha: thread.anchor_blob_sha,
+    };
+
+    let projection: {
+      projectedPath: string | null;
+      projectedLineStart: number | null;
+      projectedLineEnd: number | null;
+      status: ThreadProjectionStatus;
+      confidence: number;
+      reasonCode: string;
+    };
+
+    try {
+      projection = await computeThreadProjection({
+        orgId: projectOrgId,
+        projectId,
+        repo: projectRepo,
+        targetCommitSha: targetCommit,
+        anchor,
+      });
+    } catch (error) {
+      hasErrors = true;
+      if (!firstErrorMessage) {
+        firstErrorMessage = error instanceof Error ? error.message : 'projection_failed';
+      }
+      logger.warn('Compute thread projection failed', error instanceof Error ? error : undefined);
+      projection = thread.commit_sha === targetCommit
+        ? {
+            projectedPath: thread.path,
+            projectedLineStart: thread.line,
+            projectedLineEnd: thread.line_end ?? thread.line,
+            status: 'exact',
+            confidence: 1,
+            reasonCode: 'same_commit',
+          }
+        : {
+            projectedPath: null,
+            projectedLineStart: null,
+            projectedLineEnd: null,
+            status: 'outdated',
+            confidence: 0,
+            reasonCode: 'no_match',
+          };
+    }
+
+    await query(
+      `insert into codebase_thread_projections
+        (thread_id, org_id, project_id, repo, target_commit_sha, projected_path, projected_line_start, projected_line_end, status, confidence, reason_code, algorithm_version, computed_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now())
+       on conflict (thread_id, target_commit_sha)
+       do update set projected_path = excluded.projected_path,
+                     projected_line_start = excluded.projected_line_start,
+                     projected_line_end = excluded.projected_line_end,
+                     status = excluded.status,
+                     confidence = excluded.confidence,
+                     reason_code = excluded.reason_code,
+                     algorithm_version = excluded.algorithm_version,
+                     computed_at = excluded.computed_at`,
+      [
+        thread.id,
+        projectOrgId,
+        projectId,
+        projectRepo,
+        targetCommit,
+        projection.projectedPath,
+        projection.projectedLineStart,
+        projection.projectedLineEnd,
+        projection.status,
+        projection.confidence,
+        projection.reasonCode,
+        PROJECTION_ALGORITHM_VERSION,
+      ]
+    );
+
+    map.set(thread.id, {
+      thread_id: thread.id,
+      projected_path: projection.projectedPath,
+      projected_line_start: projection.projectedLineStart,
+      projected_line_end: projection.projectedLineEnd,
+      status: projection.status,
+      confidence: projection.confidence,
+      reason_code: projection.reasonCode,
+    });
+  }
+
+  await query(
+    `update codebase_thread_projection_jobs
+     set status = $3,
+         updated_at = now(),
+         error_message = $4
+     where project_id = $1
+       and target_commit_sha = $2`,
+    [
+      projectId,
+      targetCommit,
+      hasErrors ? 'failed' : 'completed',
+      hasErrors ? firstErrorMessage : null,
+    ]
+  );
+
+  return map;
+}
+
+async function buildThreadAnchorSnapshot(args: {
+  orgId: string;
+  projectId: string;
+  repo: string;
+  input: z.infer<typeof createCommentSchema>;
+}): Promise<ThreadAnchorSnapshot | null> {
+  const { orgId, projectId, repo, input } = args;
+  if (!input.commit || !input.path || !input.line) return null;
+
+  const lineStart = input.line;
+  const lineEnd = input.line_end && input.line_end >= input.line
+    ? input.line_end
+    : input.line;
+  const selectionText = input.selection_text?.trim() || null;
+
+  let contextBefore: string | null = null;
+  let contextAfter: string | null = null;
+  let blobSha: string | null = null;
+
+  try {
+    const file = await codebaseService.readFile(
+      {
+        orgId,
+        projectId,
+        repo,
+        ref: input.commit,
+      },
+      input.path,
+      { syncPolicy: 'never' }
+    );
+    if (!file.isBinary && !file.truncated) {
+      const lines = file.content.split('\n');
+      const beforeStart = Math.max(0, lineStart - 1 - 2);
+      const before = lines.slice(beforeStart, lineStart - 1);
+      const after = lines.slice(lineEnd, lineEnd + 2);
+      contextBefore = before.length > 0 ? before.join('\n') : null;
+      contextAfter = after.length > 0 ? after.join('\n') : null;
+    }
+  } catch (error) {
+    logger.warn('Build thread anchor context failed', error instanceof Error ? error : undefined);
+  }
+
+  try {
+    blobSha = await codebaseService.getBlobSha(
+      {
+        orgId,
+        projectId,
+        repo,
+        ref: input.commit,
+      },
+      input.path,
+      { syncPolicy: 'never' }
+    );
+  } catch (error) {
+    logger.warn('Resolve thread anchor blob failed', error instanceof Error ? error : undefined);
+  }
+
+  return {
+    anchorCommitSha: input.commit,
+    anchorPath: input.path,
+    anchorLineStart: lineStart,
+    anchorLineEnd: lineEnd,
+    anchorSelectionText: selectionText,
+    anchorContextBefore: contextBefore,
+    anchorContextAfter: contextAfter,
+    anchorBlobSha: blobSha,
+  };
+}
+
 async function resolveOrCreateThread(args: {
   client: PoolClient;
   projectId: string;
@@ -353,6 +697,7 @@ async function resolveOrCreateThread(args: {
   userId: string;
   userEmail: string;
   input: z.infer<typeof createCommentSchema>;
+  anchorSnapshot: ThreadAnchorSnapshot | null;
 }) {
   const {
     client,
@@ -362,6 +707,7 @@ async function resolveOrCreateThread(args: {
     userId,
     userEmail,
     input,
+    anchorSnapshot,
   } = args;
 
   if (input.thread_id) {
@@ -446,6 +792,39 @@ async function resolveOrCreateThread(args: {
   if (!created) {
     throw new Error('Failed to create thread');
   }
+
+  const anchor = anchorSnapshot ?? {
+    anchorCommitSha: commit,
+    anchorPath: path,
+    anchorLineStart: line,
+    anchorLineEnd: lineEnd ?? line,
+    anchorSelectionText: input.selection_text?.trim() || null,
+    anchorContextBefore: null,
+    anchorContextAfter: null,
+    anchorBlobSha: null,
+  };
+
+  await client.query(
+    `insert into codebase_thread_anchors
+      (thread_id, org_id, project_id, repo, anchor_commit_sha, anchor_path, anchor_line_start, anchor_line_end, anchor_selection_text, anchor_context_before, anchor_context_after, anchor_blob_sha, created_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now())
+     on conflict (thread_id) do nothing`,
+    [
+      threadId,
+      projectOrgId,
+      projectId,
+      projectRepo,
+      anchor.anchorCommitSha,
+      anchor.anchorPath,
+      anchor.anchorLineStart,
+      anchor.anchorLineEnd,
+      anchor.anchorSelectionText,
+      anchor.anchorContextBefore,
+      anchor.anchorContextAfter,
+      anchor.anchorBlobSha,
+    ]
+  );
+
   return created as {
     id: string;
     org_id: string;

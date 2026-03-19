@@ -268,6 +268,8 @@
     "codebaseThreadOpen": "待处理",
     "codebaseThreadResolved": "已解决",
     "codebaseThreadMine": "@我",
+    "codebaseThreadShifted": "已偏移",
+    "codebaseThreadAnchoredAt": "锚定于 {{commit}}",
     "codebaseResolveThread": "标记已解决",
     "codebaseReopenThread": "重新打开",
     "codebaseNoComments": "暂无评论",

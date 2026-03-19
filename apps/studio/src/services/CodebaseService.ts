@@ -69,6 +69,12 @@ export type CodebaseServiceOptions = {
   gitBin?: string;
 };
 
+export type ResolveRevisionResult = {
+  mirrorPath: string;
+  ref: string;
+  commit: string;
+};
+
 type EnsureMirrorOptions = {
   forceSync?: boolean;
   syncPolicy?: SyncPolicy;
@@ -459,6 +465,73 @@ export class CodebaseService {
     ]);
     const branches = result.stdout.split('\n').map((line) => line.trim()).filter(Boolean);
     return Array.from(new Set(branches)).sort((a, b) => a.localeCompare(b));
+  }
+
+  async resolveRevision(ref: CodebaseRef, options: EnsureMirrorOptions = {}): Promise<ResolveRevisionResult> {
+    const mirror = await this.ensureMirror(ref, options);
+    const targetRef = await this.resolveRef(mirror.mirrorPath, ref.ref);
+    const commit = await this.resolveCommitSha(mirror.mirrorPath, targetRef);
+    return {
+      mirrorPath: mirror.mirrorPath,
+      ref: targetRef,
+      commit,
+    };
+  }
+
+  async getBlobSha(ref: CodebaseRef, filePath: string, options: EnsureMirrorOptions = {}): Promise<string | null> {
+    const mirror = await this.ensureMirror(ref, options);
+    const targetRef = await this.resolveRef(mirror.mirrorPath, ref.ref);
+    const safePath = normalizeRepoFilePath(filePath);
+    if (!safePath) {
+      throw new Error('file path is required');
+    }
+    const objectRef = `${targetRef}:${safePath}`;
+    try {
+      const result = await this.runGit(['--git-dir', mirror.mirrorPath, 'rev-parse', '--verify', '--quiet', objectRef]);
+      const sha = result.stdout.trim();
+      return sha || null;
+    } catch (error) {
+      if (isGitMissingObjectError(error)) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async diffNameStatus(
+    ref: CodebaseRef,
+    fromCommit: string,
+    toCommit: string,
+    filePath?: string,
+    options: EnsureMirrorOptions = {}
+  ): Promise<string> {
+    const mirror = await this.ensureMirror(ref, options);
+    const args = ['--git-dir', mirror.mirrorPath, 'diff', '--find-renames', '--name-status', fromCommit, toCommit];
+    if (filePath) {
+      const safePath = normalizeRepoFilePath(filePath);
+      if (safePath) {
+        args.push('--', safePath);
+      }
+    }
+    const result = await this.runGit(args);
+    return result.stdout;
+  }
+
+  async diffPatchZero(
+    ref: CodebaseRef,
+    fromCommit: string,
+    toCommit: string,
+    paths: string[],
+    options: EnsureMirrorOptions = {}
+  ): Promise<string> {
+    const mirror = await this.ensureMirror(ref, options);
+    const args = ['--git-dir', mirror.mirrorPath, 'diff', '--find-renames', '--unified=0', '--no-color', fromCommit, toCommit];
+    const safePaths = Array.from(new Set(paths.map((item) => normalizeRepoFilePath(item)).filter(Boolean)));
+    if (safePaths.length > 0) {
+      args.push('--', ...safePaths);
+    }
+    const result = await this.runGit(args);
+    return result.stdout;
   }
 
   private async resolveIntegration(projectId: string): Promise<{
@@ -965,6 +1038,17 @@ function isRefMissing(error: unknown) {
     message.includes('bad object') ||
     message.includes('invalid reference') ||
     message.includes('unknown commit')
+  );
+}
+
+function isGitMissingObjectError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('unknown revision') ||
+    message.includes('bad object') ||
+    message.includes('invalid object name') ||
+    message.includes('path') && message.includes('does not exist')
   );
 }
 

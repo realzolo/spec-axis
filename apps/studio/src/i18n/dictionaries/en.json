@@ -266,6 +266,8 @@
     "codebaseThreadOpen": "Open",
     "codebaseThreadResolved": "Resolved",
     "codebaseThreadMine": "@Me",
+    "codebaseThreadShifted": "Shifted",
+    "codebaseThreadAnchoredAt": "Anchored at {{commit}}",
     "codebaseResolveThread": "Resolve",
     "codebaseReopenThread": "Reopen",
     "codebaseNoComments": "No comments yet",

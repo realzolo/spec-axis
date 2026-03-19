@@ -38,6 +38,7 @@ type CodeViewerProps = {
   language: string;
   onSelection?: (payload: CodeSelectionPayload) => void;
   onLineClick?: (payload: CodeLineClickPayload) => void;
+  onCommentInteractionStart?: () => void;
   commentLines?: number[];
   commentLinePreviews?: Record<number, string>;
   activeCommentLine?: number | null;
@@ -140,6 +141,7 @@ export default function CodeViewer({
   language,
   onSelection,
   onLineClick,
+  onCommentInteractionStart,
   commentLines = [],
   commentLinePreviews = {},
   activeCommentLine = null,
@@ -153,6 +155,7 @@ export default function CodeViewer({
   const commentVisualCompartment = useMemo(() => new Compartment(), []);
   const onSelectionRef = useRef(onSelection);
   const onLineClickRef = useRef(onLineClick);
+  const onCommentInteractionStartRef = useRef(onCommentInteractionStart);
   const onReadyRef = useRef(onReady);
   const initialValueRef = useRef(value);
 
@@ -165,6 +168,10 @@ export default function CodeViewer({
   }, [onLineClick]);
 
   useEffect(() => {
+    onCommentInteractionStartRef.current = onCommentInteractionStart;
+  }, [onCommentInteractionStart]);
+
+  useEffect(() => {
     onReadyRef.current = onReady;
   }, [onReady]);
 
@@ -173,6 +180,14 @@ export default function CodeViewer({
     if (viewRef.current) return;
 
     const domHandlers = EditorView.domEventHandlers({
+      mousedown: (event) => {
+        if (event.button !== 0) return false;
+        const target = event.target as HTMLElement | null;
+        if (!target) return false;
+        if (!isCommentInteractionElement(target)) return false;
+        onCommentInteractionStartRef.current?.();
+        return false;
+      },
       mouseup: (event, view) => {
         if (event.button !== 0) return false;
         const handler = onSelectionRef.current;
@@ -416,6 +431,18 @@ function clamp(value: number, min: number, max: number) {
   if (value < min) return min;
   if (value > max) return max;
   return value;
+}
+
+function isCommentInteractionElement(target: HTMLElement) {
+  return Boolean(
+    target.closest('.cm-comment-marker') ||
+    target.closest('.cm-comment-marker-active') ||
+    target.closest('.cm-line-commented') ||
+    target.closest('.cm-line-comment-active') ||
+    target.closest('.cm-comment-gutter') ||
+    target.closest('.cm-lineNumbers') ||
+    target.closest('.cm-comment-selection')
+  );
 }
 
 class CommentMarker extends GutterMarker {

@@ -419,7 +419,12 @@ Code comments are modeled as threads:
 - `codebase_comment_threads` stores thread-level anchor + lifecycle (`open` / `resolved`) at file/line scope.
 - `codebase_comments` stores individual messages (replies) under `thread_id`.
 - `codebase_comment_assignees` stores optional assignees per message.
-Thread anchors are scoped by org, project, repo, commit SHA, and path (`ref` retained for display/navigation). Optional line ranges (`line_end`) and selection text (`selection_text`) support multi-line or partial-text discussions.
+Thread anchoring and projection model:
+- `codebase_thread_anchors` stores immutable anchor snapshots (`anchor_commit_sha`, `anchor_path`, anchor line range, selection/context, optional blob SHA).
+- `codebase_thread_projections` stores computed per-target-commit projections (`projected_path`, projected line range, status/confidence/reason).
+- `codebase_thread_projection_jobs` stores batch projection compute status (`running|completed|failed`) per project+target commit.
+Projection statuses are canonical: `exact | shifted | ambiguous | outdated | missing`.
+Only `exact` / `shifted` projections are rendered inline in code view; non-inline statuses are preserved in projection records to prevent false location claims.
 Codebase comments API contract:
 - `GET /api/projects/:id/codebase/comments` returns flattened comments enriched with thread metadata (`thread_id`, `thread_status`, `thread_line`, `thread_line_end`, `resolved_by`, `resolved_at`).
 - `POST /api/projects/:id/codebase/comments` accepts either:
@@ -489,6 +494,7 @@ psql "$DATABASE_URL" -f docs/db/migrations/add_concurrency_mode.sql
 psql "$DATABASE_URL" -f docs/db/migrations/005_analysis_progress_and_token_usage.sql
 psql "$DATABASE_URL" -f docs/db/migrations/006_commit_review_items.sql
 psql "$DATABASE_URL" -f docs/db/migrations/007_codebase_comment_threads.sql
+psql "$DATABASE_URL" -f docs/db/migrations/008_codebase_thread_projections.sql
 ```
 
 | File | Description |
@@ -498,6 +504,7 @@ psql "$DATABASE_URL" -f docs/db/migrations/007_codebase_comment_threads.sql
 | `005_analysis_progress_and_token_usage.sql` | Adds `analysis_progress JSONB` and `token_usage JSONB` to `analysis_reports` |
 | `006_commit_review_items.sql` | Adds commit review markers for per-file/line review state |
 | `007_codebase_comment_threads.sql` | Adds thread model (`codebase_comment_threads`) and links `codebase_comments.thread_id` |
+| `008_codebase_thread_projections.sql` | Adds immutable thread anchors and per-commit projection cache/status tables |
 
 ## FAQ
 
