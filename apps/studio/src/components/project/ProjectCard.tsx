@@ -45,7 +45,7 @@ export default function ProjectCard({ project: initialProject, onDelete, onUpdat
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">{project.name}</span>
+              <span className="text-[14px] font-medium">{project.name}</span>
               <Badge variant="muted" size="sm">{project.default_branch}</Badge>
               {!project.ruleset_id && (
                 <Badge variant="warning" size="sm" className="gap-1">
@@ -53,20 +53,20 @@ export default function ProjectCard({ project: initialProject, onDelete, onUpdat
                 </Badge>
               )}
             </div>
-            <div className="text-[12px] text-[hsl(var(--ds-text-2))] mt-0.5">{project.repo}</div>
+            <div className="mt-0.5 text-[13px] text-[hsl(var(--ds-text-2))]">{project.repo}</div>
           </div>
 
           {project.description && (
-            <div className="hidden md:block text-[12px] text-[hsl(var(--ds-text-2))] max-w-[200px] truncate">
+            <div className="hidden max-w-[220px] truncate text-[13px] text-[hsl(var(--ds-text-2))] md:block">
               {project.description}
             </div>
           )}
 
-          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-soft shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             {canManage && (confirmDelete ? (
               <>
-                <Button size="sm" variant="destructive" className="h-7 px-2.5 text-xs" onClick={() => onDelete(project.id)}>{dict.projects.confirmDelete}</Button>
-                <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={() => setConfirmDelete(false)}>{dict.common.cancel}</Button>
+                <Button size="sm" variant="destructive" className="h-8 px-3 text-[12px]" onClick={() => onDelete(project.id)}>{dict.projects.confirmDelete}</Button>
+                <Button size="sm" variant="outline" className="h-8 px-3 text-[12px]" onClick={() => setConfirmDelete(false)}>{dict.common.cancel}</Button>
               </>
             ) : (
               <>
@@ -92,7 +92,7 @@ export default function ProjectCard({ project: initialProject, onDelete, onUpdat
               size="sm"
               variant="outline"
               onClick={() => router.push(withOrgPrefix(pathname, `/projects/${project.id}/commits`))}
-              className="gap-1.5 h-7 px-2.5 text-xs"
+              className="h-8 gap-1.5 px-3 text-[12px]"
             >
               {dict.projects.review}
               <ExternalLink className="h-3 w-3" />
@@ -111,13 +111,13 @@ export default function ProjectCard({ project: initialProject, onDelete, onUpdat
                 <Github className="h-4 w-4 text-[hsl(var(--ds-text-2))]" />
               </div>
               <div>
-                <div className="text-sm font-medium">{project.name}</div>
-                <div className="text-[12px] text-[hsl(var(--ds-text-2))]">{project.repo}</div>
+                <div className="text-[14px] font-medium">{project.name}</div>
+                <div className="text-[13px] text-[hsl(var(--ds-text-2))]">{project.repo}</div>
               </div>
             </div>
             <div className="flex items-center gap-1">
               <Badge variant="muted" size="sm">{project.default_branch}</Badge>
-              <Button size="icon" variant="ghost" className="h-7 w-7 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-soft">
+              <Button size="icon" variant="ghost" className="h-8 w-8">
                 <MoreHorizontal className="h-3.5 w-3.5 text-[hsl(var(--ds-text-2))]" />
               </Button>
             </div>
@@ -135,9 +135,9 @@ export default function ProjectCard({ project: initialProject, onDelete, onUpdat
                 <AlertTriangle className="size-3" />{dict.projects.noRuleSet}
               </Badge>
             ) : (
-              <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.projects.ruleSetAttached}</span>
+              <span className="text-[13px] text-[hsl(var(--ds-text-2))]">{dict.projects.ruleSetAttached}</span>
             )}
-            <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-soft">
+            <div className="flex items-center gap-1">
               {canManage && (
                 <>
                   <Tooltip>
@@ -162,7 +162,7 @@ export default function ProjectCard({ project: initialProject, onDelete, onUpdat
                 size="sm"
                 variant="outline"
                 onClick={() => router.push(withOrgPrefix(pathname, `/projects/${project.id}/commits`))}
-                className="gap-1.5 h-7 px-2.5 text-xs"
+                className="h-8 gap-1.5 px-3 text-[12px]"
               >
                 {dict.projects.review}
                 <ExternalLink className="h-3 w-3" />
@@ -172,8 +172,8 @@ export default function ProjectCard({ project: initialProject, onDelete, onUpdat
 
           {canManage && confirmDelete && (
             <div className="mt-3 flex items-center gap-2">
-              <Button size="sm" variant="destructive" className="h-7 px-2.5 text-xs" onClick={() => onDelete(project.id)}>{dict.projects.confirmDelete}</Button>
-              <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={() => setConfirmDelete(false)}>{dict.common.cancel}</Button>
+              <Button size="sm" variant="destructive" className="h-8 px-3 text-[12px]" onClick={() => onDelete(project.id)}>{dict.projects.confirmDelete}</Button>
+              <Button size="sm" variant="outline" className="h-8 px-3 text-[12px]" onClick={() => setConfirmDelete(false)}>{dict.common.cancel}</Button>
             </div>
           )}
 

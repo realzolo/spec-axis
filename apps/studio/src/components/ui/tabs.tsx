@@ -11,7 +11,7 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      'inline-flex h-9 items-center gap-0.5 rounded-[6px] bg-[hsl(var(--ds-surface-1))] p-1 text-[hsl(var(--ds-text-2))]',
+      'inline-flex h-10 items-center gap-0.5 rounded-[7px] bg-[hsl(var(--ds-surface-1))] p-1 text-[hsl(var(--ds-text-2))]',
       className,
     )}
     {...props}
@@ -26,7 +26,7 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      'inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-[4px] px-2.5 py-1 text-[13px] font-medium transition-colors duration-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ds-accent-7))] data-[state=active]:bg-[hsl(var(--ds-surface-3))] data-[state=active]:text-foreground data-[state=inactive]:text-[hsl(var(--ds-text-2))] data-[state=inactive]:hover:text-foreground',
+      'inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.25)] data-[state=active]:bg-[hsl(var(--ds-surface-3))] data-[state=active]:text-foreground data-[state=inactive]:text-[hsl(var(--ds-text-2))] data-[state=inactive]:hover:text-foreground',
       className,
     )}
     {...props}

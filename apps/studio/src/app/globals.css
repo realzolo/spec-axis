@@ -16,9 +16,9 @@
     --ds-border-3: 0 0% 24%;
     --ds-text-1: 0 0% 96%;
     --ds-text-2: 0 0% 70%;
-    --ds-accent-7: 210 100% 48%;
-    --ds-accent-8: 210 100% 54%;
-    --ds-accent-9: 210 100% 60%;
+    --ds-accent-7: 212 78% 54%;
+    --ds-accent-8: 212 82% 60%;
+    --ds-accent-9: 212 86% 66%;
     --ds-success-7: 142 70% 45%;
     --ds-warning-7: 38 92% 50%;
     --ds-danger-7: 0 84% 60%;
@@ -57,7 +57,7 @@
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
     --elevation-1: 0 1px 2px hsl(0 0% 0% / 0.16), 0 0 0 1px hsl(var(--border) / 0.6);
-    --elevation-2: 0 10px 28px hsl(0 0% 0% / 0.28), 0 0 0 1px hsl(var(--border) / 0.5);
+    --elevation-2: 0 8px 22px hsl(0 0% 0% / 0.22), 0 0 0 1px hsl(var(--border) / 0.55);
 
     --auth-bg-1: var(--ds-accent-7);
     --auth-bg-2: 0 0% 100%;
@@ -87,9 +87,9 @@
     --ds-border-3: 0 0% 80%;
     --ds-text-1: 222 47% 11%;
     --ds-text-2: 215 16% 47%;
-    --ds-accent-7: 210 100% 45%;
-    --ds-accent-8: 210 100% 52%;
-    --ds-accent-9: 210 100% 60%;
+    --ds-accent-7: 212 76% 46%;
+    --ds-accent-8: 212 80% 52%;
+    --ds-accent-9: 212 84% 58%;
     --ds-success-7: 142 70% 40%;
     --ds-warning-7: 38 92% 50%;
     --ds-danger-7: 0 84% 60%;
@@ -125,7 +125,7 @@
     --auth-shadow: 0 12px 40px hsl(220 20% 20% / 0.12);
 
     --elevation-1: 0 1px 2px hsl(220 20% 20% / 0.08), 0 0 0 1px hsl(var(--border) / 0.7);
-    --elevation-2: 0 12px 30px hsl(220 20% 20% / 0.16), 0 0 0 1px hsl(var(--border) / 0.6);
+    --elevation-2: 0 10px 24px hsl(220 20% 20% / 0.12), 0 0 0 1px hsl(var(--border) / 0.64);
 
     --terminal-background: 220 27% 10%;
     --terminal-foreground: 152 64% 62%;
@@ -144,6 +144,8 @@
     font-family: var(--font-sans, "Geist Sans", "Satoshi", "General Sans", "SF Pro Text", ui-sans-serif, system-ui);
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+    font-size: 14px;
+    line-height: 1.5;
     text-rendering: optimizeLegibility;
   }
 
@@ -243,10 +245,22 @@
     border: 1px solid hsl(var(--border));
     background: hsl(var(--background));
     color: hsl(var(--muted-foreground));
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1;
     font-weight: 600;
     letter-spacing: 0.02em;
+  }
+
+  .dashboard-container {
+    width: min(100%, 1120px);
+    margin-inline: auto;
+    padding-inline: 1.5rem;
+  }
+
+  @media (max-width: 768px) {
+    .dashboard-container {
+      padding-inline: 1rem;
+    }
   }
 
   .text-heading-72 { font-size: 72px; line-height: 1.05; font-weight: 600; letter-spacing: -0.03em; color: hsl(var(--foreground)); }
@@ -537,10 +551,6 @@
   color: hsl(var(--ds-text-1));
 }
 
-.ai-reviewer-dialog :where(*, *:focus, *:focus-visible, *:focus-within) {
-  outline: none !important;
-}
-
 .ai-reviewer-dialog :where(
   button,
   input,
@@ -557,5 +567,6 @@
   [role='button'],
   [data-slot='dialog-close']
 ):focus-visible {
-  box-shadow: none !important;
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--ds-accent-7) / 0.22);
 }

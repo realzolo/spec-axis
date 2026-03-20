@@ -4,16 +4,24 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useId, useState } from 'react';
 import {
+  ArrowLeft,
+  BarChart3,
   Check,
   ChevronDown,
-  Home,
-  FolderOpen,
-  Shield,
-  Settings,
-  LogOut,
-  User,
+  ChevronsLeft,
+  ChevronsRight,
   ChevronsUpDown,
-  BarChart3,
+  Code2,
+  FileText,
+  FolderOpen,
+  GitBranch,
+  GitCommit,
+  Home,
+  LogOut,
+  Settings,
+  Shield,
+  Sliders,
+  User,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -23,13 +31,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { useDashboardShell } from '@/components/layout/DashboardShellContext';
 import type { Dictionary } from '@/i18n';
-import {
-  extractOrgFromPath,
-  replaceOrgInPath,
-  stripOrgPrefix,
-  withOrgPrefix,
-} from '@/lib/orgPath';
+import { recordRecentNavigation } from '@/lib/recentNavigation';
+import { extractOrgFromPath, replaceOrgInPath, stripOrgPrefix, withOrgPrefix } from '@/lib/orgPath';
 import { cn } from '@/lib/utils';
 
 interface SidebarProps {
@@ -43,30 +49,45 @@ interface Organization {
   is_personal: boolean;
 }
 
+const SIDEBAR_COLLAPSED_KEY = 'studio.sidebar-collapsed.v1';
+
+function readCollapsedState() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 function NavItem({
   href,
   active,
   icon: Icon,
   label,
+  collapsed,
 }: {
   href: string;
   active: boolean;
   icon: React.ElementType;
   label: string;
+  collapsed: boolean;
 }) {
   return (
     <Link
       href={href}
+      title={label}
       className={cn(
-        'group flex items-center gap-2.5 h-8 px-2.5 rounded-[6px] text-[13px] w-full transition-colors duration-100',
+        'group flex h-9 w-full items-center rounded-[7px] text-[14px] transition-colors duration-150',
+        collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5',
         active
           ? 'bg-[hsl(var(--ds-surface-2))] text-foreground font-medium'
           : 'text-[hsl(var(--ds-text-2))] hover:text-foreground hover:bg-[hsl(var(--ds-surface-1))]',
       )}
       aria-current={active ? 'page' : undefined}
     >
-      <Icon className={cn('size-[15px] shrink-0', active ? 'text-foreground' : 'text-[hsl(var(--ds-text-2))]')} />
-      <span className="truncate">{label}</span>
+      <Icon className={cn('size-4 shrink-0', active ? 'text-foreground' : 'text-[hsl(var(--ds-text-2))')} />
+      {!collapsed && <span className="truncate">{label}</span>}
     </Link>
   );
 }
@@ -76,16 +97,20 @@ export default function Sidebar({ dict }: SidebarProps) {
   const router = useRouter();
   const orgMenuTriggerId = useId();
   const userMenuTriggerId = useId();
+  const projectMenuTriggerId = useId();
+
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(readCollapsedState);
+  const { projects, currentProject, currentProjectId, inProjectScope } = useDashboardShell();
 
   const { orgId: pathOrgId } = extractOrgFromPath(pathname);
   const basePath = stripOrgPrefix(pathname);
 
-  // Extract project id from /projects/:id/... paths
-  const projectMatch = basePath.match(/^\/projects\/([^/]+)(\/|$)/);
-  const currentProjectId = projectMatch?.[1] ?? null;
+  useEffect(() => {
+    recordRecentNavigation(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     let alive = true;
@@ -110,18 +135,29 @@ export default function Sidebar({ dict }: SidebarProps) {
         setActiveOrgId(null);
         setUserEmail(null);
       });
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  // Sync org cookie when URL org changes
   useEffect(() => {
     if (!activeOrgId || !pathOrgId || pathOrgId === activeOrgId) return;
     router.replace(replaceOrgInPath(pathname, activeOrgId));
   }, [activeOrgId, pathOrgId, pathname, router]);
 
-  const activeOrg = orgs.find(o => o.id === activeOrgId) ?? orgs[0];
+  const activeOrg = orgs.find((org) => org.id === activeOrgId) ?? orgs[0];
   const orgLabel = activeOrg?.name ?? dict.nav.workspaceDefault;
   const orgInitial = orgLabel.slice(0, 2).toUpperCase();
+
+  function toggleCollapsed() {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0');
+    } catch {
+      // ignore storage errors
+    }
+  }
 
   async function switchOrg(orgId: string) {
     if (orgId === activeOrgId) return;
@@ -139,6 +175,11 @@ export default function Sidebar({ dict }: SidebarProps) {
     }
   }
 
+  function switchProject(projectId: string) {
+    if (!projectId) return;
+    router.push(withOrgPrefix(pathname, `/projects/${projectId}/commits`));
+  }
+
   async function handleSignOut() {
     await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/login');
@@ -151,7 +192,7 @@ export default function Sidebar({ dict }: SidebarProps) {
 
   const isActive = (base: string) => {
     if (base === '/') return basePath === '/';
-    if (base === '/projects' && currentProjectId) return false;
+    if (base === '/projects' && inProjectScope) return false;
     return basePath === base || basePath.startsWith(`${base}/`);
   };
 
@@ -163,33 +204,52 @@ export default function Sidebar({ dict }: SidebarProps) {
     { base: '/settings', label: dict.nav.settings, icon: Settings },
   ];
 
+  const projectNav = currentProjectId ? [
+    { base: `/projects/${currentProjectId}/commits`, label: dict.nav.project.commits, icon: GitCommit },
+    { base: `/projects/${currentProjectId}/reports`, label: dict.nav.project.reports, icon: FileText },
+    { base: `/projects/${currentProjectId}/pipelines`, label: dict.nav.project.pipelines, icon: GitBranch },
+    { base: `/projects/${currentProjectId}/codebase`, label: dict.nav.project.codebase, icon: Code2 },
+    { base: `/projects/${currentProjectId}/settings`, label: dict.nav.project.settings, icon: Sliders },
+  ] : [];
+
+  const isProjectNavActive = (base: string) => basePath === base || basePath.startsWith(`${base}/`);
+
   return (
-    <div className="relative h-full w-60 flex flex-col shrink-0 border-r border-border bg-[hsl(var(--ds-background-2))]">
-      {/* Org switcher */}
-      <div className="px-3 py-3 border-b border-border shrink-0">
+    <div className={cn(
+      'relative hidden h-full shrink-0 flex-col overflow-hidden border-r border-border bg-[hsl(var(--ds-background-2))] transition-[width] duration-200 lg:flex',
+      collapsed ? 'w-16' : 'w-64',
+    )}>
+      <div className={cn('flex shrink-0 items-center border-b border-border py-3', collapsed ? 'justify-center px-2' : 'gap-2 px-3')}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button id={orgMenuTriggerId} type="button" className="flex items-center gap-2 w-full h-9 px-2 rounded-[6px] hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100 outline-none group">
-              {/* Org avatar */}
-              <span className="flex h-[22px] w-[22px] items-center justify-center rounded-[4px] bg-[hsl(var(--ds-surface-3))] text-[10px] font-bold text-foreground shrink-0">
+            <button
+              id={orgMenuTriggerId}
+              type="button"
+              className={cn(
+                'rounded-[7px] transition-colors duration-150 hover:bg-[hsl(var(--ds-surface-1))] outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.25)]',
+                collapsed ? 'flex h-10 w-10 items-center justify-center' : 'flex h-10 flex-1 items-center gap-2 px-2.5',
+              )}
+              title={orgLabel}
+            >
+              <span className="flex h-[24px] w-[24px] items-center justify-center rounded-[5px] bg-[hsl(var(--ds-surface-3))] text-[10px] font-bold text-foreground shrink-0">
                 {orgInitial}
               </span>
-              <span className="flex-1 min-w-0 text-left">
-                <span className="block text-[13px] font-medium leading-none truncate text-foreground">{orgLabel}</span>
-              </span>
-              <ChevronsUpDown className="size-3.5 text-[hsl(var(--ds-text-2))] shrink-0" />
+              {!collapsed && (
+                <>
+                  <span className="min-w-0 flex-1 text-left">
+                    <span className="block truncate text-[14px] font-medium leading-none text-foreground">{orgLabel}</span>
+                  </span>
+                  <ChevronsUpDown className="size-4 shrink-0 text-[hsl(var(--ds-text-2))]" />
+                </>
+              )}
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-[220px]">
-            <DropdownMenuLabel className="text-[11px] text-[hsl(var(--ds-text-2))] font-normal uppercase tracking-wider px-2 py-1.5">
+            <DropdownMenuLabel className="font-normal">
               {dict.nav.organizations}
             </DropdownMenuLabel>
-            {orgs.map(org => (
-              <DropdownMenuItem
-                key={org.id}
-                onClick={() => switchOrg(org.id)}
-                className="gap-2 text-[13px]"
-              >
+            {orgs.map((org) => (
+              <DropdownMenuItem key={org.id} onClick={() => switchOrg(org.id)} className="gap-2">
                 <span className="flex h-5 w-5 items-center justify-center rounded-[3px] bg-[hsl(var(--ds-surface-3))] text-[10px] font-bold shrink-0">
                   {org.name.slice(0, 2).toUpperCase()}
                 </span>
@@ -198,53 +258,154 @@ export default function Sidebar({ dict }: SidebarProps) {
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => router.push(orgHref('/settings/organizations'))}
-              className="text-[13px]"
-            >
+            <DropdownMenuItem onClick={() => router.push(orgHref('/settings/organizations'))}>
               {dict.nav.manageOrganizations}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className={cn('h-9 w-9 shrink-0', collapsed ? 'hidden' : '')}
+          onClick={toggleCollapsed}
+          title={collapsed ? dict.nav.expandSidebar : dict.nav.collapseSidebar}
+        >
+          <ChevronsLeft className="size-4" />
+        </Button>
+        {collapsed && (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="absolute -right-3 top-3 z-10 h-6 w-6 rounded-full border border-[hsl(var(--ds-border-2))] bg-[hsl(var(--ds-background-2))]"
+            onClick={toggleCollapsed}
+            title={dict.nav.expandSidebar}
+          >
+            <ChevronsRight className="size-3.5" />
+          </Button>
+        )}
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5">
-        {orgNav.map(item => (
-          <NavItem
-            key={item.base}
-            href={orgHref(item.base)}
-            active={isActive(item.base)}
-            icon={item.icon}
-            label={item.label}
-          />
-        ))}
-      </nav>
+      {inProjectScope ? (
+        <>
+          <div className={cn('shrink-0 border-b border-border py-3', collapsed ? 'px-2' : 'px-3')}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  id={projectMenuTriggerId}
+                  type="button"
+                  className={cn(
+                    'w-full rounded-[7px] text-left transition-colors duration-150 hover:bg-[hsl(var(--ds-surface-1))] outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.25)]',
+                    collapsed ? 'flex h-10 items-center justify-center' : 'flex items-center gap-2 px-2.5 py-2',
+                  )}
+                  title={currentProject?.name ?? dict.nav.project.switchProject}
+                >
+                  {collapsed ? (
+                    <FolderOpen className="size-4 text-[hsl(var(--ds-text-2))]" />
+                  ) : (
+                    <>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[14px] font-medium text-foreground">
+                          {currentProject?.name ?? dict.nav.project.switchProject}
+                        </span>
+                        {currentProject?.repo && (
+                          <span className="block truncate text-[12px] text-[hsl(var(--ds-text-2))]">{currentProject.repo}</span>
+                        )}
+                      </span>
+                      <ChevronDown className="size-4 shrink-0 text-[hsl(var(--ds-text-2))]" />
+                    </>
+                  )}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-[250px]">
+                <DropdownMenuLabel className="font-normal">
+                  {dict.nav.project.switchProject}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {projects.length === 0 ? (
+                  <DropdownMenuItem disabled>{dict.nav.project.noProjects}</DropdownMenuItem>
+                ) : (
+                  projects.map((project) => (
+                    <DropdownMenuItem key={project.id} onClick={() => switchProject(project.id)} className="gap-2">
+                      <span className="flex-1 truncate">{project.name}</span>
+                      {project.id === currentProjectId && <Check className="size-3.5 text-[hsl(var(--ds-text-2))]" />}
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <div className={cn('mt-2')}>
+              <NavItem href={orgHref('/projects')} active={basePath === '/projects'} icon={ArrowLeft} label={dict.nav.projects} collapsed={collapsed} />
+            </div>
+          </div>
 
-      {/* Footer — user + sign out */}
-      <div className="px-3 py-3 border-t border-border shrink-0">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <nav className={cn('flex-1 overflow-y-auto py-2', collapsed ? 'px-2' : 'px-3')}>
+              <div className="space-y-0.5">
+                {projectNav.map((item) => (
+                  <NavItem
+                    key={item.base}
+                    href={orgHref(item.base)}
+                    active={isProjectNavActive(item.base)}
+                    icon={item.icon}
+                    label={item.label}
+                    collapsed={collapsed}
+                  />
+                ))}
+              </div>
+            </nav>
+          </div>
+        </>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <nav className={cn('flex-1 overflow-y-auto py-2', collapsed ? 'px-2' : 'px-3')}>
+            <div className="space-y-0.5">
+              {orgNav.map((item) => (
+                <NavItem
+                  key={item.base}
+                  href={orgHref(item.base)}
+                  active={isActive(item.base)}
+                  icon={item.icon}
+                  label={item.label}
+                  collapsed={collapsed}
+                />
+              ))}
+            </div>
+          </nav>
+        </div>
+      )}
+
+      <div className={cn('shrink-0 border-t border-border py-3', collapsed ? 'px-2' : 'px-3')}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button id={userMenuTriggerId} type="button" className="flex items-center gap-2.5 w-full h-9 px-2 rounded-[6px] hover:bg-[hsl(var(--ds-surface-1))] transition-colors duration-100 outline-none">
-              <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[hsl(var(--ds-surface-3))] shrink-0">
+            <button
+              id={userMenuTriggerId}
+              type="button"
+              className={cn(
+                'w-full rounded-[7px] transition-colors duration-150 hover:bg-[hsl(var(--ds-surface-1))] outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.25)]',
+                collapsed ? 'flex h-10 items-center justify-center' : 'flex h-10 items-center gap-2.5 px-2.5',
+              )}
+              title={userEmail ?? dict.nav.account}
+            >
+              <span className="flex h-[24px] w-[24px] items-center justify-center rounded-full bg-[hsl(var(--ds-surface-3))] shrink-0">
                 <User className="size-3 text-[hsl(var(--ds-text-2))]" />
               </span>
-              <span className="flex-1 text-left text-[13px] text-foreground truncate">{userEmail ?? dict.nav.account}</span>
-              <ChevronDown className="size-3.5 text-[hsl(var(--ds-text-2))] shrink-0" />
+              {!collapsed && (
+                <>
+                  <span className="flex-1 truncate text-left text-[14px] text-foreground">{userEmail ?? dict.nav.account}</span>
+                  <ChevronDown className="size-4 shrink-0 text-[hsl(var(--ds-text-2))]" />
+                </>
+              )}
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-[200px]">
-            <DropdownMenuItem
-              onClick={() => router.push(orgHref('/settings'))}
-              className="text-[13px]"
-            >
+            <DropdownMenuItem onClick={() => router.push(orgHref('/settings'))}>
               {dict.nav.settings}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleSignOut}
-              className="text-[13px] text-danger focus:text-danger gap-2"
-            >
+            <DropdownMenuItem onClick={handleSignOut} className="gap-2 text-danger focus:text-danger">
               <LogOut className="size-3.5" />
               {dict.nav.logout}
             </DropdownMenuItem>

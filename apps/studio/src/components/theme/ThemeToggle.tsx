@@ -27,7 +27,7 @@ export default function ThemeToggle({ className }: ThemeToggleProps) {
       aria-label={hydrated ? (isDark ? 'Switch to light mode' : 'Switch to dark mode') : 'Toggle theme'}
       onClick={toggle}
       className={cn(
-        'h-7 w-7 border border-transparent text-[hsl(var(--ds-text-2))] hover:bg-[hsl(var(--ds-surface-1))] hover:text-foreground focus-visible:ring-1 focus-visible:ring-[hsl(var(--ds-accent-7))/0.45]',
+        'h-8 w-8 border border-transparent text-[hsl(var(--ds-text-2))] hover:bg-[hsl(var(--ds-surface-1))] hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.25)]',
         className,
       )}
     >

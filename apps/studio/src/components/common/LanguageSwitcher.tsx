@@ -51,7 +51,7 @@ export function LanguageSwitcher({ currentLocale, compact = false, className }: 
           <button
             type="button"
             className={cn(
-              'inline-flex h-7 items-center gap-1 rounded-[6px] border border-transparent px-2 text-[12px] font-medium text-[hsl(var(--ds-text-2))] transition-colors duration-100 hover:bg-[hsl(var(--ds-surface-1))] hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ds-accent-7))/0.45]',
+              'inline-flex h-8 items-center gap-1 rounded-[7px] border border-transparent px-2.5 text-[13px] font-medium text-[hsl(var(--ds-text-2))] transition-colors duration-150 hover:bg-[hsl(var(--ds-surface-1))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.25)]',
               className,
             )}
             aria-label="Switch language"
@@ -80,7 +80,7 @@ export function LanguageSwitcher({ currentLocale, compact = false, className }: 
 
   return (
     <Select value={currentLocale} onValueChange={(value) => handleLocaleChange(value)}>
-      <SelectTrigger className="h-8 w-40 text-xs">
+      <SelectTrigger className="h-9 w-40 text-[13px]">
         <div className="flex items-center gap-1.5">
           <Languages className="size-3.5" />
           <SelectValue />

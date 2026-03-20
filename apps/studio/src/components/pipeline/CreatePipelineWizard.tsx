@@ -193,7 +193,7 @@ export default function CreatePipelineWizard({
                   disabled={index > stepIndex}
                 >
                   <div
-                    className={`flex h-5 w-5 items-center justify-center rounded-[4px] text-[11px] font-medium transition-colors ${
+                    className={`flex h-5 w-5 items-center justify-center rounded-[4px] text-[12px] font-medium transition-colors ${
                       index <= stepIndex
                         ? "bg-foreground text-background"
                         : "bg-muted text-[hsl(var(--ds-text-2))]"
@@ -202,7 +202,7 @@ export default function CreatePipelineWizard({
                     {index < stepIndex ? "✓" : index + 1}
                   </div>
                   <span
-                    className={`text-xs ${
+                    className={`text-[13px] ${
                       index === stepIndex
                         ? "font-medium text-foreground"
                         : "text-[hsl(var(--ds-text-2))]"
@@ -225,7 +225,7 @@ export default function CreatePipelineWizard({
           {wizardStep === "basic" && (
             <div className="max-w-2xl space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground">
+                <label className="text-[13px] font-medium text-foreground">
                   {p.basic.name}
                   <span className="ml-0.5 text-danger">*</span>
                 </label>
@@ -237,7 +237,7 @@ export default function CreatePipelineWizard({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground">{p.basic.description}</label>
+                <label className="text-[13px] font-medium text-foreground">{p.basic.description}</label>
                 <Input
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
@@ -246,7 +246,7 @@ export default function CreatePipelineWizard({
               </div>
 
               <div className="max-w-sm space-y-1.5">
-                <label className="text-xs font-medium text-foreground">{p.basic.environment}</label>
+                <label className="text-[13px] font-medium text-foreground">{p.basic.environment}</label>
                 <Select
                   value={config.environment ?? "production"}
                   onValueChange={(value) =>
@@ -356,7 +356,7 @@ export default function CreatePipelineWizard({
               </div>
 
               <div className="space-y-2">
-                <div className="text-xs font-medium text-foreground">{p.notifications.channels}</div>
+                <div className="text-[13px] font-medium text-foreground">{p.notifications.channels}</div>
                 <div className="flex gap-3">
                   {(["inapp", "email"] as const).map((channel) => {
                     const active = config.notifications.channels.includes(channel);
@@ -375,7 +375,7 @@ export default function CreatePipelineWizard({
                             },
                           }))
                         }
-                        className={`flex-1 rounded-[8px] border py-2 text-xs font-medium transition-colors ${
+                        className={`flex-1 rounded-[8px] border py-2 text-[13px] font-medium transition-colors ${
                           active
                             ? "border-foreground bg-muted text-foreground"
                             : "border-[hsl(var(--ds-border-1))] text-[hsl(var(--ds-text-2))] hover:border-foreground/40"
@@ -439,7 +439,7 @@ function DiagnosticsPanel({
 
   return (
     <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-3 py-2.5">
-      <div className="text-xs font-medium text-foreground">{dict.jobs.diagnosticsTitle}</div>
+      <div className="text-[13px] font-medium text-foreground">{dict.jobs.diagnosticsTitle}</div>
       <div className="mt-2 space-y-1.5">
         {diagnostics.length === 0 && (
           <div className="text-[12px] text-success">{dict.jobs.diagnosticsHealthy}</div>

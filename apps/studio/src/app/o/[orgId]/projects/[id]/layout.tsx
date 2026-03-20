@@ -3,7 +3,6 @@ import { getLocale } from '@/lib/locale';
 import { getProjectById } from '@/services/db';
 import { getSession } from '@/services/auth';
 import { ProjectDataProvider } from '@/lib/projectContext';
-import ProjectNav from '@/components/layout/ProjectNav';
 import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
@@ -45,12 +44,7 @@ export default async function ProjectScopedLayout({
       }}
       dict={dict}
     >
-      <div className="flex flex-col h-full overflow-hidden">
-        <ProjectNav projectId={id} dict={dict} />
-        <div className="flex-1 overflow-hidden">
-          {children}
-        </div>
-      </div>
+      <div className="h-full overflow-hidden">{children}</div>
     </ProjectDataProvider>
   );
 }

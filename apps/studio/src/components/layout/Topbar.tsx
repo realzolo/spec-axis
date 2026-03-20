@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, Search } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,159 +12,134 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useDashboardShell } from '@/components/layout/DashboardShellContext';
 import type { Dictionary } from '@/i18n';
 import type { Locale } from '@/i18n/config';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import ThemeToggle from '@/components/theme/ThemeToggle';
-import { extractOrgFromPath, stripOrgPrefix, withOrgPrefix } from '@/lib/orgPath';
+import { stripOrgPrefix, withOrgPrefix } from '@/lib/orgPath';
 import { cn } from '@/lib/utils';
-
-interface Project {
-  id: string;
-  name: string;
-}
-
-function ProjectSwitcher({
-  currentProjectId,
-  pathname,
-  dict,
-}: {
-  currentProjectId: string;
-  pathname: string;
-  dict: Dictionary;
-}) {
-  const router = useRouter();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [currentProject, setCurrentProject] = useState<Project | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    fetch('/api/projects')
-      .then(r => r.ok ? r.json() : [])
-      .then(data => { if (alive) setProjects(Array.isArray(data) ? data : []); })
-      .catch(() => {
-        if (!alive) return;
-        setProjects([]);
-      });
-    return () => { alive = false; };
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    fetch(`/api/projects/${currentProjectId}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (alive && data) setCurrentProject(data); })
-      .catch(() => {
-        if (!alive) return;
-        setCurrentProject(null);
-      });
-    return () => { alive = false; };
-  }, [currentProjectId]);
-
-  function navigateTo(projectId: string) {
-    router.push(withOrgPrefix(pathname, `/projects/${projectId}/commits`));
-  }
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button type="button" className="flex items-center gap-1 text-[13px] font-medium text-foreground hover:text-foreground/80 transition-colors duration-100 outline-none">
-          <span>{currentProject?.name ?? dict.common.loading}</span>
-          <ChevronDown className="size-3 text-[hsl(var(--ds-text-2))] mt-px" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[220px]">
-        <DropdownMenuLabel className="text-[11px] text-[hsl(var(--ds-text-2))] font-normal uppercase tracking-wider px-2 py-1.5">
-          {dict.nav.project.switchProject}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {projects.length === 0 ? (
-          <DropdownMenuItem disabled className="text-[13px]">{dict.nav.project.noProjects}</DropdownMenuItem>
-        ) : (
-          projects.map(p => (
-            <DropdownMenuItem
-              key={p.id}
-              onClick={() => navigateTo(p.id)}
-              className="gap-2 text-[13px]"
-            >
-              <span className="flex-1 truncate">{p.name}</span>
-              {p.id === currentProjectId && (
-                <Check className="size-3.5 text-[hsl(var(--ds-text-2))]" />
-              )}
-            </DropdownMenuItem>
-          ))
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 export default function Topbar({ dict, locale }: { dict: Dictionary; locale: Locale }) {
   const pathname = usePathname();
-  const { orgId } = extractOrgFromPath(pathname);
   const basePath = stripOrgPrefix(pathname);
+  const { projects, currentProject, currentProjectId, inProjectScope, projectSection } = useDashboardShell();
+  const inProjectDomain = inProjectScope || basePath.startsWith('/projects');
+  const shortcutLabel = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac')
+    ? '⌘K'
+    : 'Ctrl K';
+  const scopeLabel = currentProject?.name ?? dict.nav.scopeTeam;
 
-  const projectMatch = basePath.match(/^\/projects\/([^/]+)(\/|$)/);
-  const currentProjectId = projectMatch?.[1] ?? null;
+  const teamScopeHref = withOrgPrefix(pathname, '/projects');
+  const projectScopeHref = (projectId: string) => withOrgPrefix(pathname, `/projects/${projectId}/${projectSection}`);
 
-  // Determine current top-level section label
-  let sectionLabel: string | null = null;
-  let sectionHref: string | null = null;
+  let primaryLabel = dict.nav.home;
+  if (basePath.startsWith('/projects')) primaryLabel = dict.nav.projects;
+  else if (basePath.startsWith('/analytics')) primaryLabel = dict.nav.analytics;
+  else if (basePath.startsWith('/rules')) primaryLabel = dict.nav.rules;
+  else if (basePath.startsWith('/settings')) primaryLabel = dict.nav.settings;
 
-  if (basePath.startsWith('/projects')) {
-    sectionLabel = dict.nav.projects;
-    sectionHref = orgId ? `/o/${orgId}/projects` : '/projects';
-  } else if (basePath.startsWith('/analytics')) {
-    sectionLabel = dict.nav.analytics;
-    sectionHref = orgId ? `/o/${orgId}/analytics` : '/analytics';
-  } else if (basePath.startsWith('/rules')) {
-    sectionLabel = dict.nav.rules;
-  } else if (basePath.startsWith('/settings')) {
-    sectionLabel = dict.nav.settings;
-  } else if (basePath === '/') {
-    sectionLabel = dict.nav.home;
+  let secondaryLabel: string | null = null;
+  if (currentProjectId) {
+    if (basePath.includes('/commits')) secondaryLabel = dict.nav.project.commits;
+    else if (basePath.includes('/reports')) secondaryLabel = dict.nav.project.reports;
+    else if (basePath.includes('/pipelines')) secondaryLabel = dict.nav.project.pipelines;
+    else if (basePath.includes('/codebase')) secondaryLabel = dict.nav.project.codebase;
+    else if (basePath.includes('/settings')) secondaryLabel = dict.nav.project.settings;
   }
 
   return (
-    <header className="h-11 flex items-center px-4 border-b border-border bg-[hsl(var(--ds-background-2))] shrink-0 gap-3">
-      <div className="flex min-w-0 items-center gap-1">
-        {/* Section breadcrumb */}
-        {sectionLabel && sectionHref ? (
+    <header className="h-12 flex items-center px-4 border-b border-border bg-[hsl(var(--ds-background-2))] shrink-0 gap-3">
+      <div className="flex min-w-0 items-center gap-1.5">
+        {basePath.startsWith('/projects') ? (
           <Link
-            href={sectionHref}
-            className="text-[13px] text-[hsl(var(--ds-text-2))] hover:text-foreground transition-colors duration-100"
+            href={withOrgPrefix(pathname, '/projects')}
+            className="text-[14px] text-[hsl(var(--ds-text-2))] hover:text-foreground transition-colors duration-150"
           >
-            {sectionLabel}
+            {dict.nav.projects}
           </Link>
-        ) : sectionLabel ? (
+        ) : (
           <span className={cn(
-            'text-[13px]',
+            'text-[14px]',
             currentProjectId ? 'text-[hsl(var(--ds-text-2))]' : 'text-foreground font-medium',
           )}>
-            {sectionLabel}
+            {primaryLabel}
           </span>
-        ) : null}
+        )}
 
-        {/* Project switcher segment */}
-        {currentProjectId && (
+        {secondaryLabel && (
           <>
-            <span className="text-[hsl(var(--ds-border-3))] text-sm select-none">/</span>
-            <ProjectSwitcher
-              currentProjectId={currentProjectId}
-              pathname={pathname}
-              dict={dict}
-            />
+            <span className="text-[hsl(var(--ds-border-3))] text-[13px] select-none">/</span>
+            <span className="text-[14px] font-medium text-foreground">{secondaryLabel}</span>
           </>
+        )}
+
+        {inProjectDomain && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="ml-2 inline-flex h-8 items-center gap-1 rounded-[7px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-2.5 text-[13px] text-foreground transition-colors duration-150 hover:bg-[hsl(var(--ds-surface-2))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.25)]"
+              >
+                <span className="max-w-[120px] truncate sm:max-w-[180px]">{scopeLabel}</span>
+                <ChevronDown className="size-3.5 text-[hsl(var(--ds-text-2))]" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-[280px]">
+              <DropdownMenuLabel>{dict.nav.scopePickProject}</DropdownMenuLabel>
+              <DropdownMenuItem asChild>
+                <Link href={teamScopeHref} className="flex w-full items-center gap-2">
+                  <span className="flex-1">{dict.nav.scopeTeam}</span>
+                  {!currentProjectId && <Check className="size-3.5 text-[hsl(var(--ds-text-2))]" />}
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {projects.length === 0 ? (
+                <DropdownMenuItem disabled>{dict.nav.project.noProjects}</DropdownMenuItem>
+              ) : (
+                projects.map((project) => (
+                  <DropdownMenuItem key={project.id} asChild>
+                    <Link href={projectScopeHref(project.id)} className="flex w-full items-center gap-2">
+                      <span className="flex-1 truncate">{project.name}</span>
+                      {project.id === currentProjectId && <Check className="size-3.5 text-[hsl(var(--ds-text-2))]" />}
+                    </Link>
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
 
-      <div className="ml-auto flex items-center gap-0.5">
+      <div className="ml-auto flex items-center gap-1.5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 sm:hidden"
+          onClick={() => window.dispatchEvent(new Event('command-palette:open'))}
+          title={dict.nav.quickJump}
+        >
+          <Search className="size-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="hidden h-8 gap-1.5 px-2.5 text-[12px] text-[hsl(var(--ds-text-2))] sm:inline-flex"
+          onClick={() => window.dispatchEvent(new Event('command-palette:open'))}
+          title={dict.nav.quickJump}
+        >
+          <Search className="size-3.5" />
+          <span>{dict.nav.quickJump}</span>
+          <span className="keycap">{shortcutLabel}</span>
+        </Button>
         <LanguageSwitcher
           currentLocale={locale}
           compact
-          className="border-[hsl(var(--ds-border-2))] bg-[hsl(var(--ds-background-2))] text-foreground hover:bg-[hsl(var(--ds-surface-1))]"
+          className="border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] text-foreground hover:bg-[hsl(var(--ds-surface-1))]"
         />
-        <ThemeToggle className="h-7 w-7 border-[hsl(var(--ds-border-2))] bg-[hsl(var(--ds-background-2))] text-foreground hover:bg-[hsl(var(--ds-surface-1))]" />
+        <ThemeToggle className="border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] text-foreground hover:bg-[hsl(var(--ds-surface-1))]" />
       </div>
     </header>
   );

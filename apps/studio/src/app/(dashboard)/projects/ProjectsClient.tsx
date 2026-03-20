@@ -113,7 +113,7 @@ export default function ProjectsClient({ initialProjects, dict }: { initialProje
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="max-w-[960px] mx-auto w-full px-6 py-8">
+      <div className="dashboard-container py-8">
 
         {/* Page header */}
         <div className="flex items-center justify-between gap-4 mb-6">
@@ -289,13 +289,13 @@ function ProjectRow({
 
         {/* Actions */}
         <div
-          className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-100 shrink-0"
+          className="flex items-center gap-1 shrink-0"
           onClick={e => e.stopPropagation()}
         >
           <Button
             size="sm"
             variant="outline"
-            className="h-7 px-2.5 text-[12px] gap-1"
+            className="h-8 gap-1 px-2.5 text-[12px]"
             onClick={onOpen}
             disabled={deleting}
           >
@@ -307,7 +307,7 @@ function ProjectRow({
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-7 w-7"
+                  className="h-8 w-8"
                   aria-label={dict.common.actions}
                   disabled={deleting}
                 >

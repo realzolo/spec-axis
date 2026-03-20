@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Copy, FileText, History, Loader2, MessageCircle, Pencil, Plus, Send, Sparkles, Square, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,11 @@ type Block =
 const NEW_CONV = '__new__';
 const INIT_TTL = 10000;
 const LIST_TTL = 8000;
+const SIDEBAR_WIDTH_KEY = 'ai-chat-sidebar-width.v1';
+const SIDEBAR_COLLAPSED_KEY = 'ai-chat-sidebar-collapsed.v1';
+const SIDEBAR_MIN_WIDTH = 280;
+const SIDEBAR_MAX_WIDTH = 420;
+const SIDEBAR_DEFAULT_WIDTH = 320;
 
 const initCache = new Map<string, { expiresAt: number; data: ConversationRow | null }>();
 const initInflight = new Map<string, Promise<ConversationRow | null>>();
@@ -61,13 +66,14 @@ export default function AIChat({
   const [conversationTitles, setConversationTitles] = useState<Record<string, string>>({});
   const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
-  const [sidebarWidth, setSidebarWidth] = useState(312);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const isResizingRef = useRef(false);
 
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: loading ? 'auto' : 'smooth' });
@@ -143,9 +149,38 @@ export default function AIChat({
   }, [reportId, conversationTitles]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const rawWidth = window.localStorage.getItem(SIDEBAR_WIDTH_KEY);
+      const rawCollapsed = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+      const parsedWidth = Number(rawWidth);
+      if (Number.isFinite(parsedWidth)) {
+        setSidebarWidth(Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, parsedWidth)));
+      }
+      if (rawCollapsed === '1' || rawCollapsed === '0') {
+        setSidebarCollapsed(rawCollapsed === '1');
+      }
+    } catch {
+      // ignore storage read failures
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? '1' : '0');
+    } catch {
+      // ignore storage write failures
+    }
+  }, [sidebarCollapsed, sidebarWidth]);
+
+  useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!isResizingRef.current) return;
-      const next = Math.min(420, Math.max(260, e.clientX));
+      const bounds = shellRef.current?.getBoundingClientRect();
+      const offsetX = bounds ? e.clientX - bounds.left : e.clientX;
+      const next = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, offsetX));
       setSidebarWidth(next);
     };
     const onUp = () => {
@@ -371,7 +406,7 @@ export default function AIChat({
   }
 
   async function generateLocalPrompt() {
-    const prompt = buildLocalAIPrompt(issueContext, messages);
+    const prompt = buildLocalAIPrompt(issueContext, messages, dict);
     setLocalPrompt(prompt);
     try {
       await navigator.clipboard.writeText(prompt);
@@ -429,22 +464,22 @@ export default function AIChat({
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-[hsl(var(--ds-background-2))]">
-      <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+      <div ref={shellRef} className="flex h-full min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
         <aside
-          className={`shrink-0 min-h-0 overflow-y-auto border-b border-[hsl(var(--ds-border-1))] bg-[linear-gradient(180deg,hsl(var(--ds-background-2))_0%,hsl(var(--ds-surface-1))_100%)] lg:h-full lg:border-b-0 lg:border-r ${sidebarCollapsed ? 'lg:w-0 lg:border-r-0' : ''}`}
+          className={`shrink-0 min-h-0 overflow-y-auto border-b border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] lg:h-full lg:border-b-0 lg:border-r ${sidebarCollapsed ? 'lg:w-0 lg:border-r-0' : ''}`}
           style={sidebarCollapsed ? undefined : { width: `${sidebarWidth}px` }}
         >
           <div className="space-y-3 p-4">
             <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))]">
-              <button type="button" className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left" onClick={() => setFocusOpen((v) => !v)}>
-                <span className="inline-flex items-center gap-1.5 text-[11px] text-[hsl(var(--ds-text-2))]">
+              <button type="button" className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.25)]" onClick={() => setFocusOpen((v) => !v)}>
+                <span className="inline-flex items-center gap-1.5 text-[12px] text-[hsl(var(--ds-text-2))]">
                   <Sparkles className="size-3.5 shrink-0" />
                   {dict.reportDetail.aiReviewer}
                 </span>
                 <ChevronDown className={`size-3.5 text-[hsl(var(--ds-text-2))] transition-transform ${focusOpen ? 'rotate-0' : '-rotate-90'}`} />
               </button>
               {focusOpen ? (
-                <div className="border-t border-[hsl(var(--ds-border-1))] px-3 py-2 text-[11px] text-[hsl(var(--ds-text-2))]">
+                <div className="border-t border-[hsl(var(--ds-border-1))] px-3 py-2 text-[12px] text-[hsl(var(--ds-text-2))]">
                   <div>{dict.reportDetail.aiChatFocusIssue}</div>
                   <div className="mt-1 truncate font-medium text-foreground" title={issueContext ?? dict.reportDetail.aiChatAllIssues}>
                     {issueContext ?? dict.reportDetail.aiChatAllIssues}
@@ -454,13 +489,13 @@ export default function AIChat({
             </div>
 
             <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-1))/0.7]">
-              <button type="button" className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left" onClick={() => setConversationOpen((v) => !v)}>
-                <span className="text-[11px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatConversation}</span>
+              <button type="button" className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.25)]" onClick={() => setConversationOpen((v) => !v)}>
+                <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatConversation}</span>
                 <ChevronDown className={`size-3.5 text-[hsl(var(--ds-text-2))] transition-transform ${conversationOpen ? 'rotate-0' : '-rotate-90'}`} />
               </button>
               {conversationOpen ? (
                 <div className="space-y-2 border-t border-[hsl(var(--ds-border-1))] p-3">
-                  <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-2.5 py-2 text-[11px] text-[hsl(var(--ds-text-2))]">
+                  <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-2.5 py-2 text-[12px] text-[hsl(var(--ds-text-2))]">
                     <span className="mr-1">{dict.reportDetail.aiChatConversation}:</span>
                     <span className="font-medium text-foreground" title={selectedConversationLabel}>{selectedConversationLabel}</span>
                   </div>
@@ -468,19 +503,19 @@ export default function AIChat({
                     value={conversationSearch}
                     onChange={(e) => setConversationSearch(e.target.value)}
                     placeholder={dict.reportDetail.aiChatSearchConversation}
-                    className="h-8 text-[12px]"
+                    className="h-9 text-[13px]"
                   />
                   <div className="max-h-[180px] space-y-1 overflow-y-auto rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] p-1">
                     <button
                       type="button"
-                      className={`flex w-full items-center justify-between rounded-[6px] px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-[hsl(var(--ds-surface-2))] ${conversationId == null ? 'bg-[hsl(var(--ds-surface-2))]' : ''}`}
+                      className={`flex w-full items-center justify-between rounded-[6px] px-2.5 py-2 text-left text-[13px] transition-colors hover:bg-[hsl(var(--ds-surface-2))] ${conversationId == null ? 'bg-[hsl(var(--ds-surface-2))]' : ''}`}
                       onClick={startNewConversation}
                     >
                       <span className="truncate">{dict.reportDetail.aiChatNewConversation}</span>
                       <Plus className="size-3.5 text-[hsl(var(--ds-text-2))]" />
                     </button>
                     {filteredHistoryRows.length === 0 ? (
-                      <div className="px-2 py-2 text-[11px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatNoConversations}</div>
+                      <div className="px-2 py-2 text-[12px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatNoConversations}</div>
                     ) : (
                       filteredHistoryRows.map((row) => {
                         const idx = historyRows.findIndex((item) => item.id === row.id);
@@ -495,12 +530,12 @@ export default function AIChat({
                                   value={renameDraft}
                                   onChange={(e) => setRenameDraft(e.target.value)}
                                   placeholder={dict.reportDetail.aiChatRenamePlaceholder}
-                                  className="h-7 text-[12px]"
+                                  className="h-8 text-[13px]"
                                 />
-                                <Button type="button" size="icon" variant="ghost" className="h-7 w-7" onClick={() => saveRename(row.id)}>
+                                <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => saveRename(row.id)}>
                                   <Check className="size-3.5" />
                                 </Button>
-                                <Button type="button" size="icon" variant="ghost" className="h-7 w-7" onClick={cancelRename}>
+                                <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={cancelRename}>
                                   <X className="size-3.5" />
                                 </Button>
                               </div>
@@ -508,7 +543,7 @@ export default function AIChat({
                               <div className="flex items-center gap-1">
                                 <button
                                   type="button"
-                                  className="flex min-w-0 flex-1 items-center px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-[hsl(var(--ds-surface-2))]"
+                                  className="flex min-w-0 flex-1 items-center px-2.5 py-2 text-left text-[13px] transition-colors hover:bg-[hsl(var(--ds-surface-2))]"
                                   title={fullLabel}
                                   onClick={() => { void selectConversation(row.id); }}
                                 >
@@ -518,7 +553,7 @@ export default function AIChat({
                                   type="button"
                                   size="icon"
                                   variant="ghost"
-                                  className="mr-1 h-7 w-7"
+                                  className="mr-1 h-8 w-8"
                                   title={dict.reportDetail.aiChatRenameConversation}
                                   onClick={() => beginRename(row, idx)}
                                 >
@@ -552,8 +587,8 @@ export default function AIChat({
             </div>
 
             <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-1))/0.72]">
-              <button type="button" className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left" onClick={() => setPromptOpen((v) => !v)}>
-                <span className="inline-flex items-center gap-1.5 text-[11px] text-[hsl(var(--ds-text-2))]">
+              <button type="button" className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.25)]" onClick={() => setPromptOpen((v) => !v)}>
+                <span className="inline-flex items-center gap-1.5 text-[12px] text-[hsl(var(--ds-text-2))]">
                   <FileText className="size-3.5" />
                   {dict.reportDetail.aiChatPromptToolkit}
                 </span>
@@ -561,7 +596,7 @@ export default function AIChat({
               </button>
               {promptOpen ? (
                 <div className="space-y-2 border-t border-[hsl(var(--ds-border-1))] p-3">
-                  <div className="text-[11px] leading-relaxed text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatPromptDescription}</div>
+                  <div className="text-[12px] leading-relaxed text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatPromptDescription}</div>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1">
                     <Button type="button" variant="outline" size="sm" className="justify-start" onClick={() => { void generateLocalPrompt(); }}>
                       {localPrompt ? dict.reportDetail.aiChatPromptRegenerate : dict.reportDetail.aiChatPromptGenerate}
@@ -574,7 +609,7 @@ export default function AIChat({
                     value={localPrompt}
                     readOnly
                     placeholder={dict.reportDetail.aiChatPromptPlaceholder}
-                    className="min-h-[116px] resize-y bg-[hsl(var(--ds-background-2))] text-[12px] leading-relaxed"
+                    className="min-h-[116px] resize-y bg-[hsl(var(--ds-background-2))] text-[13px] leading-relaxed"
                   />
                 </div>
               ) : null}
@@ -590,7 +625,7 @@ export default function AIChat({
         />
 
         <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto px-4 py-4 lg:px-5 space-y-4 bg-[radial-gradient(circle_at_top,hsl(var(--ds-surface-1))_0%,transparent_42%)]">
+          <div className="flex-1 space-y-4 overflow-y-auto bg-[hsl(var(--ds-background-2))] px-4 py-4 lg:px-5">
             {initialLoading ? (
               <div className="mx-auto w-full max-w-4xl space-y-4 pt-2">
                 <div className="flex justify-start">
@@ -601,9 +636,9 @@ export default function AIChat({
                   </div>
                 </div>
                 <div className="flex justify-end">
-                  <div className="w-[52%] rounded-[12px] border border-primary/30 bg-primary/80 px-4 py-3">
-                    <Skeleton className="h-3 w-5/6 bg-white/25" />
-                    <Skeleton className="mt-2 h-3 w-3/5 bg-white/20" />
+                  <div className="w-full max-w-[520px] rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-2))] px-4 py-3">
+                    <Skeleton className="h-3 w-5/6" />
+                    <Skeleton className="mt-2 h-3 w-3/5" />
                   </div>
                 </div>
                 <div className="flex justify-start">
@@ -615,19 +650,19 @@ export default function AIChat({
                   </div>
                 </div>
                 {showSlowHint ? (
-                  <div className="text-center text-[12px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatLoadingHistory}</div>
+                  <div className="text-center text-[13px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatLoadingHistory}</div>
                 ) : null}
               </div>
             ) : messages.length === 0 ? (
               <div className="flex h-full items-center justify-center">
-                <div className="w-full max-w-lg rounded-[14px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-1))/0.75] p-6 text-center shadow-elevation-1">
+                <div className="w-full max-w-lg rounded-[14px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-1))/0.85] p-6 text-center">
                   <MessageCircle className="mx-auto mb-3 size-10 text-[hsl(var(--ds-text-2))]" />
-                  <div className="text-sm font-semibold">{dict.reportDetail.aiChatEmptyTitle}</div>
-                  <div className="mt-2 text-[12px] text-[hsl(var(--ds-text-2))] leading-relaxed">{dict.reportDetail.aiChatEmptyDescription}</div>
+                  <div className="text-[15px] font-semibold">{dict.reportDetail.aiChatEmptyTitle}</div>
+                  <div className="mt-2 text-[13px] leading-relaxed text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatEmptyDescription}</div>
                   <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
-                    <Button variant="outline" size="sm" onClick={() => { void sendText(quickPrompt('patch', issueContext)); }}>{dict.reportDetail.aiChatQuickPatch}</Button>
-                    <Button variant="outline" size="sm" onClick={() => { void sendText(quickPrompt('tests', issueContext)); }}>{dict.reportDetail.aiChatQuickTests}</Button>
-                    <Button variant="outline" size="sm" onClick={() => { void sendText(quickPrompt('regression', issueContext)); }}>{dict.reportDetail.aiChatQuickRegression}</Button>
+                    <Button variant="outline" size="sm" onClick={() => { void sendText(quickPrompt('patch', issueContext, dict)); }}>{dict.reportDetail.aiChatQuickPatch}</Button>
+                    <Button variant="outline" size="sm" onClick={() => { void sendText(quickPrompt('tests', issueContext, dict)); }}>{dict.reportDetail.aiChatQuickTests}</Button>
+                    <Button variant="outline" size="sm" onClick={() => { void sendText(quickPrompt('regression', issueContext, dict)); }}>{dict.reportDetail.aiChatQuickRegression}</Button>
                   </div>
                 </div>
               </div>
@@ -636,10 +671,10 @@ export default function AIChat({
                 const isLatestAssistantLoading = loading && msg.role === 'assistant' && idx === messages.length - 1;
                 return (
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[96%] lg:max-w-[92%] rounded-[14px] px-4 py-3 ${msg.role === 'user' ? 'border border-[hsl(var(--ds-accent-8))] bg-[hsl(var(--ds-accent-9))] text-white shadow-elevation-1' : 'border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-1))/0.92] text-foreground shadow-elevation-1'}`}>
+                  <div className={`w-fit max-w-full sm:max-w-[92%] lg:max-w-[860px] rounded-[14px] px-4 py-3 ${msg.role === 'user' ? 'border border-[hsl(var(--ds-border-2))] bg-[hsl(var(--ds-surface-2))] text-foreground' : 'border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-1))/0.92] text-foreground'}`}>
                     {msg.role === 'assistant' && msg.content.trim() ? (
                       <div className="mb-2 flex justify-end">
-                        <Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-[11px] gap-1" onClick={() => { void copyText(msg.content); }}>
+                        <Button type="button" size="sm" variant="ghost" className="h-8 gap-1 px-2 text-[12px]" onClick={() => { void copyText(msg.content); }}>
                           <Copy className="size-3" />
                           {dict.reportDetail.aiChatCopyResponse}
                         </Button>
@@ -648,15 +683,15 @@ export default function AIChat({
                     {msg.role === 'assistant' ? (
                       <MessageMarkdown content={msg.content} copyCodeLabel={dict.reportDetail.aiChatCopyCode} copiedLabel={dict.common.copied} onCopy={copyText} />
                     ) : (
-                      <div className="text-sm whitespace-pre-wrap leading-relaxed break-words">{msg.content}</div>
+                      <div className="text-[14px] whitespace-pre-wrap leading-relaxed break-words">{msg.content}</div>
                     )}
                     {isLatestAssistantLoading ? (
-                      <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-2 py-1 text-[10px] text-[hsl(var(--ds-text-2))]">
+                      <div className="mt-2 inline-flex items-center gap-1.5 rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-2 py-1 text-[12px] text-[hsl(var(--ds-text-2))]">
                         <TypingDots compact />
                         <span>{dict.reportDetail.aiChatGenerating}</span>
                       </div>
                     ) : null}
-                    <div className={`text-[10px] mt-2 ${msg.role === 'user' ? 'text-white/75' : 'text-[hsl(var(--ds-text-2))]'}`}>{formatLocalDateTime(msg.timestamp)}</div>
+                    <div className="mt-2 text-[12px] text-[hsl(var(--ds-text-2))]">{formatLocalDateTime(msg.timestamp)}</div>
                   </div>
                 </div>
               );})
@@ -664,17 +699,17 @@ export default function AIChat({
             <div ref={endRef} />
           </div>
 
-          <div className="border-t border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))/0.95] backdrop-blur-sm p-4">
-            <div className="rounded-[14px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-1))/0.82] p-3 space-y-2 shadow-elevation-1">
+          <div className="border-t border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))/0.95] p-4">
+            <div className="space-y-2 rounded-[14px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-1))/0.88] p-3">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[11px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatQuickActions}</span>
-                <Button variant="outline" size="sm" className="h-7 rounded-full px-3 text-[11px]" disabled={loading} onClick={() => { void sendText(quickPrompt('patch', issueContext)); }}>
+                <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatQuickActions}</span>
+                <Button variant="outline" size="sm" className="h-8 rounded-[8px] px-3 text-[12px]" disabled={loading} onClick={() => { void sendText(quickPrompt('patch', issueContext, dict)); }}>
                   {dict.reportDetail.aiChatQuickPatch}
                 </Button>
-                <Button variant="outline" size="sm" className="h-7 rounded-full px-3 text-[11px]" disabled={loading} onClick={() => { void sendText(quickPrompt('tests', issueContext)); }}>
+                <Button variant="outline" size="sm" className="h-8 rounded-[8px] px-3 text-[12px]" disabled={loading} onClick={() => { void sendText(quickPrompt('tests', issueContext, dict)); }}>
                   {dict.reportDetail.aiChatQuickTests}
                 </Button>
-                <Button variant="outline" size="sm" className="h-7 rounded-full px-3 text-[11px]" disabled={loading} onClick={() => { void sendText(quickPrompt('regression', issueContext)); }}>
+                <Button variant="outline" size="sm" className="h-8 rounded-[8px] px-3 text-[12px]" disabled={loading} onClick={() => { void sendText(quickPrompt('regression', issueContext, dict)); }}>
                   {dict.reportDetail.aiChatQuickRegression}
                 </Button>
               </div>
@@ -684,17 +719,17 @@ export default function AIChat({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="hidden lg:inline-flex h-7 px-2 text-[11px]"
+                    className="hidden h-8 px-2 text-[12px] lg:inline-flex"
                     onClick={() => setSidebarCollapsed((v) => !v)}
                     title={sidebarCollapsed ? dict.reportDetail.aiChatExpandSidebar : dict.reportDetail.aiChatCollapseSidebar}
                   >
                     {sidebarCollapsed ? <ChevronRight className="size-3.5" /> : <ChevronLeft className="size-3.5" />}
                     {sidebarCollapsed ? dict.reportDetail.aiChatExpandSidebar : dict.reportDetail.aiChatCollapseSidebar}
                   </Button>
-                  <div className="text-[11px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatMultiLineHint}</div>
+                  <div className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatMultiLineHint}</div>
                 </div>
                 {loading ? (
-                  <div className="inline-flex max-w-[70%] items-center gap-2 rounded-full border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-2 py-1 text-[11px]">
+                  <div className="inline-flex max-w-[70%] items-center gap-2 rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-2.5 py-1.5 text-[12px]">
                     <TypingDots compact />
                     <span className="truncate text-[hsl(var(--ds-text-2))]">
                       {dict.reportDetail.aiChatGeneratingPhase}: {generationPhase(elapsedMs, dict)} · {dict.reportDetail.aiChatElapsed}: {formatElapsed(elapsedMs)}
@@ -744,6 +779,7 @@ function MessageMarkdown({
   onCopy: (text: string) => void | Promise<void>;
 }) {
   const [copiedCodeKey, setCopiedCodeKey] = useState<string | null>(null);
+  const blocks = useMemo(() => parse(content), [content]);
 
   useEffect(() => {
     if (!copiedCodeKey) return;
@@ -753,15 +789,14 @@ function MessageMarkdown({
 
   if (!content.trim()) {
     return (
-      <div className="text-sm leading-relaxed text-[hsl(var(--ds-text-2))]">
+      <div className="text-[14px] leading-relaxed text-[hsl(var(--ds-text-2))]">
         <TypingDots />
       </div>
     );
   }
 
-  const blocks = parse(content);
   if (blocks.length === 0) {
-    return <div className="text-sm whitespace-pre-wrap leading-relaxed break-words">{content}</div>;
+    return <div className="text-[14px] whitespace-pre-wrap leading-relaxed break-words">{content}</div>;
   }
 
   return (
@@ -772,13 +807,13 @@ function MessageMarkdown({
           const copied = copiedCodeKey === copyKey;
           return (
             <div key={copyKey} className="overflow-hidden rounded-[8px] border border-[hsl(var(--ds-border-2))] bg-[hsl(var(--ds-background-2))]">
-              <div className="px-2.5 py-1.5 text-[10px] text-[hsl(var(--ds-text-2))] border-b border-[hsl(var(--ds-border-1))] flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-2 border-b border-[hsl(var(--ds-border-1))] px-2.5 py-1.5 text-[12px] text-[hsl(var(--ds-text-2))]">
                 <span>{b.language || 'code'}</span>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-5 px-1.5 text-[10px] gap-1"
+                  className="h-8 gap-1 px-2 text-[12px]"
                   onClick={() => {
                     void onCopy(b.value);
                     setCopiedCodeKey(copyKey);
@@ -788,7 +823,7 @@ function MessageMarkdown({
                   {copied ? copiedLabel : copyCodeLabel}
                 </Button>
               </div>
-              <pre className="px-3 py-2.5 text-[12px] leading-relaxed overflow-x-auto whitespace-pre-wrap break-words">
+              <pre className="overflow-x-auto whitespace-pre-wrap break-words px-3 py-2.5 text-[13px] leading-relaxed">
                 <code>{b.value}</code>
               </pre>
             </div>
@@ -799,14 +834,14 @@ function MessageMarkdown({
           return <div key={`h-${i}`} className={`${cls} leading-relaxed break-words`}>{inline(b.text, `h-${i}`)}</div>;
         }
         if (b.type === 'ul') {
-          return <ul key={`ul-${i}`} className="list-disc pl-5 space-y-1 text-sm leading-relaxed">{b.items.map((it, j) => <li key={`ul-${i}-${j}`}>{inline(it, `ul-${i}-${j}`)}</li>)}</ul>;
+          return <ul key={`ul-${i}`} className="list-disc pl-5 space-y-1 text-[14px] leading-relaxed">{b.items.map((it, j) => <li key={`ul-${i}-${j}`}>{inline(it, `ul-${i}-${j}`)}</li>)}</ul>;
         }
         if (b.type === 'ol') {
-          return <ol key={`ol-${i}`} className="list-decimal pl-5 space-y-1 text-sm leading-relaxed">{b.items.map((it, j) => <li key={`ol-${i}-${j}`}>{inline(it, `ol-${i}-${j}`)}</li>)}</ol>;
+          return <ol key={`ol-${i}`} className="list-decimal pl-5 space-y-1 text-[14px] leading-relaxed">{b.items.map((it, j) => <li key={`ol-${i}-${j}`}>{inline(it, `ol-${i}-${j}`)}</li>)}</ol>;
         }
         if (b.type === 'task') {
           return (
-            <ul key={`task-${i}`} className="space-y-1 text-sm leading-relaxed">
+            <ul key={`task-${i}`} className="space-y-1 text-[14px] leading-relaxed">
               {b.items.map((it, j) => (
                 <li key={`task-${i}-${j}`} className="flex items-start gap-2">
                   <input type="checkbox" checked={it.checked} readOnly disabled className="mt-0.5 size-3.5 rounded border-[hsl(var(--ds-border-2))]" />
@@ -817,12 +852,12 @@ function MessageMarkdown({
           );
         }
         if (b.type === 'quote') {
-          return <blockquote key={`q-${i}`} className="border-l-2 border-[hsl(var(--ds-border-2))] pl-3 text-sm text-[hsl(var(--ds-text-2))] whitespace-pre-wrap break-words">{inline(b.text, `q-${i}`)}</blockquote>;
+          return <blockquote key={`q-${i}`} className="border-l-2 border-[hsl(var(--ds-border-2))] pl-3 text-[14px] text-[hsl(var(--ds-text-2))] whitespace-pre-wrap break-words">{inline(b.text, `q-${i}`)}</blockquote>;
         }
         if (b.type === 'table') {
           return (
             <div key={`tbl-${i}`} className="overflow-x-auto rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))]">
-              <table className="w-full min-w-[460px] border-collapse text-[12px]">
+              <table className="w-full min-w-[360px] border-collapse text-[13px] sm:min-w-[420px]">
                 <thead className="bg-[hsl(var(--ds-background-2))]">
                   <tr>
                     {b.headers.map((h, j) => (
@@ -836,7 +871,7 @@ function MessageMarkdown({
                   {b.rows.map((row, r) => (
                     <tr key={`tbl-r-${i}-${r}`} className="odd:bg-transparent even:bg-[hsl(var(--ds-background-1))/0.28]">
                       {row.map((cell, c) => (
-                        <td key={`tbl-c-${i}-${r}-${c}`} className="border-t border-[hsl(var(--ds-border-1))] px-2.5 py-2 align-top text-sm leading-relaxed break-words whitespace-pre-wrap">
+                        <td key={`tbl-c-${i}-${r}-${c}`} className="border-t border-[hsl(var(--ds-border-1))] px-2.5 py-2 align-top text-[14px] leading-relaxed break-words whitespace-pre-wrap">
                           {withBreaks(cell, `tbl-cell-${i}-${r}-${c}`)}
                         </td>
                       ))}
@@ -850,7 +885,7 @@ function MessageMarkdown({
         if (b.type === 'hr') {
           return <hr key={`hr-${i}`} className="border-[hsl(var(--ds-border-1))]" />;
         }
-        return <div key={`p-${i}`} className="text-sm whitespace-pre-wrap leading-relaxed break-words">{withBreaks(b.text, `p-${i}`)}</div>;
+        return <div key={`p-${i}`} className="text-[14px] whitespace-pre-wrap leading-relaxed break-words">{withBreaks(b.text, `p-${i}`)}</div>;
       })}
     </div>
   );
@@ -1036,7 +1071,7 @@ function inline(text: string, key: string): ReactNode[] {
     const token = m[0];
     const link = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
     if (link) nodes.push(<a key={`${key}-${idx}`} href={link[2]} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 text-[hsl(var(--ds-accent-9))]">{link[1]}</a>);
-    else if (token.startsWith('`') && token.endsWith('`')) nodes.push(<code key={`${key}-${idx}`} className="rounded bg-[hsl(var(--ds-background-2))] px-1 py-0.5 text-[12px]">{token.slice(1, -1)}</code>);
+    else if (token.startsWith('`') && token.endsWith('`')) nodes.push(<code key={`${key}-${idx}`} className="rounded bg-[hsl(var(--ds-background-2))] px-1 py-0.5 text-[13px]">{token.slice(1, -1)}</code>);
     else if ((token.startsWith('**') && token.endsWith('**')) || (token.startsWith('__') && token.endsWith('__'))) nodes.push(<strong key={`${key}-${idx}`}>{token.slice(2, -2)}</strong>);
     else if ((token.startsWith('*') && token.endsWith('*')) || (token.startsWith('_') && token.endsWith('_'))) nodes.push(<em key={`${key}-${idx}`}>{token.slice(1, -1)}</em>);
     else nodes.push(token);
@@ -1112,7 +1147,7 @@ function parseEvent(raw: string): { event: string; data: Record<string, unknown>
   const dataLines: string[] = [];
   for (const line of lines) {
     const n = line.trimEnd();
-    if (n.startsWith('event:')) event = n.slice(6).trim();
+      if (n.startsWith('event:')) event = n.slice(6).trim();
     if (n.startsWith('data:')) dataLines.push(n.slice(5).trimStart());
   }
   if (dataLines.length === 0) return null;
@@ -1233,20 +1268,20 @@ function generationPhase(ms: number, dict: Dictionary): string {
   return dict.reportDetail.aiChatGeneratingPhasePolishing;
 }
 
-function quickPrompt(type: 'patch' | 'tests' | 'regression', issueContext?: string): string {
+function quickPrompt(type: 'patch' | 'tests' | 'regression', issueContext: string | undefined, dict: Dictionary): string {
   const prefix = issueContext ? `Focus issue: ${issueContext}. ` : '';
-  if (type === 'patch') return `${prefix}Please generate a minimal fix patch with exact code changes and explain trade-offs.`;
-  if (type === 'tests') return `${prefix}Please propose focused test cases (unit/integration/e2e), including edge cases and expected assertions.`;
-  return `${prefix}Please provide a regression risk checklist and a concise verification plan for release readiness.`;
+  if (type === 'patch') return `${prefix}${dict.reportDetail.aiChatQuickPromptPatch}`;
+  if (type === 'tests') return `${prefix}${dict.reportDetail.aiChatQuickPromptTests}`;
+  return `${prefix}${dict.reportDetail.aiChatQuickPromptRegression}`;
 }
 
-function buildLocalAIPrompt(issueContext: string | undefined, messages: Message[]): string {
+function buildLocalAIPrompt(issueContext: string | undefined, messages: Message[], dict: Dictionary): string {
   const focus = issueContext?.trim() || 'N/A';
   const history = messages.slice(-6).map((m, idx) => `[${idx + 1}] ${m.role.toUpperCase()}: ${clip(m.content, 220)}`).join('\n');
-  const historyBlock = history || '[No prior conversation context]';
+  const historyBlock = history || dict.reportDetail.aiChatPromptNoContext;
   return [
     '# Task',
-    'Act as a senior software engineer and provide an executable fix plan for the issue below.',
+    dict.reportDetail.aiChatPromptTaskInstruction,
     '',
     '## Focus Issue',
     focus,
@@ -1255,15 +1290,15 @@ function buildLocalAIPrompt(issueContext: string | undefined, messages: Message[
     historyBlock,
     '',
     '## Required Output',
-    '1. Root cause analysis (with assumptions clearly marked).',
-    '2. Minimal safe patch (exact files and code changes).',
-    '3. Risk & regression checklist.',
-    '4. Verification steps (commands + expected results).',
+    `1. ${dict.reportDetail.aiChatPromptOutput1}`,
+    `2. ${dict.reportDetail.aiChatPromptOutput2}`,
+    `3. ${dict.reportDetail.aiChatPromptOutput3}`,
+    `4. ${dict.reportDetail.aiChatPromptOutput4}`,
     '',
     '## Constraints',
-    '- Keep changes minimal and production-safe.',
-    '- Preserve existing behavior unless explicitly fixing a bug.',
-    '- If uncertain, list the uncertainty before proposing changes.',
+    `- ${dict.reportDetail.aiChatPromptConstraint1}`,
+    `- ${dict.reportDetail.aiChatPromptConstraint2}`,
+    `- ${dict.reportDetail.aiChatPromptConstraint3}`,
   ].join('\n');
 }
 

@@ -171,7 +171,7 @@ function ReportDetailSkeleton() {
   return (
     <div className="flex flex-col h-full">
       <div className="border-b border-[hsl(var(--ds-border-1))] shrink-0 bg-[hsl(var(--ds-background-2))]">
-        <div className="flex items-center gap-3 px-6 h-16 max-w-[1200px] mx-auto w-full">
+        <div className="dashboard-container flex h-16 items-center gap-3">
           <Skeleton className="h-8 w-8 rounded-[6px]" />
           <div className="flex-1 min-w-0 space-y-2">
             <Skeleton className="h-4 w-32" />
@@ -181,7 +181,7 @@ function ReportDetailSkeleton() {
         </div>
       </div>
       <div className="flex-1 overflow-auto">
-        <div className="p-6 space-y-6 max-w-[1200px] mx-auto">
+        <div className="dashboard-container py-6 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] p-6 space-y-3">
               <Skeleton className="h-10 w-24" />
@@ -565,7 +565,7 @@ export default function ReportDetailClient({
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="border-b border-[hsl(var(--ds-border-1))] shrink-0 bg-[hsl(var(--ds-background-2))]">
-        <div className="flex items-center gap-3 px-6 h-16 max-w-[1200px] mx-auto w-full">
+        <div className="dashboard-container flex h-16 items-center gap-3">
           <Link href={withOrgPrefix(pathname, `/projects/${report.project_id}/reports`)}>
             <Button size="icon" variant="ghost">
               <ArrowLeft className="size-4" />
@@ -755,7 +755,7 @@ export default function ReportDetailClient({
       {/* Done */}
       {(report.status === 'done' || report.status === 'partial_failed') && !retrying && (
         <div className="flex-1 overflow-auto">
-          <div className="p-6 space-y-6 max-w-[1200px] mx-auto">
+          <div className="dashboard-container py-6 space-y-6">
             {report.status === 'partial_failed' && (
               <Card className="border-warning/40 bg-warning/10">
                 <CardContent className="px-6 py-4 text-[13px] text-warning">

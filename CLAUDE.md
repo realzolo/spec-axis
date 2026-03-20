@@ -51,6 +51,9 @@ Unless stated otherwise, paths in this guide are relative to `apps/studio`.
 - Worker artifact handoff: deploy steps can declare `artifactInputs` patterns; Worker downloads matched artifacts from earlier steps in the same run before step execution, with checksum validation + retry and run events (`step.artifact.pull_*`)
 - Notification settings UI at `/o/:orgId/settings/notifications` backed by `/api/notification-settings`
 - Dashboard org home page (`/o/:orgId`) shows 4 stat cards (projects, avg score, open issues, pipeline success rate), quick actions, per-project score list, and recent activity
+- Dashboard navigation shell is contextual: global routes render org-level sidebar items, and project routes (`/o/:orgId/projects/:id/*`) switch sidebar to project-scoped navigation (commits/reports/pipelines/codebase/settings) with in-sidebar project switcher.
+- Dashboard shell includes productivity navigation aids: collapsible sidebar rail (persisted in local storage), a compact topbar scope switcher (single dropdown for team/project context on project-domain pages), global quick-jump command palette (`Cmd/Ctrl + K`) with keyboard navigation and grouped results, and mobile bottom navigation for project/global context switching on small screens.
+- Dashboard shell project data is single-source: `Sidebar`, `Topbar`, and `CommandPalette` consume shared project state from `DashboardShellProvider` (no duplicated `/api/projects` fetches per component).
 - Integration deletion is non-blocking: deleting an integration does not check `code_projects` usage references.
 - Analyze preflight uses structured AI binding errors: `/api/analyze` returns `AI_INTEGRATION_REBIND_REQUIRED` or `AI_INTEGRATION_MISSING`, and clients should guide users to rebind in Project Settings.
 
@@ -154,6 +157,8 @@ Rules:
 - Destructive actions in product UI must use in-app confirmation dialogs (`components/ui/confirm-dialog.tsx`), not native `window.confirm`.
 - In client UI, use shared date format helpers from `src/lib/dateFormat.ts` instead of direct `toLocaleString`/`toLocaleDateString` calls in feature components.
 - Dialogs follow a **single-scroll-container** rule: avoid outer `DialogContent` scrolling for complex modals; body/content panes should own scrolling to prevent nested or redundant scrollbars.
+- Dashboard information architecture is single-source navigation: in project scope, use sidebar navigation only (do not add an additional top tab bar such as `ProjectNav`).
+- Responsive navigation contract: desktop (`lg+`) uses sidebar + topbar, while mobile (`<lg`) hides sidebar and uses bottom navigation with the same route semantics.
 
 ## UI Design Guidelines
 
@@ -163,6 +168,18 @@ Project UI spec: `docs/memories/ui-spec-geist.md` (source of truth).
 **Typography:** Use utility classes from `src/app/globals.css`:
 `text-heading-*`, `text-label-*`, `text-copy-*`, `text-button-*`.
 Avoid custom font sizes unless a new token is added.
+Dashboard baseline typography is density-aware: `14px` for primary UI text (navigation/body/controls), `13px` for compact control text, and `12px` for metadata/helper labels.
+Do not use `text-xs` for primary labels, tab titles, or actionable control text. Reserve it only for dense metadata chips where `12px` would materially break layout.
+
+**Control density and states:** Keep control rhythm consistent across `Button/Input/Select/Textarea/Tabs/Dropdown` wrappers.
+Default control heights should align to `h-9` as baseline (`h-8` for compact, `h-10` for prominent actions). Hover/active/focus states must use the same neutral-surface progression and subtle accent focus ring.
+Avoid `h-7` as a default interactive control height in dashboard/product UI.
+
+**Focus visibility:** Do not globally disable focus outlines/rings in dialogs or shells. If custom focus styles are required, replace defaults with an explicit, visible ring to preserve keyboard accessibility.
+
+**Layout width rhythm:** Dashboard pages should use the shared `dashboard-container` utility from `src/app/globals.css` for consistent content width and horizontal padding. Avoid per-page hardcoded `max-w-*` wrappers for primary page shells.
+
+**Overlay surfaces:** Menus/select popovers/dialogs should use restrained overlay shadows and 8–12px corner radii. Avoid heavy, high-contrast shadow stacks that visually overpower surrounding neutral surfaces.
 
 **Color tokens:** `bg-background` | `bg-card` | `bg-muted` | `bg-muted/30` (hover) | `border-border` | `text-foreground` | `text-muted-foreground` | `text-primary` | `text-success` | `text-warning` | `text-danger` | `text-accent`
 
@@ -240,7 +257,8 @@ apps/
           commits/ projects/ stats/ github/ stream/ webhooks/
         layout.tsx providers.tsx globals.css
       components/
-        layout/Sidebar.tsx, Topbar.tsx
+        layout/Sidebar.tsx, Topbar.tsx, CommandPalette.tsx
+               DashboardShellContext.tsx, MobileBottomNav.tsx
         project/ProjectCard, ProjectCommitsView, ProjectReportsView, ProjectPipelinesView
                 ProjectCodebaseView, ProjectSettingsView
         report/IssueCard, AIChat, TrendChart, ExportButton, ReportCompareClient
@@ -253,6 +271,7 @@ apps/
       lib/
         locale.ts               # getLocale() — reads NEXT_LOCALE cookie
         orgPath.ts              # /o/:orgId path helpers
+        recentNavigation.ts     # Client-side recent route history for sidebar + command palette
         useOrgRole.ts           # client hook for org role + admin gating
         codeLanguage.ts         # Shared CodeMirror language resolver (dynamic loading via language-data)
         projectContext.tsx      # ProjectDataProvider + useProject() hook

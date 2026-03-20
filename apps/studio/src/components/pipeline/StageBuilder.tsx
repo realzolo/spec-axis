@@ -115,7 +115,7 @@ function StageModeToggle({
                   onClick={() => onChange?.(option.value)}
                   disabled={disabled || !onChange}
                   aria-label={option.label}
-                  className={`rounded-[6px] px-2 py-1.5 text-[11px] font-medium transition-colors ${
+                  className={`rounded-[6px] px-2 py-1.5 text-[12px] font-medium transition-colors ${
                     active
                       ? "bg-background text-foreground shadow-sm"
                       : "text-[hsl(var(--ds-text-2))]"
@@ -330,10 +330,10 @@ export default function StageBuilder({
                   <div className="space-y-3 border-b border-[hsl(var(--ds-border-1))] px-3 py-3">
                     <div className="space-y-2">
                       <div className="min-w-0">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--ds-text-2))]">
+                        <div className="text-[13px] font-semibold uppercase tracking-wide text-[hsl(var(--ds-text-2))]">
                           {getStageLabel(stage, dict)}
                         </div>
-                        <div className="mt-1 text-[11px] text-[hsl(var(--ds-text-2))]">
+                        <div className="mt-1 text-[12px] text-[hsl(var(--ds-text-2))]">
                           {isSourceStage(stage)
                             ? dict.jobs.sourceStageDescription
                             : dict.jobs.coreStageDescription}
@@ -342,10 +342,10 @@ export default function StageBuilder({
                       <div className="flex flex-wrap gap-1.5">
                         {isSourceStage(stage) && (
                           <>
-                            <span className="rounded-full border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-2 py-0.5 text-[10px] font-medium text-[hsl(var(--ds-text-2))]">
+                            <span className="rounded-full border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--ds-text-2))]">
                               {dict.jobs.fixedStageBadge}
                             </span>
-                            <span className="rounded-full border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-2 py-0.5 text-[10px] font-medium text-[hsl(var(--ds-text-2))]">
+                            <span className="rounded-full border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--ds-text-2))]">
                               {dict.jobs.systemStageBadge}
                             </span>
                           </>
@@ -450,21 +450,21 @@ export default function StageBuilder({
                       <div className="space-y-3 border-b border-[hsl(var(--ds-border-1))] px-3 py-3">
                         <div className="space-y-2">
                           <div className="min-w-0">
-                            <div className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--ds-text-2))]">
+                            <div className="text-[13px] font-semibold uppercase tracking-wide text-[hsl(var(--ds-text-2))]">
                               {getStageLabel(automationStage, dict)}
                             </div>
-                            <div className="mt-1 text-[11px] text-[hsl(var(--ds-text-2))]">
+                            <div className="mt-1 text-[12px] text-[hsl(var(--ds-text-2))]">
                               {dict.jobs.automationFixedHint}
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-1.5">
-                            <span className="rounded-full border border-[hsl(var(--ds-border-1))] bg-background px-2 py-0.5 text-[10px] font-medium text-[hsl(var(--ds-text-2))]">
+                            <span className="rounded-full border border-[hsl(var(--ds-border-1))] bg-background px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--ds-text-2))]">
                               <span className="flex items-center gap-1">
                                 <Bot className="size-3" />
                                 {dict.jobs.entryModeAuto}
                               </span>
                             </span>
-                            <span className="rounded-full border border-[hsl(var(--ds-border-1))] bg-background px-2 py-0.5 text-[10px] font-medium text-[hsl(var(--ds-text-2))]">
+                            <span className="rounded-full border border-[hsl(var(--ds-border-1))] bg-background px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--ds-text-2))]">
                               <span className="flex items-center gap-1">
                                 <GitBranch className="size-3" />
                                 {dict.jobs.dispatchModeParallel}
@@ -575,7 +575,7 @@ function StageJobInspector({
     <div className="space-y-4 p-4">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-foreground">{dict.jobs.name}</label>
+          <label className="text-[13px] font-medium text-foreground">{dict.jobs.name}</label>
           <Input
             value={job.name}
             onChange={(event) => onUpdateJob(job.id, { name: event.target.value })}
@@ -584,14 +584,14 @@ function StageJobInspector({
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-foreground">{dict.jobs.stageFieldLabel}</label>
+          <label className="text-[13px] font-medium text-foreground">{dict.jobs.stageFieldLabel}</label>
           <Input value={getStageLabel(stage, dict)} disabled />
         </div>
       </div>
 
       {jobType === "review_gate" && (
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-foreground">{dict.jobs.reviewMinScore}</label>
+          <label className="text-[13px] font-medium text-foreground">{dict.jobs.reviewMinScore}</label>
           <div className="flex items-center gap-2">
             <Input
               type="number"
@@ -614,11 +614,11 @@ function StageJobInspector({
       {jobType === "source_checkout" && (
         <div className="space-y-1.5">
           <div className="flex items-center justify-between gap-3">
-            <label className="text-xs font-medium text-foreground">{dict.basic.branch}</label>
+            <label className="text-[13px] font-medium text-foreground">{dict.basic.branch}</label>
             <button
               type="button"
               onClick={() => onUpdateJob(job.id, { branch: project.default_branch })}
-              className={`text-[11px] font-medium text-[hsl(var(--ds-text-2))] transition-colors ${
+              className={`text-[12px] font-medium text-[hsl(var(--ds-text-2))] transition-colors ${
                 isAdmin ? "hover:text-foreground" : "cursor-default opacity-60"
               }`}
               disabled={!isAdmin}

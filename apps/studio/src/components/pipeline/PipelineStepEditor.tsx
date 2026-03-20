@@ -67,7 +67,7 @@ export default function PipelineStepEditor({
                 type="button"
                 onClick={() => onApplyTemplate(template)}
                 disabled={!isAdmin}
-                className={`rounded-[6px] border px-2 py-1 text-xs transition-colors ${
+                className={`rounded-[6px] border px-2 py-1.5 text-[13px] transition-colors ${
                   isAdmin
                     ? "border-[hsl(var(--ds-border-1))] hover:bg-[hsl(var(--ds-surface-1))]"
                     : "cursor-not-allowed opacity-60"
@@ -93,7 +93,7 @@ export default function PipelineStepEditor({
               value={step.name}
               onChange={(event) => onUpdateStep(step.id, { name: event.target.value })}
               placeholder={dict.step.namePlaceholder}
-              className="h-8 flex-1 text-xs"
+              className="h-9 flex-1 text-[13px]"
               disabled={!isAdmin}
             />
             {isAdmin && job.steps.length > 1 && (
@@ -110,7 +110,7 @@ export default function PipelineStepEditor({
 
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
             <div className="flex items-center gap-2 lg:min-w-[220px]">
-              <span className="w-20 shrink-0 text-[11px] text-[hsl(var(--ds-text-2))]">
+              <span className="w-20 shrink-0 text-[12px] text-[hsl(var(--ds-text-2))]">
                 {dict.steps.typeLabel}
               </span>
               <div className="flex gap-1">
@@ -120,7 +120,7 @@ export default function PipelineStepEditor({
                     type="button"
                     onClick={() => onUpdateStep(step.id, { type })}
                     disabled={!isAdmin}
-                    className={`rounded-[4px] border px-2.5 py-1 text-[11px] transition-colors ${
+                    className={`rounded-[4px] border px-2.5 py-1.5 text-[12px] transition-colors ${
                       (step.type ?? "shell") === type
                         ? "border-primary bg-primary/10 text-primary font-medium"
                         : "border-[hsl(var(--ds-border-1))] text-[hsl(var(--ds-text-2))]"
@@ -133,7 +133,7 @@ export default function PipelineStepEditor({
             </div>
 
             <div className="flex items-center gap-2 lg:min-w-[220px]">
-              <span className="w-20 shrink-0 text-[11px] text-[hsl(var(--ds-text-2))]">
+              <span className="w-20 shrink-0 text-[12px] text-[hsl(var(--ds-text-2))]">
                 {dict.step.timeout}
               </span>
               <Input
@@ -147,7 +147,7 @@ export default function PipelineStepEditor({
                   });
                 }}
                 placeholder="600"
-                className="h-8 text-xs"
+                className="h-9 text-[13px]"
                 disabled={!isAdmin}
               />
             </div>
@@ -164,33 +164,33 @@ export default function PipelineStepEditor({
 
           {(step.type ?? "shell") === "docker" && (
             <div className="flex items-center gap-2">
-              <span className="w-20 shrink-0 text-[11px] text-[hsl(var(--ds-text-2))]">
+              <span className="w-20 shrink-0 text-[12px] text-[hsl(var(--ds-text-2))]">
                 {dict.steps.dockerImage}
               </span>
               <Input
                 value={step.dockerImage ?? ""}
                 onChange={(event) => onUpdateStep(step.id, { dockerImage: event.target.value })}
                 placeholder={dict.steps.dockerImagePlaceholder}
-                className="h-8 flex-1 text-xs"
+                className="h-9 flex-1 text-[13px]"
                 disabled={!isAdmin}
               />
             </div>
           )}
 
           <div className="space-y-1.5">
-            <span className="text-[11px] font-medium text-foreground">{dict.step.script}</span>
+            <span className="text-[12px] font-medium text-foreground">{dict.step.script}</span>
             <Textarea
               value={step.script}
               onChange={(event) => onUpdateStep(step.id, { script: event.target.value })}
               placeholder={dict.step.scriptPlaceholder}
               rows={3}
-              className="resize-none font-mono text-xs"
+              className="resize-none font-mono text-[12px]"
               disabled={!isAdmin}
             />
           </div>
 
           <div className="space-y-1.5">
-            <span className="text-[11px] text-[hsl(var(--ds-text-2))]">{dict.steps.artifactPathsLabel}</span>
+            <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.steps.artifactPathsLabel}</span>
             <Textarea
               value={(step.artifactPaths ?? []).join("\n")}
               onChange={(event) =>
@@ -198,14 +198,14 @@ export default function PipelineStepEditor({
               }
               placeholder={dict.steps.artifactPathsPlaceholder}
               rows={2}
-              className="resize-none font-mono text-xs"
+              className="resize-none font-mono text-[12px]"
               disabled={!isAdmin}
             />
-            <span className="text-[11px] text-[hsl(var(--ds-text-2))]">{dict.steps.artifactPathsHelp}</span>
+            <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.steps.artifactPathsHelp}</span>
           </div>
 
           <div className="space-y-1.5">
-            <span className="text-[11px] text-[hsl(var(--ds-text-2))]">{dict.steps.artifactInputsLabel}</span>
+            <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.steps.artifactInputsLabel}</span>
             <Textarea
               value={(step.artifactInputs ?? []).join("\n")}
               onChange={(event) =>
@@ -213,15 +213,15 @@ export default function PipelineStepEditor({
               }
               placeholder={dict.steps.artifactInputsPlaceholder}
               rows={2}
-              className="resize-none font-mono text-xs"
+              className="resize-none font-mono text-[12px]"
               disabled={!isAdmin}
             />
-            <span className="text-[11px] text-[hsl(var(--ds-text-2))]">{dict.steps.artifactInputsHelp}</span>
+            <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.steps.artifactInputsHelp}</span>
           </div>
         </div>
       ))}
 
-      <Button variant="outline" size="sm" onClick={onAddStep} className="w-full" disabled={!isAdmin}>
+      <Button variant="outline" size="sm" onClick={onAddStep} className="h-9 w-full" disabled={!isAdmin}>
         <Plus className="mr-1 size-3.5" />
         {dict.jobs.addStep}
       </Button>

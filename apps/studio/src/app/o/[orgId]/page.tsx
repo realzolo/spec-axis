@@ -207,7 +207,7 @@ export default async function OrgRootPage({ params }: { params: Promise<{ orgId:
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="max-w-[960px] mx-auto w-full px-6 py-8 space-y-8">
+      <div className="dashboard-container py-8 space-y-8">
 
         {/* Page heading */}
         <div>

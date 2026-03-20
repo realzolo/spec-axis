@@ -60,7 +60,7 @@ export default function TrendChart({ projectId, dict }: { projectId: string; dic
         </div>
         <div className="flex gap-2">
           {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={`trend-pill-${index}`} className="h-7 w-16 rounded-[4px]" />
+            <Skeleton key={`trend-pill-${index}`} className="h-8 w-16 rounded-[4px]" />
           ))}
         </div>
       </div>
@@ -124,12 +124,12 @@ export default function TrendChart({ projectId, dict }: { projectId: string; dic
                   className="w-full bg-primary/20 group-hover:bg-primary/40 transition-colors rounded-t"
                   style={{ height: `${height}%`, minHeight: '4px' }}
                 />
-                <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-xs font-semibold whitespace-nowrap">
+                <div className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[12px] font-semibold opacity-0 transition-opacity group-hover:opacity-100">
                   {snap.score}
                 </div>
               </div>
               {idx % Math.ceil(snapshots.length / 7) === 0 && (
-                <div className="text-[10px] text-[hsl(var(--ds-text-2))]">
+                <div className="text-[11px] text-[hsl(var(--ds-text-2))]">
                   {formatLocalDate(snap.snapshot_date)}
                 </div>
               )}
@@ -144,7 +144,7 @@ export default function TrendChart({ projectId, dict }: { projectId: string; dic
           <button
             key={d}
             onClick={() => setDays(d)}
-            className={`px-3 py-1 text-xs rounded-[6px] transition-colors ${
+            className={`rounded-[6px] px-3 py-1.5 text-[13px] transition-colors ${
               days === d ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
             }`}
           >

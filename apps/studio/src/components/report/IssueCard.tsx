@@ -194,7 +194,7 @@ export default function IssueCard({
   }
 
   return (
-    <div className="bg-[hsl(var(--ds-background-2))] border border-[hsl(var(--ds-border-1))] rounded-[8px] overflow-hidden mb-3 shadow-sm hover:shadow-md transition-all duration-200">
+    <div className="mb-3 overflow-hidden rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] shadow-sm transition-all duration-200 hover:shadow-md">
       <button
         type="button"
         onClick={handleExpand}
@@ -207,17 +207,17 @@ export default function IssueCard({
 
         <div className="flex-1 min-w-0 space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <code className="text-xs font-mono bg-muted rounded-[8px] px-2.5 py-1">
+            <code className="rounded-[8px] bg-muted px-2.5 py-1 text-[12px] font-mono">
               {issue.file}{issue.line ? `:${issue.line}` : ''}
             </code>
             <span className={['px-2.5 py-1 rounded-[4px] text-[10px] font-bold uppercase tracking-wide', config.badgeClass].join(' ')}>
               {config.label}
             </span>
-            <span className="px-2.5 py-1 rounded-[4px] text-xs font-semibold bg-primary/10 text-primary">
+            <span className="rounded-[4px] bg-primary/10 px-2.5 py-1 text-[12px] font-semibold text-primary">
               {dict.reports.categories[issue.category as keyof typeof dict.reports.categories] ?? issue.category}
             </span>
             {issue.priority && (
-              <span className="px-2.5 py-1 rounded-[4px] text-xs font-semibold bg-secondary text-secondary-foreground">
+              <span className="rounded-[4px] bg-secondary px-2.5 py-1 text-[12px] font-semibold text-secondary-foreground">
                 P{issue.priority}
               </span>
             )}
@@ -228,9 +228,9 @@ export default function IssueCard({
               </span>
             )}
           </div>
-          <div className="text-sm font-medium text-foreground leading-relaxed">{issue.message}</div>
+          <div className="text-[14px] font-medium leading-relaxed text-foreground">{issue.message}</div>
           {issue.impactScope && (
-            <div className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.impactScopeLabel}: {issue.impactScope}</div>
+            <div className="text-[13px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.impactScopeLabel}: {issue.impactScope}</div>
           )}
         </div>
 
@@ -242,18 +242,18 @@ export default function IssueCard({
       {expanded && (
         <div className="border-t border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] p-5 space-y-4">
           <div>
-            <div className="text-xs font-semibold text-[hsl(var(--ds-text-2))] mb-2">{dict.reportDetail.ruleLabel}</div>
-            <div className="text-sm font-medium">{issue.rule}</div>
+            <div className="mb-2 text-[12px] font-semibold text-[hsl(var(--ds-text-2))]">{dict.reportDetail.ruleLabel}</div>
+            <div className="text-[14px] font-medium">{issue.rule}</div>
           </div>
 
           {issue.codeSnippet && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-semibold text-[hsl(var(--ds-text-2))]">{dict.reportDetail.codeSnippetLabel}</div>
+                <div className="text-[12px] font-semibold text-[hsl(var(--ds-text-2))]">{dict.reportDetail.codeSnippetLabel}</div>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 text-xs rounded-[8px]"
+                  className="h-8 rounded-[8px] text-[12px]"
                   onClick={() => {
                     void handleCopy(issue.codeSnippet!);
                     setCopiedSection('snippet');
@@ -264,7 +264,7 @@ export default function IssueCard({
                   {dict.common.copy}
                 </Button>
               </div>
-              <pre className="text-xs font-mono bg-[hsl(var(--ds-background-2))] border border-[hsl(var(--ds-border-1))] rounded-[8px] p-3 overflow-x-auto">
+              <pre className="overflow-x-auto rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] p-3 text-[12px] font-mono">
                 {issue.codeSnippet}
               </pre>
             </div>
@@ -272,8 +272,8 @@ export default function IssueCard({
 
           {issue.suggestion && (
             <div>
-              <div className="text-xs font-semibold text-[hsl(var(--ds-text-2))] mb-2">{dict.reportDetail.fixSuggestionLabel}</div>
-              <div className="text-sm bg-[hsl(var(--ds-background-2))] border border-[hsl(var(--ds-border-1))] rounded-[8px] p-3 whitespace-pre-wrap">
+              <div className="mb-2 text-[12px] font-semibold text-[hsl(var(--ds-text-2))]">{dict.reportDetail.fixSuggestionLabel}</div>
+              <div className="whitespace-pre-wrap rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] p-3 text-[14px]">
                 {issue.suggestion}
               </div>
             </div>
@@ -282,11 +282,11 @@ export default function IssueCard({
           {issue.fixPatch && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-semibold text-[hsl(var(--ds-text-2))]">{dict.reportDetail.fixPatchLabel}</div>
+                <div className="text-[12px] font-semibold text-[hsl(var(--ds-text-2))]">{dict.reportDetail.fixPatchLabel}</div>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 text-xs rounded-[8px]"
+                  className="h-8 rounded-[8px] text-[12px]"
                   onClick={() => {
                     void handleCopy(issue.fixPatch!);
                     setCopiedSection('patch');
@@ -297,7 +297,7 @@ export default function IssueCard({
                   {dict.common.copy}
                 </Button>
               </div>
-              <pre className="text-xs font-mono bg-[hsl(var(--ds-background-2))] border border-[hsl(var(--ds-border-1))] rounded-[8px] p-3 overflow-x-auto">
+              <pre className="overflow-x-auto rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] p-3 text-[12px] font-mono">
                 {issue.fixPatch}
               </pre>
             </div>
@@ -325,8 +325,8 @@ export default function IssueCard({
           {/* ── Comment Thread ─────────────────────────────── */}
           {issueId && reportId && (
             <div className="pt-2 border-t border-[hsl(var(--ds-border-1))]">
-·              <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="text-xs font-semibold text-[hsl(var(--ds-text-2))] flex items-center gap-1.5">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-[13px] font-semibold text-[hsl(var(--ds-text-2))]">
                   <MessageCircle className="size-3.5" />
                   {dict.reportDetail.discussion}
                   <span className="ml-1 rounded-full bg-[hsl(var(--ds-surface-2))] px-1.5 py-0.5 text-[10px]">
@@ -338,7 +338,7 @@ export default function IssueCard({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 px-2 text-[11px]"
+                    className="h-8 px-2 text-[12px]"
                     onClick={handleSortToggle}
                   >
                     <ArrowUpDown className="size-3.5" />
@@ -376,7 +376,7 @@ export default function IssueCard({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-6 px-2 text-[11px]"
+                    className="h-8 px-2 text-[12px]"
                     onClick={() => void loadComments(true)}
                   >
                     {dict.common.refresh}
@@ -400,10 +400,10 @@ export default function IssueCard({
                               <div className="flex items-center gap-2 text-[12px]">
                                 <span className="font-medium text-foreground truncate">{comment.author}</span>
                                 {comment.pending && (
-                                  <span className="text-[10px] text-[hsl(var(--ds-text-2))]">{dict.common.loading}</span>
+                                  <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.common.loading}</span>
                                 )}
                               </div>
-                              <div className="text-[11px] text-[hsl(var(--ds-text-2))]">{formatLocalDateTime(comment.created_at)}</div>
+                              <div className="text-[12px] text-[hsl(var(--ds-text-2))]">{formatLocalDateTime(comment.created_at)}</div>
                             </div>
                           </div>
                           <Button
@@ -426,7 +426,7 @@ export default function IssueCard({
                         {isLongComment(comment.content) && (
                           <button
                             type="button"
-                            className="mt-1 text-[11px] text-[hsl(var(--ds-accent-8))] hover:underline"
+                            className="mt-1 text-[12px] text-[hsl(var(--ds-accent-8))] hover:underline"
                             onClick={() => toggleCommentExpanded(comment.id)}
                           >
                             {isExpanded ? dict.reportDetail.collapseComment : dict.reportDetail.expandComment}
@@ -456,20 +456,20 @@ export default function IssueCard({
                   }}
                   placeholder={dict.reportDetail.commentPlaceholder}
                   rows={1}
-                  className="min-h-[42px] max-h-[180px] resize-none border-0 bg-transparent px-2 py-1 hover:bg-transparent focus-visible:border-0 focus-visible:ring-0"
+                  className="min-h-[42px] max-h-[180px] resize-none border-0 bg-transparent px-2 py-1 hover:bg-transparent focus-visible:border-border focus-visible:ring-2 focus-visible:ring-primary/25"
                 />
                 <div className="mt-2 flex items-center justify-between gap-2">
-                  <span className="text-[11px] text-[hsl(var(--ds-text-2))]">
+                  <span className="text-[12px] text-[hsl(var(--ds-text-2))]">
                     {dict.reportDetail.commentShortcutHint}
                   </span>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-[hsl(var(--ds-text-2))]">
+                    <span className="text-[12px] text-[hsl(var(--ds-text-2))]">
                       {commentText.length}/{COMMENT_MAX_LENGTH}
                     </span>
                     <Button
                       type="button"
                       size="sm"
-                      className="h-7 px-2.5"
+                      className="h-8 px-2.5"
                       disabled={!commentText.trim() || submitting}
                       onClick={handleSubmitComment}
                       aria-label={dict.reportDetail.postComment}
