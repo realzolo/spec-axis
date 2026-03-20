@@ -52,8 +52,8 @@ export default function MobileBottomNav({ dict }: { dict: Dictionary }) {
   }
 
   return (
-    <nav className="lg:hidden fixed inset-x-0 bottom-0 z-40 border-t border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))/0.96] backdrop-blur">
-      <div className="grid grid-cols-5 px-1.5 pt-1 pb-[max(0.375rem,env(safe-area-inset-bottom))]">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))/0.96] backdrop-blur lg:hidden">
+      <div className="grid grid-cols-5 px-1.5 pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {items.map((item) => {
           const active = isActive(item.base);
           const Icon = item.icon;
@@ -62,7 +62,7 @@ export default function MobileBottomNav({ dict }: { dict: Dictionary }) {
               key={item.base}
               href={withOrgPrefix(pathname, item.base)}
               className={cn(
-                'flex min-w-0 flex-col items-center justify-center rounded-[8px] px-1 py-1.5 text-[11px] transition-colors duration-150',
+                'flex min-w-0 flex-col items-center justify-center rounded-[8px] px-1 py-2 text-[12px] transition-colors duration-150',
                 active
                   ? 'bg-[hsl(var(--ds-surface-2))] text-foreground'
                   : 'text-[hsl(var(--ds-text-2))] hover:bg-[hsl(var(--ds-surface-1))] hover:text-foreground',

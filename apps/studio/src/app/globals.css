@@ -11,9 +11,9 @@
     --ds-surface-1: 0 0% 9%;
     --ds-surface-2: 0 0% 11%;
     --ds-surface-3: 0 0% 13%;
-    --ds-border-1: 0 0% 16%;
-    --ds-border-2: 0 0% 20%;
-    --ds-border-3: 0 0% 24%;
+    --ds-border-1: 0 0% 14%;
+    --ds-border-2: 0 0% 18%;
+    --ds-border-3: 0 0% 22%;
     --ds-text-1: 0 0% 96%;
     --ds-text-2: 0 0% 70%;
     --ds-accent-7: 212 78% 54%;
@@ -57,7 +57,7 @@
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
     --elevation-1: 0 1px 2px hsl(0 0% 0% / 0.16), 0 0 0 1px hsl(var(--border) / 0.6);
-    --elevation-2: 0 8px 22px hsl(0 0% 0% / 0.22), 0 0 0 1px hsl(var(--border) / 0.55);
+    --elevation-2: 0 8px 22px hsl(0 0% 0% / 0.2), 0 0 0 1px hsl(var(--border) / 0.52);
 
     --auth-bg-1: var(--ds-accent-7);
     --auth-bg-2: 0 0% 100%;
@@ -82,9 +82,9 @@
     --ds-surface-1: 0 0% 96%;
     --ds-surface-2: 0 0% 94%;
     --ds-surface-3: 0 0% 92%;
-    --ds-border-1: 0 0% 90%;
-    --ds-border-2: 0 0% 86%;
-    --ds-border-3: 0 0% 80%;
+    --ds-border-1: 220 13% 91%;
+    --ds-border-2: 220 12% 87%;
+    --ds-border-3: 220 10% 82%;
     --ds-text-1: 222 47% 11%;
     --ds-text-2: 215 16% 47%;
     --ds-accent-7: 212 76% 46%;
@@ -147,6 +147,7 @@
     font-size: 14px;
     line-height: 1.5;
     text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
   }
 
   button,
@@ -252,7 +253,7 @@
   }
 
   .dashboard-container {
-    width: min(100%, 1120px);
+    width: min(100%, 1200px);
     margin-inline: auto;
     padding-inline: 1.5rem;
   }

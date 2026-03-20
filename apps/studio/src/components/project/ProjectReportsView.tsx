@@ -271,7 +271,7 @@ export default function ProjectReportsView({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7"
+                      className="h-8 w-8"
                       onClick={(event) => {
                         event.stopPropagation();
                         setTerminateTargetId(report.id);
@@ -285,7 +285,7 @@ export default function ProjectReportsView({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7"
+                      className="h-8 w-8"
                       onClick={e => { e.stopPropagation(); handleDelete(report.id); }}
                       disabled={deleting === report.id}
                       aria-label={dict.common.delete}

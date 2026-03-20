@@ -671,10 +671,10 @@ export default function AIChat({
                 const isLatestAssistantLoading = loading && msg.role === 'assistant' && idx === messages.length - 1;
                 return (
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`w-fit max-w-full sm:max-w-[92%] lg:max-w-[860px] rounded-[14px] px-4 py-3 ${msg.role === 'user' ? 'border border-[hsl(var(--ds-border-2))] bg-[hsl(var(--ds-surface-2))] text-foreground' : 'border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-1))/0.92] text-foreground'}`}>
+                  <div className={`w-fit max-w-full sm:max-w-[92%] lg:max-w-[880px] rounded-[14px] px-4 py-3 ${msg.role === 'user' ? 'border border-[hsl(var(--ds-accent-7)/0.4)] bg-[hsl(var(--ds-accent-7)/0.14)] text-[hsl(var(--ds-text-1))]' : 'border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-1))/0.92] text-foreground'}`}>
                     {msg.role === 'assistant' && msg.content.trim() ? (
                       <div className="mb-2 flex justify-end">
-                        <Button type="button" size="sm" variant="ghost" className="h-8 gap-1 px-2 text-[12px]" onClick={() => { void copyText(msg.content); }}>
+                        <Button type="button" size="sm" variant="ghost" className="h-8 gap-1 px-2 text-[13px]" onClick={() => { void copyText(msg.content); }}>
                           <Copy className="size-3" />
                           {dict.reportDetail.aiChatCopyResponse}
                         </Button>
@@ -696,6 +696,16 @@ export default function AIChat({
                 </div>
               );})
             )}
+            {loading ? (
+              <div className="sticky bottom-0 z-10 flex justify-center pt-2">
+                <div className="inline-flex max-w-[88%] items-center gap-2 rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-1))/0.92] px-3 py-1.5 text-[13px] shadow-elevation-1 backdrop-blur">
+                  <TypingDots compact />
+                  <span className="truncate text-[hsl(var(--ds-text-2))]">
+                    {dict.reportDetail.aiChatGeneratingPhase}: {generationPhase(elapsedMs, dict)} · {dict.reportDetail.aiChatElapsed}: {formatElapsed(elapsedMs)}
+                  </span>
+                </div>
+              </div>
+            ) : null}
             <div ref={endRef} />
           </div>
 
@@ -726,16 +736,8 @@ export default function AIChat({
                     {sidebarCollapsed ? <ChevronRight className="size-3.5" /> : <ChevronLeft className="size-3.5" />}
                     {sidebarCollapsed ? dict.reportDetail.aiChatExpandSidebar : dict.reportDetail.aiChatCollapseSidebar}
                   </Button>
-                  <div className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatMultiLineHint}</div>
+                  <div className="text-[13px] text-[hsl(var(--ds-text-2))]">{dict.reportDetail.aiChatMultiLineHint}</div>
                 </div>
-                {loading ? (
-                  <div className="inline-flex max-w-[70%] items-center gap-2 rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-2.5 py-1.5 text-[12px]">
-                    <TypingDots compact />
-                    <span className="truncate text-[hsl(var(--ds-text-2))]">
-                      {dict.reportDetail.aiChatGeneratingPhase}: {generationPhase(elapsedMs, dict)} · {dict.reportDetail.aiChatElapsed}: {formatElapsed(elapsedMs)}
-                    </span>
-                  </div>
-                ) : null}
               </div>
               <div className="flex gap-2 items-end">
                 <Textarea
@@ -753,7 +755,7 @@ export default function AIChat({
                   }}
                   placeholder={dict.reportDetail.aiChatInputPlaceholder}
                   disabled={loading}
-                  className="flex-1 min-h-[44px] max-h-[180px] resize-none bg-[hsl(var(--ds-background-2))] border-[hsl(var(--ds-border-2))]"
+                  className="flex-1 min-h-[44px] max-h-[180px] resize-none bg-[hsl(var(--ds-background-1))]"
                 />
                 <Button onClick={() => { void sendCurrent(); }} disabled={!input.trim() || loading} size="icon" className="h-10 w-10 shrink-0 rounded-[10px]">
                   {loading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
@@ -796,24 +798,24 @@ function MessageMarkdown({
   }
 
   if (blocks.length === 0) {
-    return <div className="text-[14px] whitespace-pre-wrap leading-relaxed break-words">{content}</div>;
+    return <div className="text-[14px] whitespace-pre-wrap leading-relaxed break-words text-foreground">{content}</div>;
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 text-foreground">
       {blocks.map((b, i) => {
         if (b.type === 'code') {
           const copyKey = `code-${i}`;
           const copied = copiedCodeKey === copyKey;
           return (
             <div key={copyKey} className="overflow-hidden rounded-[8px] border border-[hsl(var(--ds-border-2))] bg-[hsl(var(--ds-background-2))]">
-              <div className="flex items-center justify-between gap-2 border-b border-[hsl(var(--ds-border-1))] px-2.5 py-1.5 text-[12px] text-[hsl(var(--ds-text-2))]">
+              <div className="flex items-center justify-between gap-2 border-b border-[hsl(var(--ds-border-1))] px-2.5 py-1.5 text-[13px] text-[hsl(var(--ds-text-2))]">
                 <span>{b.language || 'code'}</span>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-8 gap-1 px-2 text-[12px]"
+                  className="h-8 gap-1 px-2 text-[13px]"
                   onClick={() => {
                     void onCopy(b.value);
                     setCopiedCodeKey(copyKey);

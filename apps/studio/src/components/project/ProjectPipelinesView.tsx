@@ -328,7 +328,7 @@ export default function ProjectPipelinesView({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 gap-1.5 text-xs opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                    className="h-8 gap-1.5 text-[13px] opacity-100 transition-opacity"
                     onClick={e => handleRun(e, pipeline.id)}
                     disabled={runningIds.has(pipeline.id)}
                   >

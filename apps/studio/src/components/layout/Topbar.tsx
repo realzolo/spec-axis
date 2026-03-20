@@ -79,9 +79,9 @@ export default function Topbar({ dict, locale }: { dict: Dictionary; locale: Loc
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="ml-2 inline-flex h-8 items-center gap-1 rounded-[7px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-2.5 text-[13px] text-foreground transition-colors duration-150 hover:bg-[hsl(var(--ds-surface-2))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.25)]"
+                className="ml-2 inline-flex h-9 items-center gap-1 rounded-[7px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-1))] px-2.5 text-[14px] text-foreground transition-colors duration-150 hover:bg-[hsl(var(--ds-surface-1))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.2)]"
               >
-                <span className="max-w-[120px] truncate sm:max-w-[180px]">{scopeLabel}</span>
+                <span className="max-w-[140px] truncate sm:max-w-[220px]">{scopeLabel}</span>
                 <ChevronDown className="size-3.5 text-[hsl(var(--ds-text-2))]" />
               </button>
             </DropdownMenuTrigger>
@@ -116,7 +116,7 @@ export default function Topbar({ dict, locale }: { dict: Dictionary; locale: Loc
           type="button"
           variant="ghost"
           size="icon"
-          className="h-8 w-8 sm:hidden"
+          className="h-9 w-9 sm:hidden"
           onClick={() => window.dispatchEvent(new Event('command-palette:open'))}
           title={dict.nav.quickJump}
         >
@@ -126,7 +126,7 @@ export default function Topbar({ dict, locale }: { dict: Dictionary; locale: Loc
           type="button"
           variant="outline"
           size="sm"
-          className="hidden h-8 gap-1.5 px-2.5 text-[12px] text-[hsl(var(--ds-text-2))] sm:inline-flex"
+          className="hidden h-9 gap-1.5 px-2.5 text-[13px] text-[hsl(var(--ds-text-2))] sm:inline-flex"
           onClick={() => window.dispatchEvent(new Event('command-palette:open'))}
           title={dict.nav.quickJump}
         >
@@ -137,9 +137,9 @@ export default function Topbar({ dict, locale }: { dict: Dictionary; locale: Loc
         <LanguageSwitcher
           currentLocale={locale}
           compact
-          className="border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] text-foreground hover:bg-[hsl(var(--ds-surface-1))]"
+          className="h-9 border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-1))] text-foreground hover:bg-[hsl(var(--ds-surface-1))]"
         />
-        <ThemeToggle className="border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] text-foreground hover:bg-[hsl(var(--ds-surface-1))]" />
+        <ThemeToggle className="h-9 w-9 border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-1))] text-foreground hover:bg-[hsl(var(--ds-surface-1))]" />
       </div>
     </header>
   );

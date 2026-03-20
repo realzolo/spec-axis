@@ -242,7 +242,7 @@ export default function CommandPalette({ dict }: { dict: Dictionary }) {
         if (value) setActiveIndex(0);
       }}
     >
-      <DialogContent className="max-w-[720px] p-0">
+      <DialogContent className="max-w-[760px] p-0">
         <DialogHeader className="px-4 py-3">
           <div className="flex items-center justify-between gap-2">
             <DialogTitle className="text-[15px]">{dict.nav.quickJump}</DialogTitle>
@@ -275,7 +275,7 @@ export default function CommandPalette({ dict }: { dict: Dictionary }) {
             if (items.length === 0) return null;
             return (
               <div key={groupKey} className="pb-1">
-                <div className="px-3 py-1 text-[12px] uppercase tracking-wider text-[hsl(var(--ds-text-2))]">
+                <div className="px-3 py-1 text-[11px] uppercase tracking-wider text-[hsl(var(--ds-text-2))]">
                   {groupLabelMap[groupKey]}
                 </div>
                 {items.map((item) => {
@@ -293,14 +293,14 @@ export default function CommandPalette({ dict }: { dict: Dictionary }) {
                       onMouseEnter={() => setActiveIndex(localIndex)}
                       onClick={() => navigate(item.href)}
                       className={cn(
-                        'flex w-full items-center gap-3 rounded-[8px] px-3.5 py-3 text-left transition-colors duration-150',
+                        'flex w-full items-center gap-3 rounded-[8px] px-3.5 py-2.5 text-left transition-colors duration-150',
                         active ? 'bg-[hsl(var(--ds-surface-1))]' : 'hover:bg-[hsl(var(--ds-surface-1))]',
                       )}
                     >
                       <Icon className="size-4 shrink-0 text-[hsl(var(--ds-text-2))]" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[14px] text-foreground">{item.label}</span>
-                        <span className="block truncate text-[12px] text-[hsl(var(--ds-text-2))]">{item.hint}</span>
+                        <span className="block truncate text-[13px] text-[hsl(var(--ds-text-2))]">{item.hint}</span>
                       </span>
                       <ChevronRight className="size-3.5 shrink-0 text-[hsl(var(--ds-text-2))]" />
                     </button>
