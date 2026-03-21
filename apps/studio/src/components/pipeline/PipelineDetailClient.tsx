@@ -157,11 +157,14 @@ export default function PipelineDetailClient({
   const [logText, setLogText] = useState("");
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [selectedRunJobKey, setSelectedRunJobKey] = useState<string | null>(null);
+  const [nodeDialogOpen, setNodeDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [cancelRunDialogOpen, setCancelRunDialogOpen] = useState(false);
+  const [cancelingRunId, setCancelingRunId] = useState<string | null>(null);
   const [rollingBack, setRollingBack] = useState<string | null>(null);
   const [triggeringJobKey, setTriggeringJobKey] = useState<string | null>(null);
   const [configSection, setConfigSection] = useState<ConfigureSection>("jobs");
@@ -403,6 +406,26 @@ export default function PipelineDetailClient({
       toast.error(p.rollbackFailed);
     } finally {
       setRollingBack(null);
+    }
+  }
+
+  async function handleCancelRun(runId: string) {
+    setCancelingRunId(runId);
+    try {
+      const res = await fetch(`/api/pipeline-runs/${runId}/cancel`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data?.error === "string" ? data.error : p.cancelRunFailed);
+      }
+      toast.success(p.cancelRunSuccess);
+      await Promise.all([loadRuns(), loadRunDetail(runId)]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : p.cancelRunFailed);
+    } finally {
+      setCancelingRunId(null);
+      setCancelRunDialogOpen(false);
     }
   }
 
@@ -827,6 +850,12 @@ export default function PipelineDetailClient({
   }
 
   const currentRun = runs.find((r) => r.id === selectedRunId);
+  const currentRunLabel = currentRun
+    ? p.detail.runId.replace(
+        "{{num}}",
+        String(runs.length - runs.findIndex((r) => r.id === selectedRunId))
+      )
+    : "";
   const selectedArtifacts = selectedRuntimeJob
     ? artifacts.filter((artifact) => artifact.job_id === selectedRuntimeJob.id)
     : artifacts;
@@ -996,6 +1025,7 @@ export default function PipelineDetailClient({
                       setSelectedRunId(run.id);
                       setRunDetail(null);
                       setSelectedRunJobKey(null);
+                      setNodeDialogOpen(false);
                       setSelectedStepId(null);
                       setLogText("");
                     }}
@@ -1130,17 +1160,25 @@ export default function PipelineDetailClient({
                               : p.retry}
                           </Button>
                         )}
+                      {currentRun &&
+                        (currentRun.status === "queued" ||
+                          currentRun.status === "running" ||
+                          currentRun.status === "waiting_manual") && (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => setCancelRunDialogOpen(true)}
+                            disabled={cancelingRunId === selectedRunId}
+                          >
+                            <XCircle className="size-3.5 mr-1" />
+                            {cancelingRunId === selectedRunId ? dict.common.loading : p.cancelRun}
+                          </Button>
+                        )}
                     </div>
                   </div>
 
                   {/* Runtime board */}
-                  <div
-                    className={`flex-1 min-h-0 overflow-hidden ${
-                      selectedRuntimeJobConfig && selectedRuntimeJob
-                        ? "grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px]"
-                        : "block"
-                    }`}
-                  >
+                  <div className="flex-1 min-h-0 overflow-hidden">
                     <div
                       className="min-h-0 overflow-auto bg-[hsl(var(--ds-surface-1))]/30"
                       onClick={() => {
@@ -1191,6 +1229,7 @@ export default function PipelineDetailClient({
                                           onClick={(event) => {
                                             event.stopPropagation();
                                             setSelectedRunJobKey(job.id);
+                                            setNodeDialogOpen(true);
                                           }}
                                           className={`w-full rounded-[12px] border p-3 text-left transition-all ${
                                             selected
@@ -1269,147 +1308,224 @@ export default function PipelineDetailClient({
                       )}
                     </div>
 
-                    {selectedRuntimeJobConfig && selectedRuntimeJob && (
-                      <div className="min-h-0 border-t xl:border-t-0 xl:border-l border-[hsl(var(--ds-border-1))] bg-background">
-                        <div className="flex h-full flex-col">
-                          <div className="border-b border-[hsl(var(--ds-border-1))] px-5 py-4">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  {STATUS_ICON[selectedRuntimeJob.status as PipelineRunStatus]}
-                                  <span className="truncate text-sm font-semibold text-foreground">
-                                    {selectedRuntimeJobConfig.name}
-                                  </span>
-                                </div>
-                                <div className="mt-1 text-[12px] text-[hsl(var(--ds-text-2))]">
-                                  {stageLabel(selectedRuntimeJobConfig.stage ?? "build")} · {selectedRuntimeJob.job_key}
-                                </div>
-                              </div>
-                              <Badge variant={STATUS_VARIANTS[selectedRuntimeJob.status as PipelineRunStatus]} size="sm">
-                                {p.status[selectedRuntimeJob.status as PipelineRunStatus]}
-                              </Badge>
-                            </div>
-                          </div>
-
-                          <div className="flex-1 min-h-0 overflow-auto">
-                            <div className="space-y-4 px-5 py-4">
-                              <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))]/30 p-3">
-                                <div className="text-[12px] uppercase tracking-wide text-[hsl(var(--ds-text-2))]">
-                                  {p.detail.stepsTitle}
-                                </div>
-                                <div className="mt-3 space-y-2">
-                                  {selectedRuntimeSteps.map((step) => (
-                                    <button
-                                      type="button"
-                                      key={step.id}
-                                      onClick={() => setSelectedStepId(step.id)}
-                                      className={`flex w-full items-center gap-2 rounded-[8px] border px-3 py-2 text-left transition-colors ${
-                                        selectedStepId === step.id
-                                          ? "border-foreground bg-background"
-                                          : "border-[hsl(var(--ds-border-1))] hover:bg-background"
-                                      }`}
-                                    >
-                                      {STATUS_ICON_SM[step.status as PipelineRunStatus]}
-                                      <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">
-                                        {step.name}
-                                      </span>
-                                      {step.exit_code !== null && step.exit_code !== undefined && (
-                                        <span className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                                          {p.detail.exitCode.replace("{{code}}", String(step.exit_code))}
+                    <Dialog
+                      open={nodeDialogOpen && selectedRunJobKey !== null}
+                      onOpenChange={(open) => {
+                        setNodeDialogOpen(open);
+                        if (!open) {
+                          setSelectedStepId(null);
+                          setLogText("");
+                        }
+                      }}
+                    >
+                      <DialogContent className="max-w-6xl">
+                        <DialogHeader>
+                          <DialogTitle>{selectedRuntimeJobConfig?.name ?? p.detail.nodeDialogTitle}</DialogTitle>
+                          <DialogDescription>
+                            {selectedRuntimeJobConfig && selectedRuntimeJob
+                              ? `${stageLabel(selectedRuntimeJobConfig.stage ?? "build")} · ${selectedRuntimeJob.job_key}`
+                              : p.detail.nodeDialogDescription}
+                          </DialogDescription>
+                        </DialogHeader>
+                        <DialogBody className="overflow-hidden p-0">
+                          {selectedRuntimeJobConfig && selectedRuntimeJob ? (
+                            <div className="grid min-h-[min(72vh,760px)] lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
+                              <div className="flex min-h-0 flex-col border-b border-[hsl(var(--ds-border-1))] lg:border-b-0 lg:border-r">
+                                <div className="border-b border-[hsl(var(--ds-border-1))] px-5 py-4">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        {STATUS_ICON[selectedRuntimeJob.status as PipelineRunStatus]}
+                                        <span className="truncate text-sm font-semibold text-foreground">
+                                          {selectedRuntimeJobConfig.name}
                                         </span>
-                                      )}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-
-                              <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] overflow-hidden bg-terminal">
-                                <div className="border-b border-[hsl(var(--ds-border-1))] px-4 py-2.5 text-[12px] uppercase tracking-wide text-[hsl(var(--ds-text-2))]">
-                                  {selectedRuntimeStep ? selectedRuntimeStep.name : p.log.title}
-                                </div>
-                                {!selectedStepId && (
-                                  <div className="px-4 py-10 text-[12px] text-terminal-muted">
-                                    {p.log.selectStep}
-                                  </div>
-                                )}
-                                {selectedStepId && (
-                                  <div
-                                    ref={logRef}
-                                    className="max-h-[320px] overflow-y-auto whitespace-pre-wrap p-4 font-mono text-[12px] leading-relaxed text-terminal"
-                                  >
-                                    {logText || (
-                                      <span className="text-terminal-muted">
-                                        {p.log.noLogs}
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              {selectedArtifacts.length > 0 && (
-                                <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-background">
-                                  <div className="flex items-center justify-between gap-3 border-b border-[hsl(var(--ds-border-1))] px-4 py-2.5">
-                                    <div className="flex items-center gap-2">
-                                      <Package className="size-3.5 text-[hsl(var(--ds-text-2))]" />
-                                      <span className="text-[12px] uppercase tracking-wide text-[hsl(var(--ds-text-2))]">
-                                        {p.artifactsLabel.replace("{{count}}", String(selectedArtifacts.length))}
-                                      </span>
+                                      </div>
+                                      <div className="mt-1 text-[12px] text-[hsl(var(--ds-text-2))]">
+                                        {currentRunLabel} · {selectedRuntimeJob.job_key}
+                                      </div>
                                     </div>
-                                    {isAdmin && (
-                                      <Button
-                                        type="button"
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={() => setPublishDialogOpen(true)}
-                                      >
-                                        {p.publishArtifacts}
-                                      </Button>
-                                    )}
-                                  </div>
-                                  <div className="divide-y divide-[hsl(var(--ds-border-1))]">
-                                    {selectedArtifacts.map((artifact) => {
-                                      const sizeKb = Math.round(Number(artifact.size_bytes) / 1024);
-                                      const sizeLabel =
-                                        sizeKb >= 1024
-                                          ? `${(sizeKb / 1024).toFixed(1)} MB`
-                                          : `${sizeKb} KB`;
-                                      const filename = artifact.path.split("/").pop() ?? artifact.path;
-                                      return (
-                                        <div key={artifact.id} className="flex items-center gap-3 px-4 py-3">
-                                          <Package className="size-3.5 shrink-0 text-[hsl(var(--ds-text-2))]" />
-                                          <div className="min-w-0 flex-1">
-                                            <div className="truncate text-[12px] font-medium text-foreground">
-                                              {filename}
-                                            </div>
-                                            <div className="truncate text-[12px] text-[hsl(var(--ds-text-2))]">
-                                              {artifact.path}
-                                            </div>
-                                          </div>
-                                          <span className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                                            {sizeLabel}
-                                          </span>
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => downloadArtifact(artifact.id)}
-                                            disabled={downloadingArtifactId === artifact.id}
-                                          >
-                                            {downloadingArtifactId === artifact.id
-                                              ? dict.common.loading
-                                              : dict.common.download}
-                                          </Button>
-                                        </div>
-                                      );
-                                    })}
+                                    <Badge variant={STATUS_VARIANTS[selectedRuntimeJob.status as PipelineRunStatus]} size="sm">
+                                      {p.status[selectedRuntimeJob.status as PipelineRunStatus]}
+                                    </Badge>
                                   </div>
                                 </div>
-                              )}
+
+                                <div className="flex-1 min-h-0 overflow-auto px-5 py-4">
+                                  <div className="space-y-4">
+                                    <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))]/30 p-3">
+                                      <div className="text-[12px] uppercase tracking-wide text-[hsl(var(--ds-text-2))]">
+                                        {p.detail.stepsTitle}
+                                      </div>
+                                      <div className="mt-3 space-y-2">
+                                        {selectedRuntimeSteps.map((step) => (
+                                          <button
+                                            type="button"
+                                            key={step.id}
+                                            onClick={() => setSelectedStepId(step.id)}
+                                            className={`flex w-full items-center gap-2 rounded-[8px] border px-3 py-2 text-left transition-colors ${
+                                              selectedStepId === step.id
+                                                ? "border-foreground bg-background"
+                                                : "border-[hsl(var(--ds-border-1))] hover:bg-background"
+                                            }`}
+                                          >
+                                            {STATUS_ICON_SM[step.status as PipelineRunStatus]}
+                                            <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">
+                                              {step.name}
+                                            </span>
+                                            {step.exit_code !== null && step.exit_code !== undefined && (
+                                              <span className="text-[12px] text-[hsl(var(--ds-text-2))]">
+                                                {p.detail.exitCode.replace("{{code}}", String(step.exit_code))}
+                                              </span>
+                                            )}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+
+                                    {currentRun && (
+                                      <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-background p-3">
+                                        <div className="text-[12px] uppercase tracking-wide text-[hsl(var(--ds-text-2))]">
+                                          {p.detail.currentRun}
+                                        </div>
+                                        <div className="mt-3 space-y-2 text-[12px] text-[hsl(var(--ds-text-2))]">
+                                          {currentRun.branch && <div>{p.detail.branch}: {currentRun.branch}</div>}
+                                          {currentRun.commit_sha && <div>{p.detail.commit}: {currentRun.commit_sha.slice(0, 7)}</div>}
+                                          {currentRun.started_at && (
+                                            <div>{p.detail.duration}: {durationLabel(currentRun.started_at, currentRun.finished_at ?? undefined)}</div>
+                                          )}
+                                        </div>
+                                        {selectedRuntimeJob.status === "waiting_manual" && isAdmin && (
+                                          <div className="mt-3">
+                                            <Button
+                                              type="button"
+                                              size="sm"
+                                              className="w-full"
+                                              onClick={() => void handleTriggerJob(selectedRuntimeJob.job_key)}
+                                              disabled={triggeringJobKey === selectedRuntimeJob.job_key}
+                                            >
+                                              <Play className="mr-1 size-3.5" />
+                                              {triggeringJobKey === selectedRuntimeJob.job_key
+                                                ? dict.common.loading
+                                                : p.detail.manualTrigger}
+                                            </Button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex min-h-0 flex-col">
+                                <div className="flex-1 min-h-0 overflow-auto">
+                                  <div className="space-y-4 px-5 py-4">
+                                    <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] overflow-hidden bg-terminal">
+                                      <div className="border-b border-[hsl(var(--ds-border-1))] px-4 py-2.5 text-[12px] uppercase tracking-wide text-[hsl(var(--ds-text-2))]">
+                                        {selectedRuntimeStep ? selectedRuntimeStep.name : p.log.title}
+                                      </div>
+                                      {!selectedStepId && (
+                                        <div className="px-4 py-10 text-[12px] text-terminal-muted">
+                                          {p.log.selectStep}
+                                        </div>
+                                      )}
+                                      {selectedStepId && (
+                                        <div
+                                          ref={logRef}
+                                          className="max-h-[320px] overflow-y-auto whitespace-pre-wrap p-4 font-mono text-[12px] leading-relaxed text-terminal"
+                                        >
+                                          {logText || (
+                                            <span className="text-terminal-muted">
+                                              {p.log.noLogs}
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {selectedArtifacts.length > 0 && (
+                                      <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-background">
+                                        <div className="flex items-center justify-between gap-3 border-b border-[hsl(var(--ds-border-1))] px-4 py-2.5">
+                                          <div className="flex items-center gap-2">
+                                            <Package className="size-3.5 text-[hsl(var(--ds-text-2))]" />
+                                            <span className="text-[12px] uppercase tracking-wide text-[hsl(var(--ds-text-2))]">
+                                              {p.artifactsLabel.replace("{{count}}", String(selectedArtifacts.length))}
+                                            </span>
+                                          </div>
+                                          {isAdmin && (
+                                            <Button
+                                              type="button"
+                                              variant="secondary"
+                                              size="sm"
+                                              onClick={() => setPublishDialogOpen(true)}
+                                            >
+                                              {p.publishArtifacts}
+                                            </Button>
+                                          )}
+                                        </div>
+                                        <div className="divide-y divide-[hsl(var(--ds-border-1))]">
+                                          {selectedArtifacts.map((artifact) => {
+                                            const sizeKb = Math.round(Number(artifact.size_bytes) / 1024);
+                                            const sizeLabel =
+                                              sizeKb >= 1024
+                                                ? `${(sizeKb / 1024).toFixed(1)} MB`
+                                                : `${sizeKb} KB`;
+                                            const filename = artifact.path.split("/").pop() ?? artifact.path;
+                                            return (
+                                              <div key={artifact.id} className="flex items-center gap-3 px-4 py-3">
+                                                <Package className="size-3.5 shrink-0 text-[hsl(var(--ds-text-2))]" />
+                                                <div className="min-w-0 flex-1">
+                                                  <div className="truncate text-[12px] font-medium text-foreground">
+                                                    {filename}
+                                                  </div>
+                                                  <div className="truncate text-[12px] text-[hsl(var(--ds-text-2))]">
+                                                    {artifact.path}
+                                                  </div>
+                                                </div>
+                                                <span className="text-[12px] text-[hsl(var(--ds-text-2))]">
+                                                  {sizeLabel}
+                                                </span>
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  size="sm"
+                                                  onClick={() => downloadArtifact(artifact.id)}
+                                                  disabled={downloadingArtifactId === artifact.id}
+                                                >
+                                                  {downloadingArtifactId === artifact.id
+                                                    ? dict.common.loading
+                                                    : dict.common.download}
+                                                </Button>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                          ) : (
+                            <div className="px-6 py-10 text-[12px] text-[hsl(var(--ds-text-2))]">
+                              {dict.common.loading}
+                            </div>
+                          )}
+                        </DialogBody>
+                        <DialogFooter>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => {
+                              setNodeDialogOpen(false);
+                              setSelectedStepId(null);
+                              setLogText("");
+                            }}
+                          >
+                            {dict.common.close}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 </>
               )}
@@ -1977,6 +2093,24 @@ export default function PipelineDetailClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={cancelRunDialogOpen}
+        title={p.cancelRunDialogTitle}
+        description={p.cancelRunDialogDescription.replace("{{run}}", currentRunLabel)}
+        confirmLabel={p.cancelRun}
+        cancelLabel={dict.common.cancel}
+        onOpenChange={(open) => {
+          if (!open) setCancelRunDialogOpen(false);
+        }}
+        onConfirm={() => {
+          if (!selectedRunId) return;
+          void handleCancelRun(selectedRunId);
+        }}
+        loading={cancelingRunId === selectedRunId}
+        danger
+        icon={<XCircle className="size-4 text-danger" />}
+      />
 
       <ConfirmDialog
         open={secretToDelete !== null}

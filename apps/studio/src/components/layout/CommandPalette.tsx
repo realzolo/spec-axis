@@ -66,7 +66,7 @@ export default function CommandPalette({ dict }: { dict: Dictionary }) {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const shortcutLabel = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac') ? '⌘K' : 'Ctrl K';
+  const shortcutLabel = 'Ctrl/⌘ K';
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

@@ -6,15 +6,18 @@ import MobileBottomNav from '@/components/layout/MobileBottomNav';
 import { DashboardShellProvider } from '@/components/layout/DashboardShellContext';
 import { getLocale } from '@/lib/locale';
 import { getDictionary } from '@/i18n';
+import { cookies } from 'next/headers';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const locale = await getLocale();
   const dict = await getDictionary(locale);
+  const cookieStore = await cookies();
+  const initialCollapsed = cookieStore.get('studio.sidebar-collapsed.v1')?.value === '1';
 
   return (
     <DashboardShellProvider>
       <div className="flex h-[100dvh] overflow-hidden bg-background">
-        <Sidebar dict={dict} />
+        <Sidebar dict={dict} initialCollapsed={initialCollapsed} />
         <CommandPalette dict={dict} />
         <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
           <Topbar dict={dict} locale={locale} />

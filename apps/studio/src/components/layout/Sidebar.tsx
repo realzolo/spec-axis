@@ -41,6 +41,7 @@ import { cn } from '@/lib/utils';
 
 interface SidebarProps {
   dict: Dictionary;
+  initialCollapsed?: boolean;
 }
 
 interface Organization {
@@ -51,15 +52,6 @@ interface Organization {
 }
 
 const SIDEBAR_COLLAPSED_KEY = 'studio.sidebar-collapsed.v1';
-
-function readCollapsedState() {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
 
 function NavItem({
   href,
@@ -93,7 +85,11 @@ function NavItem({
   );
 }
 
-export default function Sidebar({ dict }: SidebarProps) {
+export default function Sidebar({ dict, initialCollapsed = false }: SidebarProps) {
+  return <SidebarImpl dict={dict} initialCollapsed={initialCollapsed} />;
+}
+
+function SidebarImpl({ dict, initialCollapsed }: SidebarProps & { initialCollapsed: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const orgMenuTriggerId = useId();
@@ -103,8 +99,8 @@ export default function Sidebar({ dict }: SidebarProps) {
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState(readCollapsedState);
   const { projects, currentProject, currentProjectId, inProjectScope } = useDashboardShell();
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
 
   const { orgId: pathOrgId } = extractOrgFromPath(pathname);
   const basePath = stripOrgPrefix(pathname);
@@ -154,9 +150,9 @@ export default function Sidebar({ dict }: SidebarProps) {
     const next = !collapsed;
     setCollapsed(next);
     try {
-      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0');
+      document.cookie = `${SIDEBAR_COLLAPSED_KEY}=${next ? '1' : '0'}; path=/; max-age=31536000; samesite=lax`;
     } catch {
-      // ignore storage errors
+      // ignore cookie errors
     }
   }
 

@@ -25,9 +25,7 @@ export default function Topbar({ dict, locale }: { dict: Dictionary; locale: Loc
   const basePath = stripOrgPrefix(pathname);
   const { projects, currentProject, currentProjectId, inProjectScope, projectSection } = useDashboardShell();
   const inProjectDomain = inProjectScope || basePath.startsWith('/projects');
-  const shortcutLabel = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac')
-    ? '⌘K'
-    : 'Ctrl K';
+  const shortcutLabel = 'Ctrl/⌘ K';
   const scopeLabel = currentProject?.name ?? dict.nav.scopeTeam;
 
   const teamScopeHref = withOrgPrefix(pathname, '/projects');
