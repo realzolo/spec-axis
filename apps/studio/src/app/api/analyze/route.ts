@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
     }
 
     const lockOwner = randomUUID();
-    const lockAcquired = await claimAnalyzeDedupeLock(analyzeFingerprint, lockOwner);
+    const lockAcquired = await claimAnalyzeDedupeLock(analyzeFingerprint, lockOwner, project.org_id);
 
     if (!lockAcquired) {
       const waitResult = await waitForAnalyzeDedupeResult(analyzeFingerprint, 2000, 200);
@@ -263,15 +263,19 @@ export async function POST(request: NextRequest) {
       throw err;
     }
 
-    await storeAnalyzeDedupeResult(analyzeFingerprint, {
-      reportId: report.id,
-      taskId,
-      status: 'queued',
-      projectId,
-      orgId: project.org_id,
-      incrementalAnalysis: useIncremental,
-      createdAt: Date.now(),
-    });
+    await storeAnalyzeDedupeResult(
+      analyzeFingerprint,
+      {
+        reportId: report.id,
+        taskId,
+        status: 'queued',
+        projectId,
+        orgId: project.org_id,
+        incrementalAnalysis: useIncremental,
+        createdAt: Date.now(),
+      },
+      project.org_id
+    );
 
     await auditLogger.log({
       action: 'analyze',

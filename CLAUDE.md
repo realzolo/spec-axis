@@ -325,6 +325,8 @@ packages/
 
 ## Environment Variables
 
+Bootstrap-first rule: `.env.example` and `apps/scheduler/config.example.toml` intentionally contain only startup-essential settings. Product runtime policy knobs such as analyze admission thresholds, report timeout, and codebase preview limits are configured from Studio Settings > Runtime instead of per-developer local files. Additional env overrides listed below are supported for advanced local debugging, but they are intentionally omitted from the example templates.
+
 ```
 DATABASE_URL=               # Studio Postgres connection string
 ENCRYPTION_KEY=             # AES-256-GCM key for secrets

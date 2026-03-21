@@ -78,6 +78,7 @@ export type ResolveRevisionResult = {
 type EnsureMirrorOptions = {
   forceSync?: boolean;
   syncPolicy?: SyncPolicy;
+  fileMaxBytes?: number;
 };
 
 type SyncPolicy = 'auto' | 'force' | 'never';
@@ -423,7 +424,8 @@ export class CodebaseService {
 
     const commit = await this.resolveCommitSha(mirror.mirrorPath, targetRef);
     const size = await this.getBlobSize(mirror.mirrorPath, `${targetRef}:${safePath}`);
-    if (size > this.fileMaxBytes) {
+    const fileMaxBytes = options.fileMaxBytes ?? this.fileMaxBytes;
+    if (size > fileMaxBytes) {
       const payload = {
         path: safePath,
         ref: targetRef,

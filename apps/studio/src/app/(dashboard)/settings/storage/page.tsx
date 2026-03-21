@@ -183,33 +183,30 @@ export default function StorageSettingsPage() {
     >
       <SettingsSection title={i18n.providerLabel} description={i18n.providerHelp}>
         <div className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => isAdmin && setState((prev) => ({ ...prev, provider: 'local' }))}
-              disabled={!isAdmin}
-              className={`rounded-[8px] border px-4 py-3 text-left transition-colors ${
-                state.provider === 'local'
-                  ? 'border-foreground bg-[hsl(var(--ds-surface-2))] text-foreground'
-                  : 'border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] text-[hsl(var(--ds-text-2))] hover:border-[hsl(var(--ds-border-2))] hover:text-foreground'
-              } ${!isAdmin ? 'cursor-not-allowed opacity-60' : ''}`}
-            >
-              <div className="text-[13px] font-medium">{i18n.providerLocal}</div>
-              <div className="mt-0.5 text-[12px]">{i18n.localBasePathLabel}</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => isAdmin && setState((prev) => ({ ...prev, provider: 's3' }))}
-              disabled={!isAdmin}
-              className={`rounded-[8px] border px-4 py-3 text-left transition-colors ${
-                state.provider === 's3'
-                  ? 'border-foreground bg-[hsl(var(--ds-surface-2))] text-foreground'
-                  : 'border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] text-[hsl(var(--ds-text-2))] hover:border-[hsl(var(--ds-border-2))] hover:text-foreground'
-              } ${!isAdmin ? 'cursor-not-allowed opacity-60' : ''}`}
-            >
-              <div className="text-[13px] font-medium">{i18n.providerS3}</div>
-              <div className="mt-0.5 text-[12px]">{i18n.s3EndpointLabel}</div>
-            </button>
+          <div className="inline-flex rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] p-1">
+            {[
+              { key: 'local', label: i18n.providerLocal },
+              { key: 's3', label: i18n.providerS3 },
+            ].map((option) => {
+              const active = state.provider === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => isAdmin && setState((prev) => ({ ...prev, provider: option.key as 'local' | 's3' }))}
+                  disabled={!isAdmin}
+                  className={[
+                    'h-8 rounded-[8px] px-3 text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150',
+                    active
+                      ? 'bg-[hsl(var(--ds-background-1))] text-foreground shadow-[0_1px_2px_hsl(0_0%_0%/0.14)]'
+                      : 'text-[hsl(var(--ds-text-2))] hover:text-foreground',
+                    !isAdmin ? 'cursor-not-allowed opacity-60' : '',
+                  ].join(' ')}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
           </div>
 
           {state.provider === 'local' ? (

@@ -1,11 +1,14 @@
 import { query, queryOne } from '@/lib/db';
 import { logger } from '@/services/logger';
+import { DEFAULT_ORG_RUNTIME_SETTINGS } from '@/services/runtimeSettings.shared';
 
 type ExpiredReportRow = { id: string };
 
-const REPORT_TIMEOUT_MS = readPositiveIntEnv('ANALYZE_REPORT_TIMEOUT_MS', 60 * 60 * 1000);
 const SWEEP_INTERVAL_MS = readPositiveIntEnv('ANALYZE_REPORT_TIMEOUT_SWEEP_INTERVAL_MS', 30 * 1000);
-const TIMEOUT_SECONDS = Math.max(1, Math.floor(REPORT_TIMEOUT_MS / 1000));
+const DEFAULT_TIMEOUT_SECONDS = Math.max(
+  1,
+  Math.floor(DEFAULT_ORG_RUNTIME_SETTINGS.analyzeReportTimeoutMs / 1000)
+);
 
 let lastSweepAt = 0;
 
@@ -22,10 +25,17 @@ export async function failTimedOutReports(): Promise<number> {
          error_message = $2,
          sse_seq = sse_seq + 1,
          updated_at = now()
-     where status in ('pending', 'running')
-       and created_at < now() - make_interval(secs => $1)
+     where id in (
+       select r.id
+       from analysis_reports r
+       left join org_runtime_settings ors on ors.org_id = r.org_id
+       where r.status in ('pending', 'running')
+         and r.created_at < now() - make_interval(
+           secs => greatest(1, floor(coalesce(ors.analyze_report_timeout_ms, $1 * 1000) / 1000.0)::int)
+         )
+     )
      returning id`,
-    [TIMEOUT_SECONDS, timeoutMessage()]
+    [DEFAULT_TIMEOUT_SECONDS, timeoutMessage()]
   );
 
   if (rows.length > 0) {
@@ -41,18 +51,24 @@ export async function failTimedOutReport(reportId: string): Promise<boolean> {
          error_message = $3,
          sse_seq = sse_seq + 1,
          updated_at = now()
-     where id = $1
-       and status in ('pending', 'running')
-       and created_at < now() - make_interval(secs => $2)
+     where id in (
+       select r.id
+       from analysis_reports r
+       left join org_runtime_settings ors on ors.org_id = r.org_id
+       where r.id = $1
+         and r.status in ('pending', 'running')
+         and r.created_at < now() - make_interval(
+           secs => greatest(1, floor(coalesce(ors.analyze_report_timeout_ms, $2 * 1000) / 1000.0)::int)
+         )
+     )
      returning id`,
-    [reportId, TIMEOUT_SECONDS, timeoutMessage()]
+    [reportId, DEFAULT_TIMEOUT_SECONDS, timeoutMessage()]
   );
   return !!row;
 }
 
 function timeoutMessage() {
-  const minutes = Math.max(1, Math.ceil(REPORT_TIMEOUT_MS / 60000));
-  return `Analysis timed out after ${minutes} minute${minutes === 1 ? '' : 's'}`;
+  return 'Analysis timed out by runtime policy';
 }
 
 function readPositiveIntEnv(name: string, fallback: number) {

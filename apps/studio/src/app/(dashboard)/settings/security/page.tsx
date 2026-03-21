@@ -238,7 +238,7 @@ export default function SecurityPage() {
                 icon={<Clock3 className="size-4" />}
               />
             ) : (
-              <div className="space-y-2">
+              <div className="divide-y divide-[hsl(var(--ds-border-1))]">
                 {sessions.map((session) => (
                   <SettingsRow
                     key={session.id}
@@ -372,7 +372,7 @@ export default function SecurityPage() {
                 icon={<Key className="size-4" />}
               />
             ) : (
-              <div className="space-y-2">
+              <div className="divide-y divide-[hsl(var(--ds-border-1))]">
                 {tokens.map((token) => (
                   <SettingsRow
                     key={token.id}

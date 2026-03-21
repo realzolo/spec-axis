@@ -8,6 +8,7 @@ import { withRetry, formatErrorResponse } from '@/services/retry';
 import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { requireProjectAccess } from '@/services/orgs';
+import { getOrgRuntimeSettings } from '@/services/runtimeSettings';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,7 @@ export async function GET(
     const requestedRef = requestedRefRaw?.trim() ? requestedRefRaw.trim() : undefined;
     const path = request.nextUrl.searchParams.get('path') || '';
     const syncPolicy = resolveSyncPolicy(request.nextUrl.searchParams.get('sync'));
+    const runtimeSettings = await getOrgRuntimeSettings(project.org_id);
 
     if (!path) {
       return NextResponse.json({ error: 'path is required' }, { status: 400 });
@@ -52,7 +54,7 @@ export async function GET(
             ...(requestedRef ? { ref: requestedRef } : {}),
           },
           path,
-          { syncPolicy }
+          { syncPolicy, fileMaxBytes: runtimeSettings.codebaseFileMaxBytes }
         )
       );
     } catch (err) {
@@ -65,7 +67,7 @@ export async function GET(
               repo: project.repo,
             },
             path,
-            { syncPolicy: 'force' }
+            { syncPolicy: 'force', fileMaxBytes: runtimeSettings.codebaseFileMaxBytes }
           )
         );
       } else {

@@ -154,6 +154,20 @@ export const notificationSettingsSchema = z.object({
   notify_on_report_score_below: z.union([z.number().int().min(0).max(100), z.null()]),
 });
 
+export const runtimeSettingsSchema = z.object({
+  analyzeRateWindowMs: z.number().int().min(1).max(3_600_000),
+  analyzeRateUserProjectMax: z.number().int().min(1).max(10_000),
+  analyzeRateOrgMax: z.number().int().min(1).max(100_000),
+  analyzeRateIpMax: z.number().int().min(1).max(100_000),
+  analyzeDedupeTtlSec: z.number().int().min(1).max(86_400),
+  analyzeDedupeLockTtlSec: z.number().int().min(1).max(3_600),
+  analyzeBackpressureProjectActiveMax: z.number().int().min(1).max(10_000),
+  analyzeBackpressureOrgActiveMax: z.number().int().min(1).max(100_000),
+  analyzeBackpressureRetryAfterSec: z.number().int().min(1).max(3_600),
+  analyzeReportTimeoutMs: z.number().int().min(60_000).max(24 * 60 * 60 * 1000),
+  codebaseFileMaxBytes: z.number().int().min(16 * 1024).max(10 * 1024 * 1024),
+});
+
 /**
  * Validate request payload
  */

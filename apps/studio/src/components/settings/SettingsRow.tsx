@@ -14,14 +14,15 @@ type Props = {
 export default function SettingsRow({ left, right, align = 'center', className }: Props) {
   return (
     <div
+      data-settings-row
       className={cn(
-        'flex gap-4 rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-4 py-3',
-        align === 'start' ? 'items-start' : 'items-center',
+        'grid gap-3 px-0 py-4 md:grid-cols-[minmax(0,1fr)_auto]',
+        align === 'start' ? 'items-start' : 'items-start md:items-center',
         className,
       )}
     >
       <div className="min-w-0 flex-1 space-y-0.5">{left}</div>
-      {right && <div className="shrink-0">{right}</div>}
+      {right && <div className="shrink-0 md:justify-self-end">{right}</div>}
     </div>
   );
 }

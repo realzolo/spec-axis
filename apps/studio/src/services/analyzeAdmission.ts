@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { queryOne } from '@/lib/db';
 import { getRedisClient } from '@/services/redisClient';
+import { getOrgRuntimeSettings } from '@/services/runtimeSettings';
 
 const RATE_LIMIT_SCRIPT = `
 local current = redis.call('INCR', KEYS[1])
@@ -26,25 +27,32 @@ end
 return 0
 `;
 
-function readPositiveIntEnv(name: string, fallback: number) {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return parsed;
-}
-
-export const analyzeAdmissionConfig = {
-  rateWindowMs: readPositiveIntEnv('ANALYZE_RATE_LIMIT_WINDOW_MS', 60_000),
-  rateUserProjectMax: readPositiveIntEnv('ANALYZE_RATE_LIMIT_USER_PROJECT_MAX', 6),
-  rateOrgMax: readPositiveIntEnv('ANALYZE_RATE_LIMIT_ORG_MAX', 60),
-  rateIpMax: readPositiveIntEnv('ANALYZE_RATE_LIMIT_IP_MAX', 120),
-  dedupeResultTtlSec: readPositiveIntEnv('ANALYZE_DEDUPE_TTL_SEC', 180),
-  dedupeLockTtlSec: readPositiveIntEnv('ANALYZE_DEDUPE_LOCK_TTL_SEC', 15),
-  backpressureProjectActiveMax: readPositiveIntEnv('ANALYZE_BACKPRESSURE_PROJECT_ACTIVE_MAX', 6),
-  backpressureOrgActiveMax: readPositiveIntEnv('ANALYZE_BACKPRESSURE_ORG_ACTIVE_MAX', 60),
-  backpressureRetryAfterSec: readPositiveIntEnv('ANALYZE_BACKPRESSURE_RETRY_AFTER_SEC', 15),
+type AnalyzeAdmissionConfig = {
+  rateWindowMs: number;
+  rateUserProjectMax: number;
+  rateOrgMax: number;
+  rateIpMax: number;
+  dedupeResultTtlSec: number;
+  dedupeLockTtlSec: number;
+  backpressureProjectActiveMax: number;
+  backpressureOrgActiveMax: number;
+  backpressureRetryAfterSec: number;
 };
+
+async function getAnalyzeAdmissionConfig(orgId: string): Promise<AnalyzeAdmissionConfig> {
+  const settings = await getOrgRuntimeSettings(orgId);
+  return {
+    rateWindowMs: settings.analyzeRateWindowMs,
+    rateUserProjectMax: settings.analyzeRateUserProjectMax,
+    rateOrgMax: settings.analyzeRateOrgMax,
+    rateIpMax: settings.analyzeRateIpMax,
+    dedupeResultTtlSec: settings.analyzeDedupeTtlSec,
+    dedupeLockTtlSec: settings.analyzeDedupeLockTtlSec,
+    backpressureProjectActiveMax: settings.analyzeBackpressureProjectActiveMax,
+    backpressureOrgActiveMax: settings.analyzeBackpressureOrgActiveMax,
+    backpressureRetryAfterSec: settings.analyzeBackpressureRetryAfterSec,
+  };
+}
 
 export type AnalyzeFingerprintRule = {
   category: string;
@@ -135,16 +143,17 @@ export function buildAnalyzeFingerprint(input: AnalyzeFingerprintInput): string 
 export async function enforceAnalyzeRateLimit(
   input: AnalyzeRateLimitInput
 ): Promise<AnalyzeRejectResponse | null> {
+  const config = await getAnalyzeAdmissionConfig(input.orgId);
   const scopes: RateScope[] = [
     {
       name: 'user_project',
       key: `rl:analyze:user_project:${input.orgId}:${input.userId}:${input.projectId}`,
-      limit: analyzeAdmissionConfig.rateUserProjectMax,
+      limit: config.rateUserProjectMax,
     },
     {
       name: 'org',
       key: `rl:analyze:org:${input.orgId}`,
-      limit: analyzeAdmissionConfig.rateOrgMax,
+      limit: config.rateOrgMax,
     },
   ];
 
@@ -154,12 +163,12 @@ export async function enforceAnalyzeRateLimit(
     scopes.push({
       name: 'ip',
       key: `rl:analyze:ip:${ipFingerprint}`,
-      limit: analyzeAdmissionConfig.rateIpMax,
+      limit: config.rateIpMax,
     });
   }
 
   for (const scope of scopes) {
-    const usage = await consumeRateBucket(scope.key, scope.limit, analyzeAdmissionConfig.rateWindowMs);
+    const usage = await consumeRateBucket(scope.key, scope.limit, config.rateWindowMs);
     if (usage.count > scope.limit) {
       const retryAfter = Math.max(1, Math.ceil(usage.ttlMs / 1000));
       const resetAtMs = Date.now() + usage.ttlMs;
@@ -184,6 +193,7 @@ export async function checkAnalyzeBackpressure(
   orgId: string,
   projectId: string
 ): Promise<AnalyzeRejectResponse | null> {
+  const config = await getAnalyzeAdmissionConfig(orgId);
   const row = await queryOne<QueueDepthRow>(
     `select
        count(*) filter (where status in ('pending', 'running')) as org_active,
@@ -197,8 +207,8 @@ export async function checkAnalyzeBackpressure(
   const projectActive = toInt(row?.project_active);
 
   if (
-    orgActive < analyzeAdmissionConfig.backpressureOrgActiveMax &&
-    projectActive < analyzeAdmissionConfig.backpressureProjectActiveMax
+    orgActive < config.backpressureOrgActiveMax &&
+    projectActive < config.backpressureProjectActiveMax
   ) {
     return null;
   }
@@ -212,7 +222,7 @@ export async function checkAnalyzeBackpressure(
       projectActive,
     },
     headers: {
-      'Retry-After': analyzeAdmissionConfig.backpressureRetryAfterSec.toString(),
+      'Retry-After': config.backpressureRetryAfterSec.toString(),
     },
   };
 }
@@ -250,10 +260,12 @@ export async function waitForAnalyzeDedupeResult(
 
 export async function claimAnalyzeDedupeLock(
   fingerprint: string,
-  owner: string
+  owner: string,
+  orgId: string
 ): Promise<boolean> {
   const key = dedupeLockKey(fingerprint);
   cleanupInMemoryIfNeeded();
+  const config = await getAnalyzeAdmissionConfig(orgId);
 
   const redis = getRedisClient();
   try {
@@ -261,7 +273,7 @@ export async function claimAnalyzeDedupeLock(
       key,
       owner,
       'EX',
-      analyzeAdmissionConfig.dedupeLockTtlSec,
+      config.dedupeLockTtlSec,
       'NX'
     );
     return lockResult === 'OK';
@@ -287,10 +299,12 @@ export async function releaseAnalyzeDedupeLock(
 
 export async function storeAnalyzeDedupeResult(
   fingerprint: string,
-  result: AnalyzeDedupeResult
+  result: AnalyzeDedupeResult,
+  orgId: string
 ): Promise<void> {
   const key = dedupeResultKey(fingerprint);
   cleanupInMemoryIfNeeded();
+  const config = await getAnalyzeAdmissionConfig(orgId);
 
   const redis = getRedisClient();
   try {
@@ -298,7 +312,7 @@ export async function storeAnalyzeDedupeResult(
       key,
       JSON.stringify(result),
       'EX',
-      analyzeAdmissionConfig.dedupeResultTtlSec
+      config.dedupeResultTtlSec
     );
   } catch (err) {
     throw new Error(`Failed storing analyze dedupe result in Redis: ${String(err)}`);

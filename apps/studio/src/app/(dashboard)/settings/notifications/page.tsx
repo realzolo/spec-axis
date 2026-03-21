@@ -140,7 +140,7 @@ export default function NotificationsSettingsPage() {
 
       <SettingsSection title={i18n.emailNotificationsTitle} description={i18n.emailNotificationsDescription}>
         {settings && (
-          <div className="space-y-5">
+          <div className="divide-y divide-[hsl(var(--ds-border-1))]">
             <SettingsRow
               left={
                 <>

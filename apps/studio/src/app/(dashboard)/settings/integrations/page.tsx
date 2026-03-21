@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertTriangle, Bot, Check, Edit, Plug, Plus, Trash2 } from 'lucide-react';
@@ -42,65 +41,42 @@ function IntegrationsSkeleton({ title, description }: { title: string; descripti
   return (
     <SettingsPageShell title={title} description={description}>
       <div className="space-y-6">
-        <div className="space-y-3 rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-3 w-56" />
-            </div>
-            <Skeleton className="h-8 w-28 rounded-[6px]" />
-          </div>
-          <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <div
-                key={`vcs-card-skeleton-${index}`}
-                className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] p-4 space-y-3"
-              >
-                <div className="flex items-center gap-2">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-4 w-12 rounded-[4px]" />
-                </div>
-                <Skeleton className="h-3 w-40" />
+        {Array.from({ length: 2 }).map((_, sectionIndex) => (
+          <div
+            key={`integration-section-skeleton-${sectionIndex}`}
+            className="space-y-3"
+          >
+            <div className="flex items-center justify-between gap-3 px-0.5">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-40" />
                 <Skeleton className="h-3 w-56" />
-                <div className="flex gap-2">
-                  <Skeleton className="h-7 w-16 rounded-[6px]" />
-                  <Skeleton className="h-7 w-7 rounded-[6px]" />
-                  <Skeleton className="h-7 w-20 rounded-[6px]" />
-                </div>
               </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-3 rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-3 w-52" />
+              <Skeleton className="h-8 w-28 rounded-[6px]" />
             </div>
-            <Skeleton className="h-8 w-28 rounded-[6px]" />
-          </div>
-          <div className="space-y-2">
-            {Array.from({ length: 2 }).map((_, index) => (
-              <div
-                key={`ai-card-skeleton-${index}`}
-                className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] p-4 space-y-3"
-              >
-                <div className="flex items-center gap-2">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-4 w-12 rounded-[4px]" />
+            <div className="overflow-hidden rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))]">
+              {Array.from({ length: sectionIndex === 0 ? 3 : 2 }).map((_, index) => (
+                <div
+                  key={`integration-row-skeleton-${sectionIndex}-${index}`}
+                  className="grid gap-3 border-b border-[hsl(var(--ds-border-1))] px-5 py-4 last:border-b-0 md:grid-cols-[minmax(0,1fr)_auto]"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-4 w-12 rounded-[4px]" />
+                    </div>
+                    <Skeleton className="h-3 w-40" />
+                    <Skeleton className="h-3 w-56" />
+                  </div>
+                  <div className="flex gap-2 md:justify-self-end">
+                    <Skeleton className="h-7 w-16 rounded-[6px]" />
+                    <Skeleton className="h-7 w-7 rounded-[6px]" />
+                    <Skeleton className="h-7 w-20 rounded-[6px]" />
+                  </div>
                 </div>
-                <Skeleton className="h-3 w-36" />
-                <Skeleton className="h-3 w-44" />
-                <div className="flex gap-2">
-                  <Skeleton className="h-7 w-16 rounded-[6px]" />
-                  <Skeleton className="h-7 w-7 rounded-[6px]" />
-                  <Skeleton className="h-7 w-20 rounded-[6px]" />
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        ))}
       </div>
     </SettingsPageShell>
   );
@@ -240,89 +216,89 @@ export default function IntegrationsPage() {
     }
   }
 
-  function renderIntegrationCard(integration: Integration, type: 'vcs' | 'ai') {
+  function renderIntegrationRow(integration: Integration, type: 'vcs' | 'ai') {
     return (
-      <Card key={integration.id}>
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-[13px] font-medium">{integration.name}</h3>
-                {integration.is_default && (
-                  <Badge size="sm" variant="accent">
-                    {i18n.defaultBadge}
-                  </Badge>
-                )}
-              </div>
-              <p className="text-[12px] text-[hsl(var(--ds-text-2))] mb-2">
-                {i18n.providerLabel}: {integration.provider}
-              </p>
-              {integration.config.baseUrl && (
-                <p className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                  {i18n.urlLabel}: {integration.config.baseUrl}
-                </p>
-              )}
-              {integration.config.model && (
-                <p className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                  {i18n.modelLabel}: {integration.config.model}
-                </p>
-              )}
-              {integration.config.outputLanguage && (
-                <p className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                  {i18n.outputLanguageLabel}: {getOutputLanguageLabel(integration.config.outputLanguage)}
-                </p>
-              )}
-            </div>
-
-            {isAdmin && (
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleTest(integration.id)}
-                  disabled={testingId === integration.id}
-                >
-                  {testingId === integration.id ? i18n.testing : i18n.test}
-                </Button>
-
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    if (type === 'vcs') {
-                      setEditingVCS(integration);
-                    } else {
-                      setEditingAI(integration);
-                    }
-                  }}
-                  aria-label={dict.common.edit}
-                >
-                  <Edit className="size-4" />
-                </Button>
-
-                {!integration.is_default && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleSetDefault(integration.id)}
-                  >
-                    {i18n.setDefault}
-                  </Button>
-                )}
-
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setDeletingIntegration(integration)}
-                  aria-label={dict.common.delete}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
+      <div
+        key={integration.id}
+        className="grid gap-3 px-5 py-4 md:grid-cols-[minmax(0,1fr)_auto]"
+      >
+        <div className="min-w-0 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-[13px] font-medium text-foreground">{integration.name}</h3>
+            {integration.is_default && (
+              <Badge size="sm" variant="accent">
+                {i18n.defaultBadge}
+              </Badge>
             )}
           </div>
-        </CardContent>
-      </Card>
+
+          <div className="space-y-1 text-[12px] text-[hsl(var(--ds-text-2))]">
+            <p>
+              {i18n.providerLabel}: {integration.provider}
+            </p>
+            {integration.config.baseUrl && (
+              <p className="truncate">
+                {i18n.urlLabel}: {integration.config.baseUrl}
+              </p>
+            )}
+            {integration.config.model && (
+              <p>{i18n.modelLabel}: {integration.config.model}</p>
+            )}
+            {integration.config.outputLanguage && (
+              <p>
+                {i18n.outputLanguageLabel}: {getOutputLanguageLabel(integration.config.outputLanguage)}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {isAdmin && (
+          <div className="flex flex-wrap items-center gap-2 md:justify-self-end">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => handleTest(integration.id)}
+              disabled={testingId === integration.id}
+            >
+              {testingId === integration.id ? i18n.testing : i18n.test}
+            </Button>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                if (type === 'vcs') {
+                  setEditingVCS(integration);
+                } else {
+                  setEditingAI(integration);
+                }
+              }}
+              aria-label={dict.common.edit}
+            >
+              <Edit className="size-4" />
+            </Button>
+
+            {!integration.is_default && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleSetDefault(integration.id)}
+              >
+                {i18n.setDefault}
+              </Button>
+            )}
+
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setDeletingIntegration(integration)}
+              aria-label={dict.common.delete}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -367,9 +343,9 @@ export default function IntegrationsPage() {
               ) : undefined}
             />
           ) : (
-            <div className="space-y-2">
+            <div className="overflow-hidden rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] divide-y divide-[hsl(var(--ds-border-1))]">
               {vcsIntegrations.map((integration) =>
-                renderIntegrationCard(integration, 'vcs')
+                renderIntegrationRow(integration, 'vcs')
               )}
             </div>
           )}
@@ -400,8 +376,8 @@ export default function IntegrationsPage() {
               ) : undefined}
             />
           ) : (
-            <div className="space-y-2">
-              {aiIntegrations.map((integration) => renderIntegrationCard(integration, 'ai'))}
+            <div className="overflow-hidden rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] divide-y divide-[hsl(var(--ds-border-1))]">
+              {aiIntegrations.map((integration) => renderIntegrationRow(integration, 'ai'))}
             </div>
           )}
         </SettingsSection>

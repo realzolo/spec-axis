@@ -2,7 +2,6 @@
 
 import type { ReactNode } from 'react';
 
-import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -21,10 +20,10 @@ export default function SettingsEmptyState({
   className,
 }: Props) {
   return (
-    <Card className={cn('border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] shadow-none', className)}>
-      <CardContent className="flex flex-col items-start gap-3 px-6 py-6">
+    <div className={cn('rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] px-5 py-5', className)}>
+      <div className="flex flex-col items-start gap-3">
         {icon && (
-          <div className="flex size-10 items-center justify-center rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-2))] text-[hsl(var(--ds-text-2))]">
+          <div className="flex size-9 items-center justify-center rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] text-[hsl(var(--ds-text-2))]">
             {icon}
           </div>
         )}
@@ -35,7 +34,7 @@ export default function SettingsEmptyState({
           )}
         </div>
         {action && <div>{action}</div>}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

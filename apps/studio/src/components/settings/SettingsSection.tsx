@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -23,21 +22,24 @@ export default function SettingsSection({
   contentClassName,
 }: Props) {
   return (
-    <Card className={cn("border-[hsl(var(--ds-border-1))] bg-background shadow-none", className)}>
-      <CardHeader className="space-y-1.5 border-b border-[hsl(var(--ds-border-1))] pb-4">
+    <section className={cn("space-y-3", className)}>
+      <div className="flex items-start justify-between gap-3 px-0.5">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
-            <CardTitle className="text-[14px]">{title}</CardTitle>
+            <h2 className="text-[14px] font-medium tracking-[-0.01em] text-foreground">{title}</h2>
             {description && (
-              <CardDescription className="text-[12px] leading-5 text-[hsl(var(--ds-text-2))]">
+              <p className="max-w-[680px] text-[13px] leading-5 text-[hsl(var(--ds-text-2))]">
                 {description}
-              </CardDescription>
+              </p>
             )}
           </div>
-          {action && <div className="shrink-0">{action}</div>}
         </div>
-      </CardHeader>
-      <CardContent className={cn("space-y-4 pt-4", contentClassName)}>{children}</CardContent>
-    </Card>
+        {action && <div className="shrink-0">{action}</div>}
+      </div>
+
+      <div className="overflow-hidden rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))]">
+        <div className={cn("space-y-3 px-5 py-5", contentClassName)}>{children}</div>
+      </div>
+    </section>
   );
 }
