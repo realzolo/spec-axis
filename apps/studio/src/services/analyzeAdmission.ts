@@ -1,31 +1,7 @@
 import { createHash } from 'crypto';
-import { queryOne } from '@/lib/db';
-import { getRedisClient } from '@/services/redisClient';
+import type { PoolClient } from 'pg';
+import { queryOne, withTransaction } from '@/lib/db';
 import { getOrgRuntimeSettings } from '@/services/runtimeSettings';
-
-const RATE_LIMIT_SCRIPT = `
-local current = redis.call('INCR', KEYS[1])
-if current == 1 then
-  redis.call('PEXPIRE', KEYS[1], ARGV[1])
-end
-local ttl = redis.call('PTTL', KEYS[1])
-if ttl < 0 then
-  ttl = tonumber(ARGV[1])
-  redis.call('PEXPIRE', KEYS[1], ARGV[1])
-end
-local remaining = tonumber(ARGV[2]) - current
-if remaining < 0 then
-  remaining = 0
-end
-return {current, remaining, ttl}
-`;
-
-const RELEASE_LOCK_SCRIPT = `
-if redis.call('GET', KEYS[1]) == ARGV[1] then
-  return redis.call('DEL', KEYS[1])
-end
-return 0
-`;
 
 type AnalyzeAdmissionConfig = {
   rateWindowMs: number;
@@ -38,21 +14,6 @@ type AnalyzeAdmissionConfig = {
   backpressureOrgActiveMax: number;
   backpressureRetryAfterSec: number;
 };
-
-async function getAnalyzeAdmissionConfig(orgId: string): Promise<AnalyzeAdmissionConfig> {
-  const settings = await getOrgRuntimeSettings(orgId);
-  return {
-    rateWindowMs: settings.analyzeRateWindowMs,
-    rateUserProjectMax: settings.analyzeRateUserProjectMax,
-    rateOrgMax: settings.analyzeRateOrgMax,
-    rateIpMax: settings.analyzeRateIpMax,
-    dedupeResultTtlSec: settings.analyzeDedupeTtlSec,
-    dedupeLockTtlSec: settings.analyzeDedupeLockTtlSec,
-    backpressureProjectActiveMax: settings.analyzeBackpressureProjectActiveMax,
-    backpressureOrgActiveMax: settings.analyzeBackpressureOrgActiveMax,
-    backpressureRetryAfterSec: settings.analyzeBackpressureRetryAfterSec,
-  };
-}
 
 export type AnalyzeFingerprintRule = {
   category: string;
@@ -70,21 +31,14 @@ export type AnalyzeFingerprintInput = {
   useIncremental: boolean;
 };
 
-export type AnalyzeDedupeResult = {
+export type AnalyzeAdmissionResult = {
   reportId: string;
-  taskId?: string;
-  status: 'queued' | 'running' | 'done' | 'failed';
+  status: 'queued' | 'running' | 'done' | 'partial_failed' | 'failed' | 'canceled';
   projectId: string;
   orgId: string;
   incrementalAnalysis: boolean;
   createdAt: number;
-};
-
-type AnalyzeRateLimitInput = {
-  orgId: string;
-  userId: string;
-  projectId: string;
-  ipAddress?: string | null;
+  deduplicated: boolean;
 };
 
 type AnalyzeRejectResponse = {
@@ -104,11 +58,29 @@ type QueueDepthRow = {
   project_active: string | number;
 };
 
-type RateScope = {
-  name: string;
-  key: string;
-  limit: number;
+type AnalyzeReportRow = {
+  id: string;
+  status: 'pending' | AnalyzeAdmissionResult['status'];
+  project_id: string;
+  org_id: string;
+  created_at: string | Date;
+  analysis_snapshot: Record<string, unknown> | null;
 };
+
+async function getAnalyzeAdmissionConfig(orgId: string): Promise<AnalyzeAdmissionConfig> {
+  const settings = await getOrgRuntimeSettings(orgId);
+  return {
+    rateWindowMs: settings.analyzeRateWindowMs,
+    rateUserProjectMax: settings.analyzeRateUserProjectMax,
+    rateOrgMax: settings.analyzeRateOrgMax,
+    rateIpMax: settings.analyzeRateIpMax,
+    dedupeResultTtlSec: settings.analyzeDedupeTtlSec,
+    dedupeLockTtlSec: settings.analyzeDedupeLockTtlSec,
+    backpressureProjectActiveMax: settings.analyzeBackpressureProjectActiveMax,
+    backpressureOrgActiveMax: settings.analyzeBackpressureOrgActiveMax,
+    backpressureRetryAfterSec: settings.analyzeBackpressureRetryAfterSec,
+  };
+}
 
 export function buildAnalyzeFingerprint(input: AnalyzeFingerprintInput): string {
   const normalizedRules = input.rules
@@ -141,10 +113,10 @@ export function buildAnalyzeFingerprint(input: AnalyzeFingerprintInput): string 
 }
 
 export async function enforceAnalyzeRateLimit(
-  input: AnalyzeRateLimitInput
+  input: { orgId: string; userId: string; projectId: string; ipAddress?: string | null }
 ): Promise<AnalyzeRejectResponse | null> {
   const config = await getAnalyzeAdmissionConfig(input.orgId);
-  const scopes: RateScope[] = [
+  const scopes: Array<{ name: string; key: string; limit: number }> = [
     {
       name: 'user_project',
       key: `rl:analyze:user_project:${input.orgId}:${input.userId}:${input.projectId}`,
@@ -227,166 +199,155 @@ export async function checkAnalyzeBackpressure(
   };
 }
 
-export async function getAnalyzeDedupeResult(
-  fingerprint: string
-): Promise<AnalyzeDedupeResult | null> {
-  const key = dedupeResultKey(fingerprint);
-  cleanupInMemoryIfNeeded();
+export async function createOrReuseAnalyzeReport(input: {
+  orgId: string;
+  projectId: string;
+  fingerprint: string;
+  rulesetSnapshot: unknown[];
+  commits: unknown[];
+  analysisSnapshot: Record<string, unknown>;
+}): Promise<AnalyzeAdmissionResult> {
+  const config = await getAnalyzeAdmissionConfig(input.orgId);
 
-  const redis = getRedisClient();
-  try {
-    const raw = await redis.get(key);
-    return parseDedupeResult(raw);
-  } catch (err) {
-    throw new Error(`Failed reading analyze dedupe result from Redis: ${String(err)}`);
-  }
-}
-
-export async function waitForAnalyzeDedupeResult(
-  fingerprint: string,
-  waitMs: number,
-  intervalMs: number = 200
-): Promise<AnalyzeDedupeResult | null> {
-  const deadline = Date.now() + Math.max(waitMs, 0);
-  while (Date.now() < deadline) {
-    const result = await getAnalyzeDedupeResult(fingerprint);
-    if (result) {
-      return result;
-    }
-    await sleep(intervalMs);
-  }
-  return null;
-}
-
-export async function claimAnalyzeDedupeLock(
-  fingerprint: string,
-  owner: string,
-  orgId: string
-): Promise<boolean> {
-  const key = dedupeLockKey(fingerprint);
-  cleanupInMemoryIfNeeded();
-  const config = await getAnalyzeAdmissionConfig(orgId);
-
-  const redis = getRedisClient();
-  try {
-    const lockResult = await redis.set(
-      key,
-      owner,
-      'EX',
-      config.dedupeLockTtlSec,
-      'NX'
-    );
-    return lockResult === 'OK';
-  } catch (err) {
-    throw new Error(`Failed acquiring analyze dedupe lock in Redis: ${String(err)}`);
-  }
-}
-
-export async function releaseAnalyzeDedupeLock(
-  fingerprint: string,
-  owner: string
-): Promise<void> {
-  const key = dedupeLockKey(fingerprint);
-  cleanupInMemoryIfNeeded();
-
-  const redis = getRedisClient();
-  try {
-    await redis.eval(RELEASE_LOCK_SCRIPT, 1, key, owner);
-  } catch (err) {
-    throw new Error(`Failed releasing analyze dedupe lock in Redis: ${String(err)}`);
-  }
-}
-
-export async function storeAnalyzeDedupeResult(
-  fingerprint: string,
-  result: AnalyzeDedupeResult,
-  orgId: string
-): Promise<void> {
-  const key = dedupeResultKey(fingerprint);
-  cleanupInMemoryIfNeeded();
-  const config = await getAnalyzeAdmissionConfig(orgId);
-
-  const redis = getRedisClient();
-  try {
-    await redis.set(
-      key,
-      JSON.stringify(result),
-      'EX',
-      config.dedupeResultTtlSec
-    );
-  } catch (err) {
-    throw new Error(`Failed storing analyze dedupe result in Redis: ${String(err)}`);
-  }
-}
-
-function dedupeResultKey(fingerprint: string) {
-  return `analyze:dedupe:result:${fingerprint}`;
-}
-
-function dedupeLockKey(fingerprint: string) {
-  return `analyze:dedupe:lock:${fingerprint}`;
-}
-
-function parseDedupeResult(raw: string | null): AnalyzeDedupeResult | null {
-  if (!raw) return null;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!isAnalyzeDedupeResult(parsed)) {
+  const lockedResult = await withTransaction(async (client) => {
+    const locked = await tryAcquireAnalyzeLock(client, input.fingerprint);
+    if (!locked) {
       return null;
     }
-    return parsed;
-  } catch {
-    return null;
+
+    const existing = await findExistingAnalyzeReport(client, input.projectId, input.fingerprint);
+    if (existing && isReusableAnalyzeReport(existing, config.dedupeResultTtlSec)) {
+      return mapAnalyzeAdmission(existing, true);
+    }
+
+    const report = await insertAnalyzeReport(client, {
+      projectId: input.projectId,
+      orgId: input.orgId,
+      rulesetSnapshot: input.rulesetSnapshot,
+      commits: input.commits,
+      analysisSnapshot: input.analysisSnapshot,
+    });
+    return mapAnalyzeAdmission(report, false);
+  });
+
+  if (lockedResult) {
+    return lockedResult;
   }
+
+  const deadline = Date.now() + config.dedupeLockTtlSec * 1000;
+  while (Date.now() < deadline) {
+    const existing = await findExistingAnalyzeReportByFingerprint(input.projectId, input.fingerprint);
+    if (existing && isReusableAnalyzeReport(existing, config.dedupeResultTtlSec)) {
+      return mapAnalyzeAdmission(existing, true);
+    }
+    await sleep(200);
+  }
+
+  throw new Error('conflict: identical analysis request is already being processed');
 }
 
-function isAnalyzeDedupeResult(value: unknown): value is AnalyzeDedupeResult {
-  if (!value || typeof value !== 'object') return false;
-  const record = value as Record<string, unknown>;
-  const status = record.status;
+async function findExistingAnalyzeReport(
+  client: PoolClient,
+  projectId: string,
+  fingerprint: string
+): Promise<AnalyzeReportRow | null> {
+  const { rows } = await client.query<AnalyzeReportRow>(
+    `select id, status, project_id, org_id, created_at, analysis_snapshot
+     from analysis_reports
+     where project_id = $1
+       and analysis_snapshot->>'fingerprint' = $2
+     order by created_at desc
+     limit 1`,
+    [projectId, fingerprint]
+  );
+  return rows[0] ?? null;
+}
 
-  if (
-    status !== 'queued' &&
-    status !== 'running' &&
-    status !== 'done' &&
-    status !== 'failed'
-  ) {
+async function findExistingAnalyzeReportByFingerprint(
+  projectId: string,
+  fingerprint: string
+): Promise<AnalyzeReportRow | null> {
+  const row = await queryOne<AnalyzeReportRow>(
+    `select id, status, project_id, org_id, created_at, analysis_snapshot
+     from analysis_reports
+     where project_id = $1
+       and analysis_snapshot->>'fingerprint' = $2
+     order by created_at desc
+     limit 1`,
+    [projectId, fingerprint]
+  );
+  return row ?? null;
+}
+
+async function insertAnalyzeReport(
+  client: PoolClient,
+  input: {
+    projectId: string;
+    orgId: string;
+    rulesetSnapshot: unknown[];
+    commits: unknown[];
+    analysisSnapshot: Record<string, unknown>;
+  }
+): Promise<AnalyzeReportRow> {
+  const { rows } = await client.query<AnalyzeReportRow>(
+    `insert into analysis_reports
+      (project_id, org_id, ruleset_snapshot, commits, analysis_snapshot, status, created_at, updated_at)
+     values ($1,$2,$3,$4,$5,'pending',now(),now())
+     returning id, status, project_id, org_id, created_at, analysis_snapshot`,
+    [
+      input.projectId,
+      input.orgId,
+      JSON.stringify(input.rulesetSnapshot),
+      JSON.stringify(input.commits),
+      JSON.stringify(input.analysisSnapshot),
+    ]
+  );
+  const report = rows[0];
+  if (!report) {
+    throw new Error('Failed to create report');
+  }
+  return report;
+}
+
+async function tryAcquireAnalyzeLock(client: PoolClient, fingerprint: string): Promise<boolean> {
+  const { rows } = await client.query<{ locked: boolean }>(
+    `select pg_try_advisory_xact_lock(hashtextextended($1, 0)) as locked`,
+    [fingerprint]
+  );
+  return rows[0]?.locked === true;
+}
+
+function mapAnalyzeAdmission(
+  report: AnalyzeReportRow,
+  deduplicated: boolean
+): AnalyzeAdmissionResult {
+  const status = report.status === 'pending' ? 'queued' : report.status;
+  return {
+    reportId: report.id,
+    status,
+    projectId: report.project_id,
+    orgId: report.org_id,
+    incrementalAnalysis: Boolean(report.analysis_snapshot?.useIncremental),
+    createdAt: new Date(report.created_at).getTime(),
+    deduplicated,
+  };
+}
+
+function isReusableAnalyzeReport(report: AnalyzeReportRow, dedupeTtlSec: number): boolean {
+  if (report.status === 'pending' || report.status === 'running') {
+    return true;
+  }
+
+  if (report.status === 'failed' || report.status === 'canceled') {
     return false;
   }
 
-  return (
-    typeof record.reportId === 'string' &&
-    typeof record.projectId === 'string' &&
-    typeof record.orgId === 'string' &&
-    typeof record.incrementalAnalysis === 'boolean' &&
-    typeof record.createdAt === 'number' &&
-    (typeof record.taskId === 'undefined' || typeof record.taskId === 'string')
-  );
-}
-
-async function consumeRateBucket(key: string, limit: number, windowMs: number): Promise<BucketUsage> {
-  cleanupInMemoryIfNeeded();
-
-  const redis = getRedisClient();
-  try {
-    const raw = (await redis.eval(
-      RATE_LIMIT_SCRIPT,
-      1,
-      key,
-      String(windowMs),
-      String(limit)
-    )) as unknown;
-
-    if (Array.isArray(raw) && raw.length >= 3) {
-      const count = toInt(raw[0]);
-      const remaining = toInt(raw[1]);
-      const ttlMs = Math.max(toInt(raw[2]), 0);
-      return { count, remaining, ttlMs };
-    }
-    throw new Error('invalid rate-limit script return shape');
-  } catch (err) {
-    throw new Error(`Failed consuming Redis rate bucket: ${String(err)}`);
+  if (dedupeTtlSec <= 0) {
+    return false;
   }
+
+  const ageMs = Date.now() - new Date(report.created_at).getTime();
+  return ageMs <= dedupeTtlSec * 1000;
 }
 
 function buildRateLimitHeaders(limit: number, remaining: number, resetAtMs: number) {
@@ -401,15 +362,47 @@ function buildRateLimitHeaders(limit: number, remaining: number, resetAtMs: numb
   };
 }
 
+async function consumeRateBucket(
+  key: string,
+  limit: number,
+  windowMs: number
+): Promise<BucketUsage> {
+  const windowStart = new Date(Math.floor(Date.now() / windowMs) * windowMs);
+  const windowEnd = new Date(windowStart.getTime() + windowMs);
+  const row = await queryOne<{ count: number; ttl_ms: number }>(
+    `with upserted as (
+       insert into analysis_rate_buckets
+         (bucket_key, window_started_at, window_ends_at, request_count, updated_at)
+       values ($1, $2, $3, 1, now())
+       on conflict (bucket_key, window_started_at)
+       do update set
+         request_count = analysis_rate_buckets.request_count + 1,
+         window_ends_at = excluded.window_ends_at,
+         updated_at = now()
+       returning request_count, window_ends_at
+     )
+     select request_count as count,
+            greatest(0, floor(extract(epoch from (window_ends_at - now())) * 1000))::int as ttl_ms
+     from upserted`,
+    [key, windowStart.toISOString(), windowEnd.toISOString()]
+  );
+
+  if (!row) {
+    throw new Error('Failed consuming rate bucket');
+  }
+
+  return {
+    count: row.count,
+    remaining: Math.max(0, limit - row.count),
+    ttlMs: Math.max(0, row.ttl_ms),
+  };
+}
+
 function normalizeIp(ipAddress?: string | null) {
   if (!ipAddress) return null;
   const first = ipAddress.split(',')[0]?.trim();
   if (!first) return null;
   return first;
-}
-
-function cleanupInMemoryIfNeeded() {
-  // Redis-only admission control: no in-memory fallback state.
 }
 
 function toInt(value: unknown): number {

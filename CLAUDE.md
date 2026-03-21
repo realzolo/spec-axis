@@ -31,8 +31,9 @@ If a client-only page cannot receive `dict` from a server parent, use `useClient
 
 AI code review + CI/CD platform: Next.js 16 + React 19 + TypeScript + Tailwind CSS v4.
 Multi-GitHub project management, commit selection, Claude AI analysis, configurable rule sets, quality report scoring, and a stage-based pipeline builder.
-Backend: PostgreSQL for core data, Go scheduler executes analysis jobs, evaluates cron-based pipeline schedules, and orchestrates pipeline runs via Redis queue; pipeline step execution is worker-only and handled by long-lived Worker agents connected over WebSocket control channels (Scheduler=control plane, Worker=execution plane); status updates stream via SSE with polling fallback.
+Backend: PostgreSQL for core data, Go scheduler executes analysis jobs, evaluates cron-based pipeline schedules, and orchestrates analysis/pipeline execution with Postgres-backed polling; pipeline step execution is worker-only and handled by long-lived Worker agents connected over WebSocket control channels (Scheduler=control plane, Worker=execution plane); status updates stream via SSE with polling fallback.
 Monorepo layout: `apps/studio` (Next.js), `apps/scheduler` (Go scheduler control plane), `apps/worker` (Go execution agent), `packages/*` (shared contracts).
+Deployment model: Studio and Scheduler are self-hosted services deployed with the same container-first workflow; Studio is built as a Next.js server image, Scheduler as a Go service image, and both are run behind a reverse proxy on the same platform or cluster.
 Unless stated otherwise, paths in this guide are relative to `apps/studio`.
 
 **Key platform features:**
@@ -123,7 +124,6 @@ Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on si
 | robfig/cron/v3 | ^3.x | Scheduler cron parsing and next-run evaluation |
 | doublestar | ^4.10 | Worker-side `artifactPaths` glob matching (includes `**`) |
 | TOML | 1.6.0 | `github.com/BurntSushi/toml` for scheduler config |
-| Asynq | 0.26.0 | Redis-backed job queue (scheduler) |
 | sonner | ^2 | Toast notifications |
 | zod | `^4.3.6` | Runtime validation |
 | lucide-react | ^0.577 | Icons |
@@ -234,7 +234,7 @@ Primary dashboard actions must render as true solid buttons with explicit token-
 - `apps/studio/src/proxy.ts` is currently unused.
 - **Dynamic pages**: any dashboard page that depends on auth/session or database reads must use `export const dynamic = 'force-dynamic'`
 - **Dynamic route params**: in pages and route handlers, `params` is async — `const { id } = await params` (avoid sync dynamic APIs errors)
-- **Vercel timeout**: analyze route configured for 300s in `vercel.json`
+- **Self-hosted request timeouts**: long-running routes such as analyze/chat should be protected by the deployment platform or reverse proxy; do not rely on Vercel-specific timeout behavior in self-hosted environments.
 
 ## Directory Structure
 
@@ -274,7 +274,7 @@ apps/
           rules/                # Org-level rule sets
           settings/notifications/
         api/
-          analyze/              # POST → enqueue scheduler task
+          analyze/              # POST → create report with admission control
           pipelines/[id]/       # GET/PUT/PATCH/DELETE (PATCH updates concurrency_mode; DELETE blocks when runs are active)
           pipelines/[id]/runs/  # GET list + POST (enforces concurrency gate)
           pipeline-runs/        # Run detail + logs (proxy to scheduler)
@@ -310,7 +310,7 @@ apps/
         projectContext.tsx      # ProjectDataProvider + useProject() hook
         ruleTemplates.ts        # Static built-in rule template data
       services/
-        db.ts github.ts claude.ts taskQueue.ts analyzeTask.ts
+        db.ts github.ts claude.ts analyzeTask.ts
         pipelineTypes.ts        # Pipeline editor/view types + pipeline summaries
         schedulerClient.ts         # cancelPipelineRun() + other scheduler proxy functions
       proxy.ts                  # Unused auth middleware
@@ -357,8 +357,6 @@ EMAIL_PROVIDER=             # Email provider for notifications: console|resend
 EMAIL_FROM=                 # From address (required for resend)
 RESEND_API_KEY=             # Resend API key (required when EMAIL_PROVIDER=resend)
 STUDIO_BASE_URL=            # Public base URL for links included in emails (optional)
-REDIS_URL=                  # Redis URL used by BullMQ and analyze admission control (recommended in production)
-                            # Required for analyze admission control (no in-memory fallback)
 ANALYZE_RATE_LIMIT_WINDOW_MS=          # Analyze rate-limit window in ms (default 60000)
 ANALYZE_RATE_LIMIT_USER_PROJECT_MAX=   # Max analyze requests/window per org+user+project (default 6)
 ANALYZE_RATE_LIMIT_ORG_MAX=            # Max analyze requests/window per org (default 60)
@@ -380,13 +378,10 @@ AI_COST_OUTPUT_PER_MILLION_USD=         # Optional cost model for phase-level co
 SCHEDULER_PORT=8200
 SCHEDULER_TOKEN=
 DATABASE_URL=               # Postgres connection string
-REDIS_URL=                  # Redis queue
 ENCRYPTION_KEY=             # Same key used by studio for decrypting secrets
 STUDIO_URL=                 # Studio base URL (Scheduler -> Studio), used by pipeline executors
 STUDIO_TOKEN=               # Token presented to Studio as X-Scheduler-Token (defaults to SCHEDULER_TOKEN; dev falls back to "dev-scheduler")
-PIPELINE_QUEUE=             # Pipeline queue name
 PIPELINE_CONCURRENCY=       # Max concurrent pipeline jobs
-PIPELINE_RUN_TIMEOUT=       # Overall run timeout (e.g. 2h)
 WORKER_LEASE_TTL=           # Worker heartbeat lease window (default 45s)
 SCHEDULER_DATA_DIR=            # Local logs/artifacts root
 PIPELINE_LOG_RETENTION_DAYS=
@@ -407,20 +402,14 @@ Example config (tables, no redundant prefixes):
 port = "8200"
 token = ""
 concurrency = 4
-queue = "analysis"
 analyze_timeout = "900s"
 data_dir = "data"
 
 [database]
 url = ""
 
-[redis]
-url = ""
-
 [pipeline]
-queue = "pipelines"
 concurrency = 4
-run_timeout = "2h"
 log_retention_days = 30
 artifact_retention_days = 30
 
@@ -493,14 +482,14 @@ If new install warnings appear, approve the dependency and update the allowlist.
 
 ## AI Analysis Flow
 
-1. `POST /api/analyze` (auth required) applies admission control before enqueue:
-   - request dedupe by semantic fingerprint (`org + project + commits + rules + mode`) with short Redis TTL
-   - distributed rate limits (`org+user+project`, `org`, auxiliary IP hash)
+1. `POST /api/analyze` (auth required) applies admission control before report creation:
+   - request dedupe by semantic fingerprint (`org + project + commits + rules + mode`) backed by PostgreSQL advisory locking and a short reuse window for recent identical reports
+   - fixed-window rate limits stored in PostgreSQL (`org+user+project`, `org`, auxiliary IP hash)
    - queue backpressure guard based on active `analysis_reports` (`pending`/`running`) counts
-2. Studio performs integration preflight (AI integration must decrypt/resolve successfully) before creating report/task.
-3. On accepted request, Studio creates `analysis_reports` row with immutable `analysis_snapshot` and enqueues scheduler task
-4. API returns `{ reportId, status: "queued", taskId }` (or deduped existing report/task when applicable)
-5. Reports support manual termination via `POST /api/reports/[id]/terminate` (Studio marks report `canceled` and requests Scheduler task cancellation).
+2. Studio performs integration preflight (AI integration must decrypt/resolve successfully) before creating the report.
+3. On accepted request, Studio creates `analysis_reports` with an immutable `analysis_snapshot`; the scheduler later claims `pending` reports directly from PostgreSQL.
+4. API returns `{ reportId, status: "queued" | "running" | "done" | "partial_failed", deduplicated }` depending on whether the request created a new report or reused an existing one.
+5. Reports support manual termination via `POST /api/reports/[id]/terminate` (Studio marks the report `canceled`; Scheduler watches the database state and aborts in-flight analysis).
 6. Studio also auto-fails timed-out reports (`pending`/`running`) based on `ANALYZE_REPORT_TIMEOUT_MS`.
 7. Scheduler canonical report status model is `pending -> running -> done | partial_failed | failed | canceled`.
 8. Scheduler executes phased analysis:
@@ -650,6 +639,8 @@ psql "$DATABASE_URL" -f docs/db/migrations/006_commit_review_items.sql
 psql "$DATABASE_URL" -f docs/db/migrations/007_codebase_comment_threads.sql
 psql "$DATABASE_URL" -f docs/db/migrations/008_codebase_thread_projections.sql
 psql "$DATABASE_URL" -f docs/db/migrations/009_phased_analysis_sections.sql
+psql "$DATABASE_URL" -f docs/db/migrations/010_analysis_rate_buckets.sql
+psql "$DATABASE_URL" -f docs/db/migrations/018_drop_analysis_tasks.sql
 ```
 
 | File | Description |
@@ -661,6 +652,8 @@ psql "$DATABASE_URL" -f docs/db/migrations/009_phased_analysis_sections.sql
 | `007_codebase_comment_threads.sql` | Adds thread model (`codebase_comment_threads`) and links `codebase_comments.thread_id` |
 | `008_codebase_thread_projections.sql` | Adds immutable thread anchors and per-commit projection cache/status tables |
 | `009_phased_analysis_sections.sql` | Adds phased analysis sections, `analysis_snapshot`, `sse_seq`, and canonical report running status constraint |
+| `010_analysis_rate_buckets.sql` | Adds fixed-window analysis rate limit buckets backed by PostgreSQL |
+| `018_drop_analysis_tasks.sql` | Removes the obsolete analysis task queue table |
 
 ## FAQ
 

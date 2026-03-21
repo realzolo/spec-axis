@@ -4,20 +4,14 @@
 port = "8200"
 token = ""
 concurrency = 4
-queue = "analysis"
 analyze_timeout = "300s"
 data_dir = "data"
 
 [database]
 url = "postgres://spec_axis:spec_axis@43.153.63.235:5432/spec_axis"
 
-[redis]
-url = "redis://:YZWp6L44@43.153.63.235:6379/0"
-
 [pipeline]
-queue = "pipelines"
 concurrency = 4
-run_timeout = "2h"
 log_retention_days = 30
 artifact_retention_days = 30
 

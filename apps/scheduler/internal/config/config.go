@@ -10,14 +10,10 @@ type Config struct {
 	Port                  string
 	SchedulerToken        string
 	DatabaseURL           string
-	RedisURL              string
 	EncryptionKey         string
 	Concurrency           int
-	Queue                 string
 	AnalyzeTimeout        time.Duration
-	PipelineQueue         string
 	PipelineConcurrency   int
-	PipelineRunTimeout    time.Duration
 	DataDir               string
 	LogRetentionDays      int
 	ArtifactRetentionDays int

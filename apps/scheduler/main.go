@@ -10,14 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/hibiken/asynq"
-
 	"spec-axis/scheduler/internal/artifacts"
 	"spec-axis/scheduler/internal/config"
+	"spec-axis/scheduler/internal/dispatch"
 	"spec-axis/scheduler/internal/events"
 	"spec-axis/scheduler/internal/httpapi"
 	"spec-axis/scheduler/internal/pipeline"
-	"spec-axis/scheduler/internal/queue"
 	"spec-axis/scheduler/internal/store"
 	"spec-axis/scheduler/internal/workerhub"
 )
@@ -33,11 +31,8 @@ func main() {
 		log.Fatalf("config error: %v", err)
 	}
 	log.Printf(
-		"scheduler config loaded: queue=%s analyze_timeout=%s pipeline_queue=%s pipeline_run_timeout=%s worker_lease_ttl=%s",
-		cfg.Queue,
+		"scheduler config loaded: analyze_timeout=%s worker_lease_ttl=%s",
 		cfg.AnalyzeTimeout,
-		cfg.PipelineQueue,
-		cfg.PipelineRunTimeout,
 		cfg.WorkerLeaseTTL,
 	)
 
@@ -60,20 +55,6 @@ func main() {
 		}
 	}()
 
-	redisOpt, err := queue.ParseRedisURL(cfg.RedisURL)
-	if err != nil {
-		log.Fatalf("redis error: %v", err)
-	}
-
-	queueWeights := map[string]int{
-		cfg.Queue:         1,
-		cfg.PipelineQueue: 1,
-	}
-	server := asynq.NewServer(redisOpt, asynq.Config{
-		Concurrency: cfg.Concurrency,
-		Queues:      queueWeights,
-	})
-
 	storage := pipeline.NewLocalStorage(cfg.DataDir)
 	executors := pipeline.NewExecutorRegistry()
 	executors.Register("shell", &pipeline.ShellExecutor{})
@@ -90,26 +71,8 @@ func main() {
 	defer hub.Stop()
 	engine.WorkerHub = hub
 
-	mux := asynq.NewServeMux()
-	mux.HandleFunc(queue.TaskTypeAnalyze, queue.HandleAnalyzeTask(st, publisher, cfg.AnalyzeTimeout))
-	mux.HandleFunc(queue.TaskTypePipelineRun, queue.HandlePipelineRunTask(engine))
-
-	go func() {
-		if err := server.Run(mux); err != nil {
-			log.Fatalf("asynq server error: %v", err)
-		}
-	}()
-
-	client := asynq.NewClient(redisOpt)
-	defer client.Close()
-	inspector := asynq.NewInspector(redisOpt)
-	defer inspector.Close()
-
 	pipelineService := &pipeline.Service{
 		Store:                 st,
-		Queue:                 client,
-		QueueName:             cfg.PipelineQueue,
-		RunTimeout:            cfg.PipelineRunTimeout,
 		Storage:               storage,
 		Artifacts:             &artifacts.Manager{Store: st, LocalDataDir: cfg.DataDir},
 		ArtifactRetentionDays: cfg.ArtifactRetentionDays,
@@ -117,10 +80,12 @@ func main() {
 		StudioToken:           cfg.StudioToken,
 	}
 	go pipelineService.RunScheduleLoop(ctx, 30*time.Second)
+	go dispatch.RunAnalysisLoop(ctx, st, publisher, cfg.AnalyzeTimeout, cfg.Concurrency, 2*time.Second)
+	go dispatch.RunPipelineLoop(ctx, st, engine, 1, 2*time.Second)
 
 	httpServer := &http.Server{
 		Addr:    ":" + cfg.Port,
-		Handler: httpapi.New(cfg, client, inspector, pipelineService, hub).Handler(),
+		Handler: httpapi.New(cfg, pipelineService, hub).Handler(),
 	}
 
 	go func() {
@@ -154,7 +119,6 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	server.Shutdown()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf("http shutdown error: %v", err)
 	}

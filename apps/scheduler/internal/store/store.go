@@ -33,12 +33,13 @@ type Project struct {
 }
 
 type Report struct {
-	ID              string
-	ProjectID       string
-	OrgID           string
-	Status          string
-	RulesetSnapshot json.RawMessage
-	Commits         json.RawMessage
+	ID               string
+	ProjectID        string
+	OrgID            string
+	Status           string
+	RulesetSnapshot  json.RawMessage
+	Commits          json.RawMessage
+	AnalysisSnapshot json.RawMessage
 }
 
 type IntegrationRow struct {
@@ -174,7 +175,7 @@ func (s *Store) GetProject(ctx context.Context, projectID string) (*Project, err
 func (s *Store) GetReport(ctx context.Context, reportID string) (*Report, error) {
 	row := s.pool.QueryRow(
 		ctx,
-		`select id, project_id, org_id, status, ruleset_snapshot, commits
+		`select id, project_id, org_id, status, ruleset_snapshot, commits, analysis_snapshot
 		 from analysis_reports where id=$1`,
 		reportID,
 	)
@@ -187,11 +188,85 @@ func (s *Store) GetReport(ctx context.Context, reportID string) (*Report, error)
 		&report.Status,
 		&report.RulesetSnapshot,
 		&report.Commits,
+		&report.AnalysisSnapshot,
 	)
 	if err != nil {
 		return nil, err
 	}
 	return &report, nil
+}
+
+func (s *Store) IsReportCanceled(ctx context.Context, reportID string) (bool, error) {
+	row := s.pool.QueryRow(ctx, `select status from analysis_reports where id = $1`, reportID)
+	var status string
+	if err := row.Scan(&status); err != nil {
+		return false, err
+	}
+	return status == "canceled", nil
+}
+
+func (s *Store) ClaimPendingAnalysisReports(ctx context.Context, limit int) ([]Report, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	rows, err := tx.Query(
+		ctx,
+		`with claimed as (
+		   select id
+		     from analysis_reports
+		    where status = 'pending'
+		    order by created_at asc
+		    for update skip locked
+		    limit $1
+		 )
+		 update analysis_reports r
+		    set status = 'running',
+		        error_message = null,
+		        analysis_progress = null,
+		        sse_seq = sse_seq + 1,
+		        updated_at = now()
+		   from claimed
+		  where r.id = claimed.id
+		  returning r.id, r.project_id, r.org_id, r.status, r.ruleset_snapshot, r.commits, r.analysis_snapshot`,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	claimed := make([]Report, 0, limit)
+	for rows.Next() {
+		var report Report
+		if err := rows.Scan(
+			&report.ID,
+			&report.ProjectID,
+			&report.OrgID,
+			&report.Status,
+			&report.RulesetSnapshot,
+			&report.Commits,
+			&report.AnalysisSnapshot,
+		); err != nil {
+			return nil, err
+		}
+		claimed = append(claimed, report)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return claimed, nil
 }
 
 func (s *Store) UpdateReportStatus(ctx context.Context, reportID string, status string, errorMessage *string) error {

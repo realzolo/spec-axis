@@ -8,7 +8,6 @@ import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { requireReportAccess } from '@/services/orgs';
-import { cancelAnalyzeTask } from '@/services/schedulerClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,17 +85,6 @@ export async function POST(
       );
     }
 
-    // Best-effort scheduler cancellation (queued/active task).
-    // Report status is already finalized as failed, so UI state is consistent
-    // even if scheduler cancellation is delayed or unavailable.
-    let schedulerWarning: string | null = null;
-    try {
-      await cancelAnalyzeTask(reportId);
-    } catch (err) {
-      schedulerWarning = err instanceof Error ? err.message : 'Scheduler cancel request failed';
-      logger.warn(`Scheduler cancel analyze failed for report ${reportId}`, err instanceof Error ? err : undefined);
-    }
-
     const clientInfo = extractClientInfo(request);
     await auditLogger.log({
       action: 'update',
@@ -112,7 +100,6 @@ export async function POST(
       reportId,
       status: 'canceled',
       error_message: terminationMessage,
-      ...(schedulerWarning ? { warning: schedulerWarning } : {}),
     });
   } catch (err) {
     const { error, statusCode } = formatErrorResponse(err);

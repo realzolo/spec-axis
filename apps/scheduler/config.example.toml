@@ -10,9 +10,6 @@ data_dir = "data" # optional local state path
 [database]
 url = "postgres://user:pass@localhost:5432/spec_axis"
 
-[redis]
-url = "redis://localhost:6379/0"
-
 [security]
 encryption_key = ""
 

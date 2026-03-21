@@ -22,7 +22,7 @@ AI-powered code review and CI/CD pipeline platform. Connect GitHub/GitLab reposi
 | UI | Tailwind CSS v4 + Geist font |
 | AI | Anthropic Claude SDK (supports custom `ANTHROPIC_BASE_URL`) |
 | Database | PostgreSQL 14+ |
-| Queue | Redis + Asynq |
+| Coordination | PostgreSQL-backed polling |
 | Scheduler (Control Plane) | Go 1.24 |
 | Auth | Session cookies + email verification |
 
@@ -44,7 +44,6 @@ docs/
 - Node.js 20+, pnpm
 - Go 1.24+
 - PostgreSQL 14+
-- Redis
 
 ### 1. Install dependencies
 
@@ -70,7 +69,7 @@ EMAIL_VERIFICATION_REQUIRED=false
 ```bash
 psql "$DATABASE_URL" -f docs/db/init.sql
 # Incremental migrations:
-psql "$DATABASE_URL" -f docs/db/migrations/013_orchestrator_dag_schema.sql
+# Apply the numbered files in docs/db/migrations/ in order.
 ```
 
 ### 4. Configure the Scheduler
@@ -84,9 +83,6 @@ token = "dev-scheduler"
 
 [database]
 url = "postgres://user:pass@localhost/specaxis"
-
-[redis]
-url = "redis://localhost:6379"
 
 [security]
 encryption_key = "<same key as Studio>"
@@ -178,13 +174,13 @@ VCS and AI integrations are configured in the web UI (Settings > Integrations), 
 | `EMAIL_PROVIDER` | `console` or `resend` |
 | `EMAIL_VERIFICATION_REQUIRED` | `true` or `false` |
 
-Scheduler also needs `REDIS_URL`, `STUDIO_URL`, `STUDIO_TOKEN`. See [CLAUDE.md](./CLAUDE.md) for the full list.
+Scheduler also needs `STUDIO_URL` and `STUDIO_TOKEN`. See [CLAUDE.md](./CLAUDE.md) for the full list.
 
 ## Deployment
 
-- Studio deploys to Vercel. The `/api/analyze` route is configured for a 300s timeout in `vercel.json`.
-- Scheduler runs as a standalone Go binary on any server with access to Postgres and Redis.
-- Apply `docs/db/init.sql` and all migration files in `docs/db/migrations/` before deploying.
+- Studio and Scheduler should be deployed with the same container-first workflow on your own infrastructure.
+- Studio runs as a Next.js server image, Scheduler runs as a Go service image, and both sit behind a reverse proxy such as nginx, Traefik, or Caddy.
+- Keep Postgres as the required external service, and apply `docs/db/init.sql` plus all migrations before deploying.
 
 ## Documentation
 

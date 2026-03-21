@@ -63,13 +63,14 @@
 ┌────────────────────▼────────────────────────────────┐
 │                    apps/scheduler                       │
 │                  Go 1.24 Service                     │
-│  Control Plane · Queue · Worker Dispatch · Storage  │
+│  Control Plane · Postgres Polling · Worker Dispatch │
 └──────────┬──────────────────────────┬───────────────┘
-           │                          │
-    ┌──────▼──────┐           ┌───────▼──────┐
-    │  PostgreSQL  │           │    Redis      │
-    │  (all data)  │           │ (Asynq queue) │
-    └─────────────┘           └──────────────┘
+           │
+    ┌──────▼──────┐
+    │  PostgreSQL  │
+    │ (data +      │
+    │ coordination)│
+    └─────────────┘
                      WebSocket control channel
                                │
                      ┌─────────▼─────────┐
@@ -82,6 +83,7 @@
 **Key design decisions:**
 - Studio and Scheduler are separate services communicating over HTTP — Scheduler can be scaled independently
 - Scheduler is the control plane; Worker agents execute pipeline jobs and stream step progress, logs, and artifacts back to Scheduler
+- PostgreSQL is the coordination layer for analysis admission and pipeline dispatch
 - Integrations (VCS, AI) configured via web UI, stored encrypted in DB — no env var sprawl
 - Stage-based pipeline builder with fixed core columns (`source`, `review`, `build`, `deploy`) and on-demand automation slots; runtime DAG is derived from stage order and dispatch mode
 

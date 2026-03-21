@@ -469,31 +469,21 @@ create table org_runtime_settings (
   updated_at timestamptz not null default now()
 );
 
--- ============================================================
--- Task queue, metrics, audit
--- ============================================================
-create table analysis_tasks (
-  id uuid primary key default gen_random_uuid(),
-  type text not null check (type in ('analyze','export','learn')),
-  project_id uuid not null references code_projects(id) on delete cascade,
-  report_id uuid references analysis_reports(id) on delete set null,
-  payload jsonb not null,
-  status text not null default 'pending' check (status in ('pending','processing','completed','failed')),
-  priority int not null default 5 check (priority between 1 and 10),
-  attempts int not null default 0,
-  max_attempts int not null default 3,
-  error text,
-  created_at timestamptz not null default now(),
-  started_at timestamptz,
-  completed_at timestamptz,
-  updated_at timestamptz not null default now()
+create table analysis_rate_buckets (
+  bucket_key text not null,
+  window_started_at timestamptz not null,
+  window_ends_at timestamptz not null,
+  request_count int not null default 1 check (request_count > 0),
+  updated_at timestamptz not null default now(),
+  primary key (bucket_key, window_started_at),
+  constraint analysis_rate_buckets_window_check check (window_ends_at > window_started_at)
 );
 
-create index idx_analysis_tasks_status on analysis_tasks(status);
-create index idx_analysis_tasks_project_id on analysis_tasks(project_id);
-create index idx_analysis_tasks_priority on analysis_tasks(priority desc, created_at asc);
-create index idx_analysis_tasks_created_at on analysis_tasks(created_at desc);
+create index idx_analysis_rate_buckets_window_ends_at on analysis_rate_buckets(window_ends_at desc);
 
+-- ============================================================
+-- Metrics, audit
+-- ============================================================
 create table analysis_metrics (
   id uuid primary key default gen_random_uuid(),
   report_id uuid not null references analysis_reports(id) on delete cascade,

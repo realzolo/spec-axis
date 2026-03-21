@@ -1043,6 +1043,120 @@ func (s *Store) GetPipelineRunWithVersion(ctx context.Context, runID string) (*P
 	return &run, &version, nil
 }
 
+func (s *Store) ClaimQueuedPipelineRuns(ctx context.Context, limit int) ([]PipelineRun, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	rows, err := tx.Query(
+		ctx,
+		`with claimed as (
+		   select id
+		     from pipeline_runs
+		    where status = 'queued'
+		    order by created_at asc
+		    for update skip locked
+		    limit $1
+		 )
+		 update pipeline_runs r
+		    set status = 'running',
+		        error_message = null,
+		        started_at = coalesce(started_at, now()),
+		        updated_at = now()
+		   from claimed
+		  where r.id = claimed.id
+		  returning r.id, r.pipeline_id, r.version_id, r.org_id, r.project_id, r.status, r.trigger_type,
+		            r.triggered_by, r.idempotency_key, r.rollback_of, r.attempt, r.error_code, r.error_message,
+		            r.metadata, r.created_at, r.started_at, r.finished_at, r.updated_at`,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	claimed := make([]PipelineRun, 0, limit)
+	for rows.Next() {
+		var run PipelineRun
+		var projectID pgtype.UUID
+		var triggeredBy pgtype.UUID
+		var idempotency pgtype.Text
+		var rollbackOf pgtype.UUID
+		var errorCode pgtype.Text
+		var errorMessage pgtype.Text
+		var startedAt pgtype.Timestamptz
+		var finishedAt pgtype.Timestamptz
+		if err := rows.Scan(
+			&run.ID,
+			&run.PipelineID,
+			&run.VersionID,
+			&run.OrgID,
+			&projectID,
+			&run.Status,
+			&run.TriggerType,
+			&triggeredBy,
+			&idempotency,
+			&rollbackOf,
+			&run.Attempt,
+			&errorCode,
+			&errorMessage,
+			&run.Metadata,
+			&run.CreatedAt,
+			&startedAt,
+			&finishedAt,
+			&run.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if projectID.Valid {
+			value := projectID.String()
+			run.ProjectID = &value
+		}
+		if triggeredBy.Valid {
+			value := triggeredBy.String()
+			run.TriggeredBy = &value
+		}
+		if idempotency.Valid {
+			value := idempotency.String
+			run.IdempotencyKey = &value
+		}
+		if rollbackOf.Valid {
+			value := rollbackOf.String()
+			run.RollbackOf = &value
+		}
+		if errorCode.Valid {
+			value := errorCode.String
+			run.ErrorCode = &value
+		}
+		if errorMessage.Valid {
+			value := errorMessage.String
+			run.ErrorMessage = &value
+		}
+		if startedAt.Valid {
+			run.StartedAt = &startedAt.Time
+		}
+		if finishedAt.Valid {
+			run.FinishedAt = &finishedAt.Time
+		}
+		claimed = append(claimed, run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return claimed, nil
+}
+
 func (s *Store) GetPipelineRun(ctx context.Context, runID string) (*PipelineRun, error) {
 	row := s.pool.QueryRow(
 		ctx,

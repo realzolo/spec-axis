@@ -9,19 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5"
 
 	"spec-axis/scheduler/internal/artifacts"
-	"spec-axis/scheduler/internal/queue"
 	"spec-axis/scheduler/internal/store"
 )
 
 type Service struct {
 	Store                 *store.Store
-	Queue                 *asynq.Client
-	QueueName             string
-	RunTimeout            time.Duration
 	Storage               *LocalStorage
 	Artifacts             *artifacts.Manager
 	ArtifactRetentionDays int
@@ -257,28 +252,6 @@ func (s *Service) TriggerRun(ctx context.Context, input TriggerRunInput) (*store
 		"timestamp":  time.Now().UTC().Format(time.RFC3339),
 	})
 
-	if s.Queue == nil {
-		return nil, errors.New("queue client is not configured")
-	}
-
-	task, err := queue.NewPipelineRunTask(run.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	options := []asynq.Option{
-		asynq.Queue(s.QueueName),
-		asynq.MaxRetry(1),
-		asynq.Timeout(s.RunTimeout),
-		asynq.TaskID("pipeline:" + run.ID),
-	}
-	if _, err := s.Queue.Enqueue(task, options...); err != nil {
-		if errors.Is(err, asynq.ErrTaskIDConflict) || errors.Is(err, asynq.ErrDuplicateTask) {
-			return run, nil
-		}
-		return nil, err
-	}
-
 	return run, nil
 }
 
@@ -327,7 +300,7 @@ func (s *Service) RunScheduleLoop(ctx context.Context, interval time.Duration) {
 }
 
 func (s *Service) scanScheduledPipelines(ctx context.Context) error {
-	if s.Store == nil || s.Queue == nil {
+	if s.Store == nil {
 		return nil
 	}
 
@@ -473,20 +446,7 @@ func (s *Service) TriggerRunJob(ctx context.Context, input TriggerRunJobInput) e
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	})
 
-	if s.Queue == nil {
-		return errors.New("queue client is not configured")
-	}
-	task, err := queue.NewPipelineRunTask(input.RunID)
-	if err != nil {
-		return err
-	}
-	_, err = s.Queue.Enqueue(task,
-		asynq.Queue(s.QueueName),
-		asynq.MaxRetry(1),
-		asynq.Timeout(s.RunTimeout),
-		asynq.TaskID("pipeline:"+input.RunID+":job:"+job.ID+":"+time.Now().UTC().Format("20060102150405")),
-	)
-	return err
+	return nil
 }
 
 type UploadWorkerArtifactInput struct {

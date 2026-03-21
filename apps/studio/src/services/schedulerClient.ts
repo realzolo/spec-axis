@@ -21,19 +21,6 @@ import {
 } from '@spec-axis/contracts/scheduler';
 import { z } from 'zod';
 
-type AnalyzePayload = {
-  projectId: string;
-  reportId: string;
-  repo: string;
-  hashes: string[];
-  rules: Array<{ category: string; name: string; prompt: string; severity: string }>;
-  previousReport: Record<string, unknown> | null;
-  useIncremental: boolean;
-};
-
-type SchedulerResponse = { taskId: string };
-type CancelAnalyzeResponse = { ok: true; taskId: string };
-
 function schedulerBaseUrl() {
   const baseUrl = process.env.SCHEDULER_BASE_URL?.replace(/\/+$/, '');
   if (!baseUrl) {
@@ -50,51 +37,15 @@ function schedulerHeaders() {
   };
 }
 
-async function readSchedulerJson(res: Response): Promise<unknown> {
-  const text = await res.text().catch(() => '');
-  if (!text) return null;
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    throw new Error(`Scheduler returned invalid JSON: ${text.slice(0, 200)}`);
-  }
-}
-
 async function fetchScheduler<T>(path: string, init: RequestInit, schema: z.ZodType<T>): Promise<T> {
   const res = await fetch(`${schedulerBaseUrl()}${path}`, init);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Scheduler request failed: ${res.status} ${text}`);
   }
-  const json = await readSchedulerJson(res);
+  const text = await res.text().catch(() => '');
+  const json = text ? (JSON.parse(text) as unknown) : null;
   return schema.parse(json);
-}
-
-export async function enqueueAnalyze(payload: AnalyzePayload): Promise<SchedulerResponse> {
-  const res = await fetch(`${schedulerBaseUrl()}/v1/tasks/analyze`, {
-    method: 'POST',
-    headers: schedulerHeaders(),
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Scheduler enqueue failed: ${res.status} ${text}`);
-  }
-
-  return (await res.json()) as SchedulerResponse;
-}
-
-export async function cancelAnalyzeTask(reportId: string): Promise<CancelAnalyzeResponse> {
-  const res = await fetch(`${schedulerBaseUrl()}/v1/tasks/analyze/${reportId}/cancel`, {
-    method: 'POST',
-    headers: schedulerHeaders(),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Scheduler cancel analyze failed: ${res.status} ${text}`);
-  }
-  return (await res.json()) as CancelAnalyzeResponse;
 }
 
 export async function listPipelines(orgId: string, projectId?: string | null): Promise<SchedulerPipeline[]> {

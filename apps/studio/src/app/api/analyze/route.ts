@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { randomUUID } from 'crypto';
-import { getRulesBySetId, createReport, updateReport } from '@/services/db';
+import { getRulesBySetId } from '@/services/db';
 import { shouldUseIncrementalAnalysis } from '@/services/incremental';
 import { buildReportCommits } from '@/services/analyzeTask';
-import { query, queryOne } from '@/lib/db';
-import { enqueueAnalyze } from '@/services/schedulerClient';
+import { query } from '@/lib/db';
 import { logger } from '@/services/logger';
 import { analyzeRequestSchema } from '@/services/validation';
 import { withRetry, formatErrorResponse } from '@/services/retry';
@@ -15,13 +13,9 @@ import { requireProjectAccess } from '@/services/orgs';
 import { resolveAIIntegration, IntegrationResolutionError } from '@/services/integrations';
 import {
   buildAnalyzeFingerprint,
-  claimAnalyzeDedupeLock,
   checkAnalyzeBackpressure,
   enforceAnalyzeRateLimit,
-  getAnalyzeDedupeResult,
-  releaseAnalyzeDedupeLock,
-  storeAnalyzeDedupeResult,
-  waitForAnalyzeDedupeResult,
+  createOrReuseAnalyzeReport,
 } from '@/services/analyzeAdmission';
 
 export const dynamic = 'force-dynamic';
@@ -31,8 +25,6 @@ export async function POST(request: NextRequest) {
   if (!user) {
     return unauthorized();
   }
-
-  let dedupeLock: { fingerprint: string; owner: string } | null = null;
 
   try {
     const body = await request.json();
@@ -131,61 +123,6 @@ export async function POST(request: NextRequest) {
       useIncremental,
     });
 
-    const existingResult = await getAnalyzeDedupeResult(analyzeFingerprint);
-    if (existingResult) {
-      const reportStatus = await queryOne<{ status: string }>(
-        `select status from analysis_reports where id = $1`,
-        [existingResult.reportId]
-      );
-      if (reportStatus && (reportStatus.status === 'pending' || reportStatus.status === 'running')) {
-        return NextResponse.json(
-          {
-            reportId: existingResult.reportId,
-            incrementalAnalysis: existingResult.incrementalAnalysis,
-            status: reportStatus.status,
-            taskId: existingResult.taskId,
-            deduplicated: true,
-          },
-          { status: 202 }
-        );
-      }
-    }
-
-    const lockOwner = randomUUID();
-    const lockAcquired = await claimAnalyzeDedupeLock(analyzeFingerprint, lockOwner, project.org_id);
-
-    if (!lockAcquired) {
-      const waitResult = await waitForAnalyzeDedupeResult(analyzeFingerprint, 2000, 200);
-      if (waitResult) {
-        const reportStatus = await queryOne<{ status: string }>(
-          `select status from analysis_reports where id = $1`,
-          [waitResult.reportId]
-        );
-        if (reportStatus && (reportStatus.status === 'pending' || reportStatus.status === 'running')) {
-          return NextResponse.json(
-            {
-              reportId: waitResult.reportId,
-              incrementalAnalysis: waitResult.incrementalAnalysis,
-              status: reportStatus.status,
-              taskId: waitResult.taskId,
-              deduplicated: true,
-            },
-            { status: 202 }
-          );
-        }
-      }
-
-      return NextResponse.json(
-        {
-          error: 'Identical analysis request is already being processed',
-          code: 'ANALYZE_DUPLICATE_IN_PROGRESS',
-        },
-        { status: 409, headers: { 'Retry-After': '2' } }
-      );
-    }
-
-    dedupeLock = { fingerprint: analyzeFingerprint, owner: lockOwner };
-
     const clientInfo = extractClientInfo(request);
 
     const rateLimitResult = await enforceAnalyzeRateLimit({
@@ -209,14 +146,19 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Create report
-    const report = await withRetry(() =>
-      createReport({
-        project_id: projectId,
-        org_id: project.org_id,
-        ruleset_snapshot: rules,
+    const reportAdmission = await withRetry(() =>
+      createOrReuseAnalyzeReport({
+        orgId: project.org_id,
+        projectId,
+        fingerprint: analyzeFingerprint,
+        rulesetSnapshot: rules.map((rule) => ({
+          category: String(rule.category ?? ''),
+          name: String(rule.name ?? ''),
+          prompt: String(rule.prompt ?? ''),
+          severity: String(rule.severity ?? ''),
+        })),
         commits: selectedCommits,
-        analysis_snapshot: {
+        analysisSnapshot: {
           createdAt: new Date().toISOString(),
           repo: project.repo,
           forceFullAnalysis,
@@ -236,83 +178,42 @@ export async function POST(request: NextRequest) {
             severity: String(rule.severity ?? ''),
           })),
           aiIntegration: aiIntegrationSnapshot,
+          previousReport: useIncremental ? (recentReports?.[0] ?? null) : null,
+          fingerprint: analyzeFingerprint,
         },
       })
     );
 
-    logger.info(`Report created: ${report.id}`);
-
-    // Enqueue analysis task (high priority)
-    let taskId: string | undefined;
-    try {
-      const result = await enqueueAnalyze({
-        projectId,
-        reportId: report.id,
-        repo: project.repo,
-        hashes: selectedHashes,
-        rules,
-        previousReport: useIncremental ? (recentReports?.[0] as Record<string, unknown>) : null,
-        useIncremental,
-      });
-      taskId = result.taskId;
-    } catch (err) {
-      await updateReport(report.id, {
-        status: 'failed',
-        error_message: err instanceof Error ? err.message : 'Scheduler enqueue failed',
-      });
-      throw err;
-    }
-
-    await storeAnalyzeDedupeResult(
-      analyzeFingerprint,
-      {
-        reportId: report.id,
-        taskId,
-        status: 'queued',
-        projectId,
-        orgId: project.org_id,
-        incrementalAnalysis: useIncremental,
-        createdAt: Date.now(),
-      },
-      project.org_id
-    );
+    logger.info(`Report admitted: ${reportAdmission.reportId}`);
 
     await auditLogger.log({
       action: 'analyze',
       entityType: 'project',
       entityId: projectId,
-      changes: { reportId: report.id, commits: selectedHashes.length, taskId },
+      changes: {
+        reportId: reportAdmission.reportId,
+        commits: selectedHashes.length,
+        status: reportAdmission.status,
+        deduplicated: reportAdmission.deduplicated,
+      },
       userId: user.id,
       ...clientInfo,
     });
 
-    return NextResponse.json({
-      reportId: report.id,
-      incrementalAnalysis: useIncremental,
-      status: 'queued',
-      taskId,
-    });
+    return NextResponse.json(
+      {
+        reportId: reportAdmission.reportId,
+        incrementalAnalysis: reportAdmission.incrementalAnalysis,
+        status: reportAdmission.status,
+        deduplicated: reportAdmission.deduplicated,
+      },
+      { status: reportAdmission.status === 'queued' || reportAdmission.status === 'running' ? 202 : 200 }
+    );
   } catch (err) {
-    if (err instanceof Error) {
-      const message = err.message.toLowerCase();
-      if (message.includes('redis') || message.includes('admission control')) {
-        logger.error('Analysis admission unavailable', err);
-        return NextResponse.json(
-          {
-            error: 'Analyze admission control is unavailable. Check REDIS_URL and Redis connectivity.',
-            code: 'ANALYZE_ADMISSION_UNAVAILABLE',
-          },
-          { status: 503 }
-        );
-      }
-    }
     const { error, statusCode } = formatErrorResponse(err);
     logger.error('Analysis request failed', err instanceof Error ? err : undefined);
     return NextResponse.json({ error }, { status: statusCode });
   } finally {
-    if (dedupeLock) {
-      await releaseAnalyzeDedupeLock(dedupeLock.fingerprint, dedupeLock.owner);
-    }
     logger.clearContext();
   }
 }

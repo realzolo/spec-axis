@@ -7,6 +7,14 @@ import { resolveVCSIntegration } from './integrations';
 import type { VCSClient } from './integrations';
 import { GitHubClient } from './integrations';
 
+export type RepoCommit = {
+  sha: string;
+  message: string;
+  author: string;
+  date: string;
+  url: string;
+};
+
 function parseRepoFullName(repo: string): { owner: string; repoName: string } {
   const [owner, repoName, ...rest] = repo.split('/');
   if (!owner || !repoName || rest.length > 0) {
@@ -72,7 +80,13 @@ export async function getRepoBranches(repo: string, projectId: string): Promise<
   return client.listBranches(owner, repoName);
 }
 
-export async function getRepoCommits(repo: string, branch: string, perPage = 30, _page = 1, projectId: string) {
+export async function getRepoCommits(
+  repo: string,
+  branch: string,
+  perPage = 30,
+  _page = 1,
+  projectId: string
+): Promise<RepoCommit[]> {
   void _page;
   const client = await getVCSClient(projectId);
   const { owner, repoName } = parseRepoFullName(repo);
@@ -112,7 +126,7 @@ export async function getCompareDiff(repo: string, base: string, head: string, p
   return client.getCompareDiff(owner, repoName, base, head);
 }
 
-export async function getCommitBySha(repo: string, sha: string, projectId: string) {
+export async function getCommitBySha(repo: string, sha: string, projectId: string): Promise<RepoCommit> {
   const client = await getVCSClient(projectId);
   const { owner, repoName } = parseRepoFullName(repo);
   const commits = await client.getCommits(owner, repoName, sha, 1);
@@ -131,8 +145,8 @@ export async function getCommitBySha(repo: string, sha: string, projectId: strin
   };
 }
 
-export async function getCommitsBySha(repo: string, hashes: string[], projectId: string) {
-  const commits = [];
+export async function getCommitsBySha(repo: string, hashes: string[], projectId: string): Promise<RepoCommit[]> {
+  const commits: RepoCommit[] = [];
   for (const sha of hashes) {
     commits.push(await getCommitBySha(repo, sha, projectId));
   }

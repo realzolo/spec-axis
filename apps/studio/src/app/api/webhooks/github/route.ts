@@ -2,12 +2,13 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import crypto from 'crypto';
 import { exec, queryOne } from '@/lib/db';
-import { getProjectById, listProjectsByRepo, getRulesBySetId, createReport, updateReport } from '@/services/db';
+import { getProjectById, listProjectsByRepo, getRulesBySetId } from '@/services/db';
 import { buildReportCommits } from '@/services/analyzeTask';
-import { enqueueAnalyze, listPipelines, createPipelineRun, getPipeline } from '@/services/schedulerClient';
+import { listPipelines, createPipelineRun, getPipeline } from '@/services/schedulerClient';
 import { logger } from '@/services/logger';
 import { auditLogger, extractClientInfo } from '@/services/audit';
 import { codebaseService } from '@/services/CodebaseService';
+import { buildAnalyzeFingerprint, createOrReuseAnalyzeReport } from '@/services/analyzeAdmission';
 
 export const dynamic = 'force-dynamic';
 
@@ -243,11 +244,48 @@ export async function POST(request: NextRequest) {
   logger.setContext({ projectId: project.id });
   try {
     const commits = await buildReportCommits(project.repo, [headSha], project.id);
-    const report = await createReport({
-      project_id: project.id,
-      org_id: project.org_id,
-      ruleset_snapshot: rules,
+    const analyzeFingerprint = buildAnalyzeFingerprint({
+      orgId: project.org_id,
+      projectId: project.id,
+      commits: [headSha],
+      rules: rules.map((rule) => ({
+        category: String(rule.category ?? ''),
+        name: String(rule.name ?? ''),
+        prompt: String(rule.prompt ?? ''),
+        severity: String(rule.severity ?? ''),
+      })),
+      forceFullAnalysis: false,
+      useIncremental: false,
+    });
+    const reportAdmission = await createOrReuseAnalyzeReport({
+      orgId: project.org_id,
+      projectId: project.id,
+      fingerprint: analyzeFingerprint,
+      rulesetSnapshot: rules.map((rule) => ({
+        category: String(rule.category ?? ''),
+        name: String(rule.name ?? ''),
+        prompt: String(rule.prompt ?? ''),
+        severity: String(rule.severity ?? ''),
+      })),
       commits,
+      analysisSnapshot: {
+        createdAt: new Date().toISOString(),
+        repo: project.repo,
+        forceFullAnalysis: false,
+        useIncremental: false,
+        selectedHashes: [headSha],
+        selectedCommits: commits,
+        rules: rules.map((rule) => ({
+          id: String(rule.id ?? ''),
+          category: String(rule.category ?? ''),
+          name: String(rule.name ?? ''),
+          prompt: String(rule.prompt ?? ''),
+          severity: String(rule.severity ?? ''),
+        })),
+        aiIntegration: {},
+        previousReport: null,
+        fingerprint: analyzeFingerprint,
+      },
     });
 
     const prStatus = pr.state === 'closed' ? (pr.merged ? 'merged' : 'closed') : 'open';
@@ -286,38 +324,39 @@ export async function POST(request: NextRequest) {
     await exec(
       `insert into review_runs
         (pull_request_id, project_id, report_id, trigger, status, created_at)
-       values ($1,$2,$3,'webhook','queued',now())`,
-      [prRow.id, project.id, report.id]
+       values ($1,$2,$3,'webhook',$4,now())`,
+      [
+        prRow.id,
+        project.id,
+        reportAdmission.reportId,
+        reportAdmission.status === 'queued' || reportAdmission.status === 'running'
+          ? 'queued'
+          : 'completed',
+      ]
     );
-
-    try {
-      await enqueueAnalyze({
-        projectId: project.id,
-        reportId: report.id,
-        repo: project.repo,
-        hashes: [headSha],
-        rules,
-        previousReport: null,
-        useIncremental: false,
-      });
-    } catch (err) {
-      await updateReport(report.id, {
-        status: 'failed',
-        error_message: err instanceof Error ? err.message : 'Scheduler enqueue failed',
-      });
-      throw err;
-    }
 
     const clientInfo = extractClientInfo(request);
     await auditLogger.log({
       action: 'analyze',
       entityType: 'project',
       entityId: project.id,
-      changes: { source: 'github_webhook', pullRequest: pr.number },
+      changes: {
+        source: 'github_webhook',
+        pullRequest: pr.number,
+        reportId: reportAdmission.reportId,
+        deduplicated: reportAdmission.deduplicated,
+      },
       ...clientInfo,
     });
 
-    return NextResponse.json({ status: 'queued', reportId: report.id });
+    return NextResponse.json(
+      {
+        status: reportAdmission.status,
+        reportId: reportAdmission.reportId,
+        deduplicated: reportAdmission.deduplicated,
+      },
+      { status: reportAdmission.status === 'queued' || reportAdmission.status === 'running' ? 202 : 200 }
+    );
   } finally {
     logger.clearContext();
   }

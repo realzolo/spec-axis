@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/hibiken/asynq"
-
 	"spec-axis/scheduler/internal/config"
 	"spec-axis/scheduler/internal/pipeline"
 	"spec-axis/scheduler/internal/workerhub"
@@ -14,18 +12,14 @@ import (
 
 type Server struct {
 	cfg         config.Config
-	client      *asynq.Client
-	inspector   *asynq.Inspector
 	pipelineSvc *pipeline.Service
 	pipelineAPI *pipeline.API
 	workerHub   *workerhub.Hub
 }
 
-func New(cfg config.Config, client *asynq.Client, inspector *asynq.Inspector, pipelineService *pipeline.Service, workerHub *workerhub.Hub) *Server {
+func New(cfg config.Config, pipelineService *pipeline.Service, workerHub *workerhub.Hub) *Server {
 	return &Server{
 		cfg:         cfg,
-		client:      client,
-		inspector:   inspector,
 		pipelineSvc: pipelineService,
 		pipelineAPI: pipeline.NewAPI(pipelineService, func(r *http.Request) bool { return authorized(cfg.SchedulerToken, r) }),
 		workerHub:   workerHub,
@@ -44,8 +38,6 @@ func (s *Server) Handler() http.Handler {
 		_, _ = w.Write([]byte("ready"))
 	})
 
-	mux.HandleFunc("/v1/tasks/analyze", s.handleAnalyze)
-	mux.HandleFunc("/v1/tasks/analyze/", s.handleAnalyzeTaskControl)
 	s.pipelineAPI.Register(mux)
 	mux.HandleFunc("/v1/workers", s.handleWorkersList)
 	mux.HandleFunc("/v1/workers/", s.handleWorkerState)

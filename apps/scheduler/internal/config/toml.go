@@ -11,7 +11,6 @@ import (
 type fileConfig struct {
 	Scheduler schedulerConfig `toml:"scheduler"`
 	Database  databaseConfig  `toml:"database"`
-	Redis     redisConfig     `toml:"redis"`
 	Pipeline  pipelineConfig  `toml:"pipeline"`
 	Worker    workerConfig    `toml:"worker"`
 	Security  securityConfig  `toml:"security"`
@@ -22,7 +21,6 @@ type schedulerConfig struct {
 	Port           *string `toml:"port"`
 	Token          *string `toml:"token"`
 	Concurrency    *int    `toml:"concurrency"`
-	Queue          *string `toml:"queue"`
 	AnalyzeTimeout *string `toml:"analyze_timeout"`
 	DataDir        *string `toml:"data_dir"`
 }
@@ -31,16 +29,10 @@ type databaseConfig struct {
 	URL *string `toml:"url"`
 }
 
-type redisConfig struct {
-	URL *string `toml:"url"`
-}
-
 type pipelineConfig struct {
-	Queue                 *string `toml:"queue"`
-	Concurrency           *int    `toml:"concurrency"`
-	RunTimeout            *string `toml:"run_timeout"`
-	LogRetentionDays      *int    `toml:"log_retention_days"`
-	ArtifactRetentionDays *int    `toml:"artifact_retention_days"`
+	Concurrency           *int `toml:"concurrency"`
+	LogRetentionDays      *int `toml:"log_retention_days"`
+	ArtifactRetentionDays *int `toml:"artifact_retention_days"`
 }
 
 type workerConfig struct {
@@ -102,7 +94,7 @@ func loadFileConfig(path string) (fileConfig, error) {
 	return cfg, nil
 }
 
-func applyFileConfig(cfg *Config, fileCfg fileConfig, analyzeTimeoutRaw *string, pipelineTimeoutRaw *string, workerLeaseTTLRaw *string) {
+func applyFileConfig(cfg *Config, fileCfg fileConfig, analyzeTimeoutRaw *string, workerLeaseTTLRaw *string) {
 	if fileCfg.Scheduler.Port != nil {
 		cfg.Port = *fileCfg.Scheduler.Port
 	}
@@ -112,20 +104,11 @@ func applyFileConfig(cfg *Config, fileCfg fileConfig, analyzeTimeoutRaw *string,
 	if fileCfg.Database.URL != nil {
 		cfg.DatabaseURL = *fileCfg.Database.URL
 	}
-	if fileCfg.Redis.URL != nil {
-		cfg.RedisURL = *fileCfg.Redis.URL
-	}
 	if fileCfg.Security.EncryptionKey != nil {
 		cfg.EncryptionKey = *fileCfg.Security.EncryptionKey
 	}
 	if fileCfg.Scheduler.Concurrency != nil {
 		cfg.Concurrency = *fileCfg.Scheduler.Concurrency
-	}
-	if fileCfg.Scheduler.Queue != nil {
-		cfg.Queue = *fileCfg.Scheduler.Queue
-	}
-	if fileCfg.Pipeline.Queue != nil {
-		cfg.PipelineQueue = *fileCfg.Pipeline.Queue
 	}
 	if fileCfg.Pipeline.Concurrency != nil {
 		cfg.PipelineConcurrency = *fileCfg.Pipeline.Concurrency
@@ -141,9 +124,6 @@ func applyFileConfig(cfg *Config, fileCfg fileConfig, analyzeTimeoutRaw *string,
 	}
 	if fileCfg.Scheduler.AnalyzeTimeout != nil {
 		*analyzeTimeoutRaw = *fileCfg.Scheduler.AnalyzeTimeout
-	}
-	if fileCfg.Pipeline.RunTimeout != nil {
-		*pipelineTimeoutRaw = *fileCfg.Pipeline.RunTimeout
 	}
 	if fileCfg.Studio.URL != nil {
 		cfg.StudioURL = *fileCfg.Studio.URL

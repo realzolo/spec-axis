@@ -15,11 +15,8 @@ func LoadWithOptions(opts LoadOptions) (Config, error) {
 		Port:                  "8200",
 		SchedulerToken:        "",
 		DatabaseURL:           "",
-		RedisURL:              "",
 		EncryptionKey:         "",
 		Concurrency:           4,
-		Queue:                 "analysis",
-		PipelineQueue:         "pipelines",
 		PipelineConcurrency:   4,
 		DataDir:               "data",
 		LogRetentionDays:      30,
@@ -27,7 +24,6 @@ func LoadWithOptions(opts LoadOptions) (Config, error) {
 	}
 
 	analyzeTimeoutRaw := "1h"
-	pipelineTimeoutRaw := "2h"
 	workerLeaseTTLRaw := "45s"
 
 	configPath, err := resolveConfigPath(opts.ConfigPath)
@@ -39,17 +35,14 @@ func LoadWithOptions(opts LoadOptions) (Config, error) {
 		if err != nil {
 			return Config{}, err
 		}
-		applyFileConfig(&cfg, fileCfg, &analyzeTimeoutRaw, &pipelineTimeoutRaw, &workerLeaseTTLRaw)
+		applyFileConfig(&cfg, fileCfg, &analyzeTimeoutRaw, &workerLeaseTTLRaw)
 	}
 
 	cfg.Port = envString("SCHEDULER_PORT", cfg.Port)
 	cfg.SchedulerToken = envString("SCHEDULER_TOKEN", cfg.SchedulerToken)
 	cfg.DatabaseURL = envString("DATABASE_URL", cfg.DatabaseURL)
-	cfg.RedisURL = envString("REDIS_URL", cfg.RedisURL)
 	cfg.EncryptionKey = envString("ENCRYPTION_KEY", cfg.EncryptionKey)
 	cfg.Concurrency = envInt("SCHEDULER_CONCURRENCY", cfg.Concurrency)
-	cfg.Queue = envString("SCHEDULER_QUEUE", cfg.Queue)
-	cfg.PipelineQueue = envString("PIPELINE_QUEUE", cfg.PipelineQueue)
 	cfg.PipelineConcurrency = envInt("PIPELINE_CONCURRENCY", cfg.PipelineConcurrency)
 	cfg.DataDir = envString("SCHEDULER_DATA_DIR", cfg.DataDir)
 	cfg.LogRetentionDays = envInt("PIPELINE_LOG_RETENTION_DAYS", cfg.LogRetentionDays)
@@ -70,7 +63,6 @@ func LoadWithOptions(opts LoadOptions) (Config, error) {
 	}
 
 	analyzeTimeoutRaw = envString("ANALYZE_TIMEOUT", analyzeTimeoutRaw)
-	pipelineTimeoutRaw = envString("PIPELINE_RUN_TIMEOUT", pipelineTimeoutRaw)
 	workerLeaseTTLRaw = envString("WORKER_LEASE_TTL", workerLeaseTTLRaw)
 
 	analyzeTimeout, err := time.ParseDuration(analyzeTimeoutRaw)
@@ -78,12 +70,6 @@ func LoadWithOptions(opts LoadOptions) (Config, error) {
 		return Config{}, fmt.Errorf("invalid ANALYZE_TIMEOUT: %w", err)
 	}
 	cfg.AnalyzeTimeout = analyzeTimeout
-
-	pipelineTimeout, err := time.ParseDuration(pipelineTimeoutRaw)
-	if err != nil {
-		return Config{}, fmt.Errorf("invalid PIPELINE_RUN_TIMEOUT: %w", err)
-	}
-	cfg.PipelineRunTimeout = pipelineTimeout
 
 	leaseTTL, err := time.ParseDuration(workerLeaseTTLRaw)
 	if err != nil {
@@ -93,9 +79,6 @@ func LoadWithOptions(opts LoadOptions) (Config, error) {
 
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
-	}
-	if cfg.RedisURL == "" {
-		return Config{}, fmt.Errorf("REDIS_URL is required")
 	}
 	if cfg.EncryptionKey != "" && os.Getenv("ENCRYPTION_KEY") == "" {
 		_ = os.Setenv("ENCRYPTION_KEY", cfg.EncryptionKey)
