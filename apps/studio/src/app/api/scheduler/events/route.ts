@@ -35,9 +35,15 @@ async function notifyPipelineRun(runId: string) {
     id: string;
     pipeline_id: string;
     org_id: string;
+    project_id: string;
     status: string;
+    branch: string | null;
+    commit_sha: string | null;
+    created_at: string;
+    started_at: string | null;
+    finished_at: string | null;
   }>(
-    `select id, pipeline_id, org_id, status
+    `select id, pipeline_id, org_id, project_id, status, branch, commit_sha, created_at, started_at, finished_at
      from pipeline_runs
      where id = $1`,
     [runId]
@@ -87,17 +93,30 @@ async function notifyPipelineRun(runId: string) {
        and u.email is not null
        and u.email_verified_at is not null
        and coalesce(ns.email_enabled, true) = true
-       and coalesce(ns.notify_on_complete, true) = true`,
+       and coalesce(ns.notify_on_pipeline_run, true) = true`,
     [run.org_id]
   );
   if (recipients.length === 0) return;
 
-  const link = absoluteStudioUrl(`/o/${run.org_id}/pipelines/${pipeline.id}?tab=runs&runId=${run.id}`);
+  const link = absoluteStudioUrl(
+    `/o/${run.org_id}/projects/${run.project_id}/pipelines/${pipeline.id}?tab=runs&runId=${run.id}`
+  );
   const subjectStatus = isSuccess ? 'succeeded' : 'failed';
   const subject = `[Spec-Axis] Pipeline "${pipeline.name}" ${subjectStatus}`;
+  const durationLine =
+    run.started_at && run.finished_at
+      ? `Finished at: ${run.finished_at}`
+      : run.finished_at
+        ? `Finished at: ${run.finished_at}`
+        : run.created_at
+          ? `Queued at: ${run.created_at}`
+          : '';
   const text = [
     `Pipeline: ${pipeline.name}`,
     `Status: ${run.status}`,
+    run.branch ? `Branch: ${run.branch}` : '',
+    run.commit_sha ? `Commit: ${run.commit_sha}` : '',
+    durationLine,
     link ? `View: ${link}` : '',
     '',
     'You can update notification preferences in Settings > Notifications.',
@@ -140,11 +159,11 @@ async function notifyReportDone(reportId: string) {
     email_verified_at: string | null;
     status: string;
     email_enabled: boolean | null;
-    notify_on_complete: boolean | null;
-    notify_on_threshold: number | null;
+    notify_on_report_ready: boolean | null;
+    notify_on_report_score_below: number | null;
   }>(
     `select u.email, u.email_verified_at, u.status,
-            ns.email_enabled, ns.notify_on_complete, ns.notify_on_threshold
+            ns.email_enabled, ns.notify_on_report_ready, ns.notify_on_report_score_below
      from auth_users u
      left join notification_settings ns on ns.user_id = u.id
      where u.id = $1`,
@@ -152,8 +171,12 @@ async function notifyReportDone(reportId: string) {
   );
   if (!user?.email || user.status !== 'active' || !user.email_verified_at) return;
   if (user.email_enabled === false) return;
-  if (user.notify_on_complete === false) return;
-  if (user.notify_on_threshold != null && report.score != null && report.score >= user.notify_on_threshold) {
+  if (user.notify_on_report_ready === false) return;
+  if (
+    user.notify_on_report_score_below != null &&
+    report.score != null &&
+    report.score >= user.notify_on_report_score_below
+  ) {
     return;
   }
 
@@ -161,7 +184,7 @@ async function notifyReportDone(reportId: string) {
     `select name from code_projects where id = $1`,
     [report.project_id]
   );
-  const link = absoluteStudioUrl(`/o/${report.org_id}/reports/${report.id}`);
+  const link = absoluteStudioUrl(`/o/${report.org_id}/projects/${report.project_id}/reports/${report.id}`);
   const statusLabel = report.status === 'partial_failed' ? 'partial' : 'done';
   const subject = `[Spec-Axis] Report ${statusLabel}${project?.name ? `: ${project.name}` : ''}`;
   const text = [

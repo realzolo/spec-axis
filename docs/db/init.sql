@@ -445,12 +445,9 @@ create table notification_settings (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth_users(id) on delete cascade unique,
   email_enabled boolean not null default true,
-  slack_webhook text,
-  notify_on_complete boolean not null default true,
-  notify_on_critical boolean not null default true,
-  notify_on_threshold int check (notify_on_threshold between 0 and 100),
-  daily_digest boolean not null default false,
-  weekly_digest boolean not null default false,
+  notify_on_pipeline_run boolean not null default true,
+  notify_on_report_ready boolean not null default true,
+  notify_on_report_score_below int check (notify_on_report_score_below between 0 and 100),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

@@ -5,6 +5,11 @@ type SendEmailInput = {
 };
 
 type EmailProvider = 'console' | 'resend';
+export type EmailDeliveryStatus = {
+  provider: EmailProvider;
+  configured: boolean;
+  mode: 'development' | 'live' | 'misconfigured';
+};
 
 function provider(): EmailProvider {
   const raw = (process.env.EMAIL_PROVIDER ?? 'console').trim().toLowerCase();
@@ -16,6 +21,33 @@ function baseUrl(): string | null {
   const raw = (process.env.STUDIO_BASE_URL ?? '').trim();
   if (!raw) return null;
   return raw.replace(/\/+$/, '');
+}
+
+export function getEmailDeliveryStatus(): EmailDeliveryStatus {
+  const currentProvider = provider();
+  if (currentProvider === 'console') {
+    return {
+      provider: 'console',
+      configured: true,
+      mode: 'development',
+    };
+  }
+
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.EMAIL_FROM?.trim();
+  if (apiKey && from) {
+    return {
+      provider: 'resend',
+      configured: true,
+      mode: 'live',
+    };
+  }
+
+  return {
+    provider: 'resend',
+    configured: false,
+    mode: 'misconfigured',
+  };
 }
 
 export function absoluteStudioUrl(path: string): string | null {
@@ -67,4 +99,3 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
   const never: never = p;
   throw new Error(`Unsupported email provider: ${never}`);
 }
-

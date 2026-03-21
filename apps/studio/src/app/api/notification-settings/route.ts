@@ -4,6 +4,9 @@ import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { queryOne, exec } from '@/lib/db';
 import { formatErrorResponse } from '@/services/retry';
+import { getEmailDeliveryStatus } from '@/services/email';
+import { notificationSettingsSchema, validateRequest } from '@/services/validation';
+import { auditLogger, extractClientInfo } from '@/services/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,12 +14,9 @@ const rateLimiter = createRateLimiter(RATE_LIMITS.general);
 
 type NotificationSettings = {
   email_enabled: boolean;
-  slack_webhook: string | null;
-  notify_on_complete: boolean;
-  notify_on_critical: boolean;
-  notify_on_threshold: number | null;
-  daily_digest: boolean;
-  weekly_digest: boolean;
+  notify_on_pipeline_run: boolean;
+  notify_on_report_ready: boolean;
+  notify_on_report_score_below: number | null;
 };
 
 async function ensureRow(userId: string): Promise<void> {
@@ -38,12 +38,12 @@ export async function GET(request: NextRequest) {
   try {
     await ensureRow(user.id);
     const row = await queryOne<NotificationSettings>(
-      `select email_enabled, slack_webhook, notify_on_complete, notify_on_critical, notify_on_threshold, daily_digest, weekly_digest
+      `select email_enabled, notify_on_pipeline_run, notify_on_report_ready, notify_on_report_score_below
        from notification_settings
        where user_id = $1`,
       [user.id]
     );
-    return NextResponse.json({ settings: row });
+    return NextResponse.json({ settings: row, delivery: getEmailDeliveryStatus() });
   } catch (err) {
     const { error, statusCode } = formatErrorResponse(err);
     return NextResponse.json({ error }, { status: statusCode });
@@ -59,51 +59,39 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json().catch(() => ({}));
-
-    const emailEnabled = body?.email_enabled;
-    const notifyOnComplete = body?.notify_on_complete;
-    const notifyOnCritical = body?.notify_on_critical;
-    const dailyDigest = body?.daily_digest;
-    const weeklyDigest = body?.weekly_digest;
-    const hasSlackWebhook = typeof body === 'object' && body != null && 'slack_webhook' in body;
-    const slackWebhook = body?.slack_webhook;
-    const hasThreshold = typeof body === 'object' && body != null && 'notify_on_threshold' in body;
-    const notifyOnThreshold = body?.notify_on_threshold;
+    const validated = validateRequest(notificationSettingsSchema, body);
 
     await ensureRow(user.id);
-
-    const thresholdValue =
-      notifyOnThreshold === null || notifyOnThreshold === undefined
-        ? null
-        : typeof notifyOnThreshold === 'number'
-          ? Math.min(100, Math.max(0, Math.round(notifyOnThreshold)))
-          : null;
 
     await exec(
       `update notification_settings
        set
-         email_enabled = coalesce($2, email_enabled),
-         slack_webhook = case when $3 then $4 else slack_webhook end,
-         notify_on_complete = coalesce($5, notify_on_complete),
-         notify_on_critical = coalesce($6, notify_on_critical),
-         notify_on_threshold = case when $7 then $8 else notify_on_threshold end,
-         daily_digest = coalesce($9, daily_digest),
-         weekly_digest = coalesce($10, weekly_digest),
+         email_enabled = $2,
+         notify_on_pipeline_run = $3,
+         notify_on_report_ready = $4,
+         notify_on_report_score_below = $5,
          updated_at = now()
        where user_id = $1`,
       [
         user.id,
-        typeof emailEnabled === 'boolean' ? emailEnabled : null,
-        hasSlackWebhook,
-        typeof slackWebhook === 'string' ? slackWebhook : null,
-        typeof notifyOnComplete === 'boolean' ? notifyOnComplete : null,
-        typeof notifyOnCritical === 'boolean' ? notifyOnCritical : null,
-        hasThreshold,
-        thresholdValue,
-        typeof dailyDigest === 'boolean' ? dailyDigest : null,
-        typeof weeklyDigest === 'boolean' ? weeklyDigest : null,
+        validated.email_enabled,
+        validated.notify_on_pipeline_run,
+        validated.notify_on_report_ready,
+        validated.notify_on_report_score_below,
       ]
     );
+
+    await auditLogger.log({
+      action: 'update',
+      entityType: 'user',
+      entityId: user.id,
+      userId: user.id,
+      changes: {
+        scope: 'notification_settings',
+        ...validated,
+      },
+      ...extractClientInfo(request),
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {

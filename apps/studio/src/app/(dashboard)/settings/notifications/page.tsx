@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { AlertCircle, CheckCircle2, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 
 import SettingsPageShell from '@/components/settings/SettingsPageShell';
+import SettingsNotice from '@/components/settings/SettingsNotice';
 import SettingsSection from '@/components/settings/SettingsSection';
 import SettingsRow from '@/components/settings/SettingsRow';
 import { Button } from '@/components/ui/button';
@@ -14,12 +16,15 @@ import { useClientDictionary } from '@/i18n/client';
 
 type NotificationSettings = {
   email_enabled: boolean;
-  slack_webhook: string | null;
-  notify_on_complete: boolean;
-  notify_on_critical: boolean;
-  notify_on_threshold: number | null;
-  daily_digest: boolean;
-  weekly_digest: boolean;
+  notify_on_pipeline_run: boolean;
+  notify_on_report_ready: boolean;
+  notify_on_report_score_below: number | null;
+};
+
+type EmailDeliveryStatus = {
+  provider: 'console' | 'resend';
+  configured: boolean;
+  mode: 'development' | 'live' | 'misconfigured';
 };
 
 export const dynamic = 'force-dynamic';
@@ -49,6 +54,7 @@ export default function NotificationsSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
+  const [delivery, setDelivery] = useState<EmailDeliveryStatus | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -60,6 +66,7 @@ export default function NotificationsSettingsPage() {
         const data = await res.json();
         if (!alive) return;
         setSettings(data?.settings ?? null);
+        setDelivery(data?.delivery ?? null);
       } catch {
         if (alive) toast.error(i18n.loadFailed);
       } finally {
@@ -106,6 +113,31 @@ export default function NotificationsSettingsPage() {
         </Button>
       }
     >
+      {delivery?.mode === 'live' && (
+        <SettingsNotice
+          variant="success"
+          icon={<CheckCircle2 className="size-4" />}
+          title={i18n.deliveryLiveTitle}
+          description={i18n.deliveryLiveDescription.replace('{{provider}}', delivery.provider)}
+        />
+      )}
+      {delivery?.mode === 'development' && (
+        <SettingsNotice
+          variant="warning"
+          icon={<Mail className="size-4" />}
+          title={i18n.deliveryDevTitle}
+          description={i18n.deliveryDevDescription}
+        />
+      )}
+      {delivery?.mode === 'misconfigured' && (
+        <SettingsNotice
+          variant="danger"
+          icon={<AlertCircle className="size-4" />}
+          title={i18n.deliveryBrokenTitle}
+          description={i18n.deliveryBrokenDescription}
+        />
+      )}
+
       <SettingsSection title={i18n.emailNotificationsTitle} description={i18n.emailNotificationsDescription}>
         {settings && (
           <div className="space-y-5">
@@ -128,28 +160,16 @@ export default function NotificationsSettingsPage() {
 
             {[
               {
-                title: i18n.notifyCompletionTitle,
-                description: i18n.notifyCompletionDescription,
-                checked: settings.notify_on_complete,
-                onChange: (v: boolean) => setSettings({ ...settings, notify_on_complete: v }),
+                title: i18n.notifyPipelineRunTitle,
+                description: i18n.notifyPipelineRunDescription,
+                checked: settings.notify_on_pipeline_run,
+                onChange: (v: boolean) => setSettings({ ...settings, notify_on_pipeline_run: v }),
               },
               {
-                title: i18n.notifyCriticalTitle,
-                description: i18n.notifyCriticalDescription,
-                checked: settings.notify_on_critical,
-                onChange: (v: boolean) => setSettings({ ...settings, notify_on_critical: v }),
-              },
-              {
-                title: i18n.dailyDigestTitle,
-                description: i18n.dailyDigestDescription,
-                checked: settings.daily_digest,
-                onChange: (v: boolean) => setSettings({ ...settings, daily_digest: v }),
-              },
-              {
-                title: i18n.weeklyDigestTitle,
-                description: i18n.weeklyDigestDescription,
-                checked: settings.weekly_digest,
-                onChange: (v: boolean) => setSettings({ ...settings, weekly_digest: v }),
+                title: i18n.notifyReportReadyTitle,
+                description: i18n.notifyReportReadyDescription,
+                checked: settings.notify_on_report_ready,
+                onChange: (v: boolean) => setSettings({ ...settings, notify_on_report_ready: v }),
               },
             ].map((item) => (
               <SettingsRow
@@ -174,9 +194,9 @@ export default function NotificationsSettingsPage() {
               align="start"
               left={
                 <>
-                  <div className="text-[13px] font-medium">{i18n.scoreThresholdTitle}</div>
+                  <div className="text-[13px] font-medium">{i18n.reportScoreThresholdTitle}</div>
                   <div className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                    {i18n.scoreThresholdDescription}
+                    {i18n.reportScoreThresholdDescription}
                   </div>
                 </>
               }
@@ -185,39 +205,26 @@ export default function NotificationsSettingsPage() {
                   type="number"
                   min={0}
                   max={100}
-                  value={settings.notify_on_threshold ?? ''}
+                  value={settings.notify_on_report_score_below ?? ''}
                   onChange={(e) => {
                     const raw = e.target.value;
                     if (raw === '') {
-                      setSettings({ ...settings, notify_on_threshold: null });
+                      setSettings({ ...settings, notify_on_report_score_below: null });
                       return;
                     }
                     const n = Number(raw);
                     setSettings({
                       ...settings,
-                      notify_on_threshold: Number.isFinite(n)
+                      notify_on_report_score_below: Number.isFinite(n)
                         ? Math.min(100, Math.max(0, Math.round(n)))
                         : null,
                     });
                   }}
-                  disabled={!settings.email_enabled}
+                  disabled={!settings.email_enabled || !settings.notify_on_report_ready}
                   className="w-40"
                 />
               }
             />
-
-            <div className="space-y-2">
-              <div className="text-[13px] font-medium">{i18n.slackWebhookTitle}</div>
-              <div className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                {i18n.slackWebhookDescription}
-              </div>
-              <Input
-                value={settings.slack_webhook ?? ''}
-                onChange={(e) => setSettings({ ...settings, slack_webhook: e.target.value || null })}
-                placeholder={i18n.slackWebhookPlaceholder}
-                disabled={!settings.email_enabled}
-              />
-            </div>
           </div>
         )}
       </SettingsSection>

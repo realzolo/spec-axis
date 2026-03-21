@@ -147,6 +147,13 @@ export const updatePipelineSchema = z.object({
   config: pipelineConfigSchema.optional(),
 });
 
+export const notificationSettingsSchema = z.object({
+  email_enabled: z.boolean(),
+  notify_on_pipeline_run: z.boolean(),
+  notify_on_report_ready: z.boolean(),
+  notify_on_report_score_below: z.union([z.number().int().min(0).max(100), z.null()]),
+});
+
 /**
  * Validate request payload
  */

@@ -159,7 +159,7 @@
 | Historical score trend chart | ✅ Done | Line chart per project over time |
 | PR auto-trigger via webhook | ✅ Done | `opened / reopened / synchronize` events |
 | Saved filters | ✅ Done | Per-user, per-project filter presets |
-| Notification settings | ✅ Done | `notification_settings` table; per-user toggles |
+| Notification settings | ✅ Done | `notification_settings` table; per-user email preferences for pipeline runs and report-ready events |
 
 ### 3.6 Rule System
 
@@ -223,7 +223,7 @@ Source Checkout → Code Review Gate → Build → Deploy
 | Artifact storage (reserved) | ⬜ Planned | Schema exists (`pipeline_artifacts`), executor not implemented |
 | Docker / container executor | ⬜ Planned | Currently shell-only |
 | In-place config editor | ✅ Done | "Configure" tab in detail page |
-| Notification on success / failure | ⬜ Planned | Fields exist (`notify_on_success/failure`), email not wired |
+| Notification on success / failure | ✅ Done | Scheduler posts pipeline/report events back to Studio; Studio sends email notifications with per-user preferences and pipeline-level channel gating |
 | Cron / scheduled trigger | ✅ Done | `trigger_schedule` + `last_scheduled_at` + `next_scheduled_at` persisted on pipelines; scheduler scans and enqueues due runs |
 | TOML config file for Scheduler | ✅ Done | `[scheduler]`, `[pipeline]`, `[studio]`, `[database]`, etc. |
 
@@ -246,23 +246,6 @@ The roadmap below excludes capabilities already shipped in the current build, in
 ### P0 — Core Experience
 
 These are the most important remaining gaps for daily product use.
-
----
-
-#### 4.2 Notification Delivery System
-
-**Why:** Users need completion signals for analysis and pipelines without watching the UI. The settings surface exists, but delivery is still missing.
-
-**Scope:**
-- Email notification on pipeline run completion (success / failure)
-- Email notification when a code review report is ready
-- Configurable per-pipeline and per-user
-- Unsubscribe / preference center in Settings
-
-**Implementation notes:**
-- Add an email service abstraction (SMTP / SendGrid / Resend)
-- Trigger from Scheduler on `run.completed` / `run.failed` events
-- Respect `notify_on_success` / `notify_on_failure` flags already on the `pipelines` table
 
 ---
 
@@ -418,7 +401,6 @@ Focus: close the remaining product gaps that block daily use.
 
 ```
 🚧 To complete in Phase 1:
-   ├── 4.2  Notification Delivery System
    └── 4.3  Link Report Issues to Codebase Browser
 ```
 

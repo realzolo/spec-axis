@@ -54,7 +54,7 @@ Unless stated otherwise, paths in this guide are relative to `apps/studio`.
 - Pipeline artifact observability: project pipelines page includes artifact download health cards (total, success rate, p95 latency, failures) powered by `GET /api/projects/:id/artifact-download-stats`
 - Pipeline artifact retention supports project-level override via `code_projects.artifact_retention_days`; scheduler uses project override first, then global scheduler default
 - Worker artifact handoff: deploy steps can declare `artifactInputs` patterns; Worker downloads matched artifacts from earlier steps in the same run before step execution, with checksum validation + retry and run events (`step.artifact.pull_*`)
-- Notification settings UI at `/o/:orgId/settings/notifications` backed by `/api/notification-settings`
+- Notification settings UI at `/o/:orgId/settings/notifications` is delivery-aware and backed by `/api/notification-settings`; it exposes only shipped email preferences (`pipeline run results`, `analysis report ready`, optional report score threshold) and surfaces provider health (`live`, `development console`, `misconfigured`)
 - Global settings pages now share a common shell/section pattern via `SettingsPageShell` and `SettingsSection`; new settings surfaces should compose those primitives instead of introducing custom page chrome.
 - Settings pages should also use `SettingsEmptyState` for no-data states so empty views stay visually consistent across integrations, organizations, security, and future settings surfaces.
 - Settings pages should use `SettingsNotice` for inline helper/success/warning messaging instead of ad hoc colored text blocks so feedback stays visually and semantically consistent.
