@@ -7,6 +7,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ArrowDown, ArrowRight, Bot, GitBranch, Hand, ListOrdered, Plus, Trash2 } from "lucide-react";
 import type { Dictionary } from "@/i18n";
 import { useProject } from "@/lib/projectContext";
+import { useProjectBranches } from "@/lib/useProjectBranches";
+import { Combobox } from "@/components/ui/combobox";
 import type {
   PipelineJob,
   PipelineStageConfig,
@@ -86,6 +88,11 @@ function getAutomationStageAfter(stage: PipelineStageKey): PipelineStageKey | nu
     default:
       return null;
   }
+}
+
+function normalizeBranchValue(branch: string | undefined, fallback: string): string {
+  const value = branch?.trim();
+  return value && value.length > 0 ? value : fallback;
 }
 
 function StageModeToggle({
@@ -189,6 +196,7 @@ export default function StageBuilder({
   onStageSettingsChange,
 }: Props) {
   const { project } = useProject();
+  const availableBranches = useProjectBranches(project.id, project.default_branch);
   const grouped = useMemo(() => buildStageJobs(jobs), [jobs]);
   const selectedJob = useMemo(
     () => jobs.find((job) => job.id === selectedJobId) ?? null,
@@ -535,6 +543,7 @@ export default function StageBuilder({
             job={selectedJob}
             stage={inferPipelineJobStage(selectedJob, jobs)}
             isAdmin={isAdmin}
+            availableBranches={availableBranches}
             onUpdateJob={updateJob}
             onAddStep={addStep}
             onRemoveStep={removeStep}
@@ -552,6 +561,7 @@ function StageJobInspector({
   job,
   stage,
   isAdmin,
+  availableBranches,
   onUpdateJob,
   onAddStep,
   onRemoveStep,
@@ -562,6 +572,7 @@ function StageJobInspector({
   job: PipelineJob;
   stage: PipelineStageKey;
   isAdmin: boolean;
+  availableBranches: string[];
   onUpdateJob: (jobId: string, patch: Partial<PipelineJob>) => void;
   onAddStep: (jobId: string) => void;
   onRemoveStep: (jobId: string, stepId: string) => void;
@@ -626,11 +637,20 @@ function StageJobInspector({
               {dict.basic.resetToProjectDefaultBranch}
             </button>
           </div>
-          <Input
-            value={job.branch ?? "main"}
-            onChange={(event) => onUpdateJob(job.id, { branch: event.target.value })}
+          <Combobox
+            value={normalizeBranchValue(job.branch, project.default_branch)}
+            options={Array.from(
+              new Set([project.default_branch, ...availableBranches, normalizeBranchValue(job.branch, project.default_branch)])
+            ).map((branch) => ({
+              value: branch,
+              label: branch,
+              keywords: [branch],
+            }))}
             placeholder={dict.basic.branchPlaceholder}
+            heading={dict.basic.branchListHeading}
+            emptyLabel={dict.basic.branchListEmpty}
             disabled={!isAdmin}
+            onChange={(value) => onUpdateJob(job.id, { branch: value })}
           />
           <div className="flex items-center justify-between gap-3 text-[12px] text-[hsl(var(--ds-text-2))]">
             <span>{dict.basic.branchHelp}</span>

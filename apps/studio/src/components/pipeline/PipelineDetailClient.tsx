@@ -514,6 +514,8 @@ export default function PipelineDetailClient({
   const runtimeStageCardWidth = runtimeStages.length >= 5 ? 252 : 288;
   const runtimeConnectorWidth = runtimeStages.length >= 5 ? 48 : 72;
   const sourceBranch = useMemo(() => getSourceBranch(config?.jobs ?? []), [config?.jobs]);
+  const sourceBranchSource =
+    pipeline?.source_branch_source ?? (sourceBranch === project.default_branch ? "project_default" : "custom");
 
   useEffect(() => {
     const jobs = runDetail?.jobs ?? [];
@@ -706,10 +708,15 @@ export default function PipelineDetailClient({
               </div>
             )}
             <div className="flex items-center gap-3 mt-1.5 text-[12px] text-[hsl(var(--ds-text-2))]">
-              <div className="flex items-center gap-1">
+              <div className="flex min-w-0 items-center gap-1">
                 <GitBranch className="size-3" />
-                {sourceBranch}
+                <span className="truncate">{pipeline?.source_branch ?? sourceBranch}</span>
               </div>
+              <Badge variant={sourceBranchSource === "project_default" ? "muted" : "outline"} size="sm">
+                {sourceBranchSource === "project_default"
+                  ? p.basic.sourceBranchProjectDefault
+                  : p.basic.sourceBranchCustom}
+              </Badge>
               {config?.trigger?.autoTrigger && (
                 <span className="text-[12px] text-accent">
                   {p.basic.autoTrigger}

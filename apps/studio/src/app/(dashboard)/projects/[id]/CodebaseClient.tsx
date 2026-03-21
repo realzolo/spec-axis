@@ -6,7 +6,6 @@ import { EditorView } from '@codemirror/view';
 import {
   CheckCircle2,
   CircleDot,
-  ChevronDown,
   Copy,
   FileText,
   Folder,
@@ -35,6 +34,7 @@ import CodeViewer, { type CodeLineClickPayload, type CodeSelectionPayload } from
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { formatLocalDateTime } from '@/lib/dateFormat';
+import { Combobox } from '@/components/ui/combobox';
 
 type Project = {
   id: string;
@@ -233,15 +233,6 @@ export default function CodebaseClient({
     return Array.from(new Set(branches.map((item) => item.trim()).filter(Boolean)));
   }, [branches]);
 
-  const selectItems = useMemo(() => {
-    const items = [...availableBranches];
-    const current = branch.trim();
-    if (current && isCommitSha(current) && !items.includes(current)) {
-      items.unshift(current);
-    }
-    return items;
-  }, [availableBranches, branch]);
-
   const activeRef = useMemo(() => {
     const current = branch.trim();
     if (current && (isCommitSha(current) || availableBranches.includes(current))) {
@@ -249,6 +240,20 @@ export default function CodebaseClient({
     }
     return availableBranches[0] ?? '';
   }, [availableBranches, branch]);
+
+  const branchOptions = useMemo(() => {
+    const items = [...availableBranches];
+    if (activeRef && isCommitSha(activeRef) && !items.includes(activeRef)) {
+      items.unshift(activeRef);
+    }
+    return items.map((item) => ({
+      value: item,
+      label: isCommitSha(item) && !availableBranches.includes(item)
+        ? `${dict.reports.commit}: ${item.slice(0, 7)}`
+        : item,
+      keywords: [item],
+    }));
+  }, [activeRef, availableBranches, dict.reports.commit]);
 
   const deepLinkPath = searchParams.get('path');
   const deepLinkRef = searchParams.get('ref');
@@ -1104,27 +1109,18 @@ export default function CodebaseClient({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-3">
             <div className="text-xs font-medium text-[hsl(var(--ds-text-2))]">{dict.projects.branch}</div>
-            <div className="relative w-56">
-              <select
-                value={activeRef}
-                onChange={(event) => handleSelectBranch(event.target.value)}
-                disabled={!activeRef}
-                className="h-8 w-full appearance-none rounded-[6px] border border-[hsl(var(--ds-border-2))] bg-[hsl(var(--ds-surface-1))] px-3 pr-8 text-[13px] text-foreground transition-colors duration-100 focus:outline-none focus:border-[hsl(var(--ds-accent-7))] hover:bg-[hsl(var(--ds-surface-2))] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {!activeRef ? (
-                  <option value="">-</option>
-                ) : (
-                  selectItems.map((item) => (
-                    <option key={item} value={item}>
-                      {isCommitSha(item) && !availableBranches.includes(item)
-                        ? `${dict.reports.commit}: ${item.slice(0, 7)}`
-                        : item}
-                    </option>
-                  ))
-                )}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-[hsl(var(--ds-text-2))]" />
-            </div>
+            <Combobox
+              value={activeRef}
+              options={branchOptions}
+              placeholder={dict.projects.branchPlaceholder}
+              searchPlaceholder={dict.projects.branchSearchPlaceholder}
+              heading={dict.projects.branchListHeading}
+              emptyLabel={dict.projects.branchListEmpty}
+              disabled={!activeRef}
+              onChange={handleSelectBranch}
+              className="w-56 h-8 text-[13px]"
+              contentClassName="w-[320px]"
+            />
             <Button
               variant="outline"
               size="sm"

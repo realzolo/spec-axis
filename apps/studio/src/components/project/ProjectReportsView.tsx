@@ -7,13 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import ConfirmDialog from '@/components/ui/confirm-dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 import { withOrgPrefix } from '@/lib/orgPath';
@@ -55,15 +49,26 @@ export default function ProjectReportsView({
     return 'text-danger';
   }
 
-  const STATUS_ITEMS = [
-    { id: 'all', label: dict.reports.allStatus },
-    { id: 'done', label: dict.reports.status.done },
-    { id: 'running', label: dict.reports.status.running },
-    { id: 'partial_failed', label: dict.reports.status.partialFailed },
-    { id: 'canceled', label: dict.reports.status.canceled },
-    { id: 'pending', label: dict.reports.status.pending },
-    { id: 'failed', label: dict.reports.status.failed },
-  ];
+  const STATUS_OPTIONS = useMemo(
+    () => [
+      { value: 'all', label: dict.reports.allStatus, keywords: [dict.reports.allStatus] },
+      { value: 'done', label: dict.reports.status.done, keywords: [dict.reports.status.done] },
+      { value: 'running', label: dict.reports.status.running, keywords: [dict.reports.status.running] },
+      { value: 'partial_failed', label: dict.reports.status.partialFailed, keywords: [dict.reports.status.partialFailed] },
+      { value: 'canceled', label: dict.reports.status.canceled, keywords: [dict.reports.status.canceled] },
+      { value: 'pending', label: dict.reports.status.pending, keywords: [dict.reports.status.pending] },
+      { value: 'failed', label: dict.reports.status.failed, keywords: [dict.reports.status.failed] },
+    ],
+    [
+      dict.reports.allStatus,
+      dict.reports.status.canceled,
+      dict.reports.status.done,
+      dict.reports.status.failed,
+      dict.reports.status.partialFailed,
+      dict.reports.status.pending,
+      dict.reports.status.running,
+    ],
+  );
 
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,16 +159,17 @@ export default function ProjectReportsView({
                 {dict.reports.compare.compareButton}
               </Button>
             )}
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-36 h-9 text-[14px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_ITEMS.map(s => (
-                  <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={STATUS_OPTIONS}
+              placeholder={dict.reports.statusFilterPlaceholder}
+              searchPlaceholder={dict.reports.statusSearchPlaceholder}
+              heading={dict.reports.statusListHeading}
+              emptyLabel={dict.reports.statusListEmpty}
+              className="w-36 h-9 text-[14px]"
+              contentClassName="w-[280px]"
+            />
           </div>
         </div>
       </div>

@@ -1,18 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Settings, Save } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -153,6 +147,36 @@ export default function ProjectConfigPanel({ projectId, dict }: { projectId: str
   const currentIntegrationMissing =
     !!config.ai_integration_id && !aiIntegrations.some((item) => item.id === config.ai_integration_id);
   const currentAIValue = config.ai_integration_id ?? 'default';
+  const aiIntegrationOptions = useMemo(
+    () => [
+      {
+        value: 'default',
+        label: dict.projects.aiIntegrationDefaultOption,
+        keywords: [dict.projects.aiIntegrationDefaultOption],
+      },
+      ...aiIntegrations.map((item) => ({
+        value: item.id,
+        label: item.model ? `${item.name} (${item.model})` : item.name,
+        keywords: item.model ? [item.name, item.model, item.id] : [item.name, item.id],
+      })),
+      ...(currentIntegrationMissing && config.ai_integration_id
+        ? [
+            {
+              value: config.ai_integration_id,
+              label: dict.projects.aiIntegrationMissing,
+              keywords: [dict.projects.aiIntegrationMissing, config.ai_integration_id],
+            },
+          ]
+        : []),
+    ],
+    [
+      aiIntegrations,
+      config.ai_integration_id,
+      currentIntegrationMissing,
+      dict.projects.aiIntegrationDefaultOption,
+      dict.projects.aiIntegrationMissing,
+    ]
+  );
 
   if (loading) {
     return (
@@ -205,32 +229,22 @@ export default function ProjectConfigPanel({ projectId, dict }: { projectId: str
       {/* AI Integration Binding */}
       <div className="space-y-2">
         <label className="text-sm font-medium">{dict.projects.aiIntegrationLabel}</label>
-        <Select
+        <Combobox
           value={currentAIValue}
-          onValueChange={(value) =>
+          onChange={(value) =>
             setConfig((prev) => ({
               ...prev,
               ai_integration_id: value === 'default' ? null : value,
             }))
           }
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="default">{dict.projects.aiIntegrationDefaultOption}</SelectItem>
-            {aiIntegrations.map((item) => (
-              <SelectItem key={item.id} value={item.id}>
-                {item.model ? `${item.name} (${item.model})` : item.name}
-              </SelectItem>
-            ))}
-            {currentIntegrationMissing && config.ai_integration_id && (
-              <SelectItem value={config.ai_integration_id}>
-                {dict.projects.aiIntegrationMissing}
-              </SelectItem>
-            )}
-          </SelectContent>
-        </Select>
+          options={aiIntegrationOptions}
+          placeholder={dict.projects.aiIntegrationPlaceholder}
+          searchPlaceholder={dict.projects.aiIntegrationSearchPlaceholder}
+          heading={dict.projects.aiIntegrationListHeading}
+          emptyLabel={dict.projects.aiIntegrationListEmpty}
+          className="w-full"
+          contentClassName="w-[360px]"
+        />
         <p className="text-[12px] text-[hsl(var(--ds-text-2))]">
           {dict.projects.aiIntegrationHelp}
         </p>

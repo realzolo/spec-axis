@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import type { Dictionary } from '@/i18n';
+import { useProject } from '@/lib/projectContext';
 import type { PipelineSummary, PipelineRunStatus } from '@/services/pipelineTypes';
 import { durationLabel, ENV_LABELS, STATUS_VARIANTS } from '@/services/pipelineTypes';
 import { withOrgPrefix } from '@/lib/orgPath';
@@ -67,6 +68,7 @@ export default function ProjectPipelinesView({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { project } = useProject();
   const p = dict.pipelines;
 
   const [pipelines, setPipelines] = useState<PipelineSummary[]>([]);
@@ -271,6 +273,9 @@ export default function ProjectPipelinesView({
 	            const run = pipeline.last_run;
 	            const status = run?.status;
 	            const env = pipeline.environment ?? 'production';
+	            const sourceBranch = pipeline.source_branch ?? project.default_branch;
+	            const sourceBranchSource =
+	              pipeline.source_branch_source ?? (sourceBranch === project.default_branch ? 'project_default' : 'custom');
 	            return (
               <div
                 key={pipeline.id}
@@ -294,6 +299,20 @@ export default function ProjectPipelinesView({
                   {pipeline.description && (
                     <div className="text-[12px] text-[hsl(var(--ds-text-2))] truncate">{pipeline.description}</div>
                   )}
+                  <div className="mt-1 flex items-center gap-2 text-[12px] text-[hsl(var(--ds-text-2))]">
+                    <div className="flex min-w-0 items-center gap-1">
+                      <GitBranch className="size-3 shrink-0" />
+                      <span className="truncate">{sourceBranch}</span>
+                    </div>
+                    <Badge
+                      variant={sourceBranchSource === 'project_default' ? 'muted' : 'outline'}
+                      size="sm"
+                    >
+                      {sourceBranchSource === 'project_default'
+                        ? p.basic.sourceBranchProjectDefault
+                        : p.basic.sourceBranchCustom}
+                    </Badge>
+                  </div>
                 </div>
 	                <div className="w-24 flex justify-center">
 	                  <Badge variant={ENV_BADGE_VARIANT[env] ?? 'muted'} size="sm">

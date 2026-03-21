@@ -107,6 +107,8 @@ export type PipelineSummary = {
   latest_version: number;
   last_run?: PipelineRunSummary | null;
   concurrency_mode: 'allow' | 'queue' | 'cancel_previous';
+  source_branch?: string;
+  source_branch_source?: 'project_default' | 'custom';
   created_at: string;
   updated_at: string;
 };

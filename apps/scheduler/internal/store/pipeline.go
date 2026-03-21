@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -11,18 +12,20 @@ import (
 )
 
 type Pipeline struct {
-	ID               string    `json:"id"`
-	OrgID            string    `json:"org_id"`
-	ProjectID        *string   `json:"project_id"`
-	Name             string    `json:"name"`
-	Description      string    `json:"description"`
-	IsActive         bool      `json:"is_active"`
-	CurrentVersionID *string   `json:"current_version_id,omitempty"`
-	ConcurrencyMode  string    `json:"concurrency_mode"`
-	CreatedBy        *string   `json:"created_by,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	LatestVersion    int       `json:"latest_version"`
+	ID                 string    `json:"id"`
+	OrgID              string    `json:"org_id"`
+	ProjectID          *string   `json:"project_id"`
+	Name               string    `json:"name"`
+	Description        string    `json:"description"`
+	IsActive           bool      `json:"is_active"`
+	CurrentVersionID   *string   `json:"current_version_id,omitempty"`
+	ConcurrencyMode    string    `json:"concurrency_mode"`
+	SourceBranch       string    `json:"source_branch,omitempty"`
+	SourceBranchSource string    `json:"source_branch_source,omitempty"`
+	CreatedBy          *string   `json:"created_by,omitempty"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	LatestVersion      int       `json:"latest_version"`
 }
 
 type PipelineVersion struct {
@@ -138,7 +141,8 @@ func (s *Store) CreatePipeline(ctx context.Context, pipeline Pipeline) (*Pipelin
 		 (org_id, project_id, name, description, is_active, created_by, created_at, updated_at)
 		 values ($1,$2,$3,$4,true,$5,now(),now())
 		 returning id, org_id, project_id, name, description, is_active, current_version_id,
-		           concurrency_mode, created_by, created_at, updated_at`,
+		           concurrency_mode, created_by, created_at, updated_at,
+		           coalesce((select default_branch from code_projects where id = $2), 'main') as project_default_branch`,
 		pipeline.OrgID,
 		nullIfEmptyPtr(pipeline.ProjectID),
 		pipeline.Name,
@@ -150,6 +154,7 @@ func (s *Store) CreatePipeline(ctx context.Context, pipeline Pipeline) (*Pipelin
 	var currentVersion pgtype.UUID
 	var createdBy pgtype.UUID
 	var desc pgtype.Text
+	var projectDefaultBranch string
 	var out Pipeline
 	if err := row.Scan(
 		&out.ID,
@@ -163,6 +168,7 @@ func (s *Store) CreatePipeline(ctx context.Context, pipeline Pipeline) (*Pipelin
 		&createdBy,
 		&out.CreatedAt,
 		&out.UpdatedAt,
+		&projectDefaultBranch,
 	); err != nil {
 		return nil, err
 	}
@@ -181,6 +187,8 @@ func (s *Store) CreatePipeline(ctx context.Context, pipeline Pipeline) (*Pipelin
 		val := createdBy.String()
 		out.CreatedBy = &val
 	}
+	out.SourceBranch = normalizeSourceValue(projectDefaultBranch, "main")
+	out.SourceBranchSource = "project_default"
 	return &out, nil
 }
 
@@ -250,8 +258,12 @@ func (s *Store) GetPipeline(ctx context.Context, pipelineID string) (*Pipeline, 
 		ctx,
 		`select p.id, p.org_id, p.project_id, p.name, p.description, p.is_active, p.current_version_id,
 		        p.concurrency_mode, p.created_by, p.created_at, p.updated_at,
-		        coalesce((select max(version) from pipeline_versions where pipeline_id=p.id), 0) as latest_version
+		        coalesce((select max(version) from pipeline_versions where pipeline_id=p.id), 0) as latest_version,
+		        coalesce(cp.default_branch, 'main') as project_default_branch,
+		        cv.config as current_config
 		 from pipelines p
+		 left join code_projects cp on cp.id = p.project_id
+		 left join pipeline_versions cv on cv.id = p.current_version_id
 		 where p.id=$1`,
 		pipelineID,
 	)
@@ -260,6 +272,8 @@ func (s *Store) GetPipeline(ctx context.Context, pipelineID string) (*Pipeline, 
 	var createdBy pgtype.UUID
 	var desc pgtype.Text
 	var projectID pgtype.UUID
+	var projectDefaultBranch string
+	var currentConfig json.RawMessage
 	var out Pipeline
 	if err := row.Scan(
 		&out.ID,
@@ -274,6 +288,8 @@ func (s *Store) GetPipeline(ctx context.Context, pipelineID string) (*Pipeline, 
 		&out.CreatedAt,
 		&out.UpdatedAt,
 		&out.LatestVersion,
+		&projectDefaultBranch,
+		&currentConfig,
 	); err != nil {
 		return nil, err
 	}
@@ -292,6 +308,9 @@ func (s *Store) GetPipeline(ctx context.Context, pipelineID string) (*Pipeline, 
 		val := createdBy.String()
 		out.CreatedBy = &val
 	}
+	branch, origin := deriveSourceBranch(currentConfig, projectDefaultBranch)
+	out.SourceBranch = branch
+	out.SourceBranchSource = origin
 	return &out, nil
 }
 
@@ -369,12 +388,16 @@ func (s *Store) ListPipelines(ctx context.Context, orgID string, projectID *stri
 	)
 	selectCols := `p.id, p.org_id, p.project_id, p.name, p.description, p.is_active, p.current_version_id,
 		        p.concurrency_mode, p.created_by, p.created_at, p.updated_at,
-		        coalesce((select max(version) from pipeline_versions where pipeline_id=p.id), 0) as latest_version`
+		        coalesce((select max(version) from pipeline_versions where pipeline_id=p.id), 0) as latest_version,
+		        coalesce(cp.default_branch, 'main') as project_default_branch,
+		        cv.config as current_config`
 	if projectID != nil && *projectID != "" {
 		rows, err = s.pool.Query(
 			ctx,
 			`select `+selectCols+`
 			 from pipelines p
+			 left join code_projects cp on cp.id = p.project_id
+			 left join pipeline_versions cv on cv.id = p.current_version_id
 			 where p.org_id=$1 and p.project_id=$2
 			 order by p.updated_at desc`,
 			orgID,
@@ -385,6 +408,8 @@ func (s *Store) ListPipelines(ctx context.Context, orgID string, projectID *stri
 			ctx,
 			`select `+selectCols+`
 			 from pipelines p
+			 left join code_projects cp on cp.id = p.project_id
+			 left join pipeline_versions cv on cv.id = p.current_version_id
 			 where p.org_id=$1
 			 order by p.updated_at desc`,
 			orgID,
@@ -401,6 +426,8 @@ func (s *Store) ListPipelines(ctx context.Context, orgID string, projectID *stri
 		var createdBy pgtype.UUID
 		var desc pgtype.Text
 		var pID pgtype.UUID
+		var projectDefaultBranch string
+		var currentConfig json.RawMessage
 		var item Pipeline
 		if err := rows.Scan(
 			&item.ID,
@@ -415,6 +442,8 @@ func (s *Store) ListPipelines(ctx context.Context, orgID string, projectID *stri
 			&item.CreatedAt,
 			&item.UpdatedAt,
 			&item.LatestVersion,
+			&projectDefaultBranch,
+			&currentConfig,
 		); err != nil {
 			return nil, err
 		}
@@ -433,9 +462,58 @@ func (s *Store) ListPipelines(ctx context.Context, orgID string, projectID *stri
 			val := createdBy.String()
 			item.CreatedBy = &val
 		}
+		branch, origin := deriveSourceBranch(currentConfig, projectDefaultBranch)
+		item.SourceBranch = branch
+		item.SourceBranchSource = origin
 		items = append(items, item)
 	}
 	return items, nil
+}
+
+type sourceBranchJob struct {
+	Type   string `json:"type"`
+	Branch string `json:"branch"`
+}
+
+type sourceBranchConfig struct {
+	Jobs []sourceBranchJob `json:"jobs"`
+}
+
+func normalizeSourceValue(value string, fallback string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed != "" {
+		return trimmed
+	}
+	fallback = strings.TrimSpace(fallback)
+	if fallback != "" {
+		return fallback
+	}
+	return "main"
+}
+
+func deriveSourceBranch(config json.RawMessage, projectDefaultBranch string) (string, string) {
+	defaultBranch := normalizeSourceValue(projectDefaultBranch, "main")
+	if len(config) == 0 {
+		return defaultBranch, "project_default"
+	}
+
+	var parsed sourceBranchConfig
+	if err := json.Unmarshal(config, &parsed); err != nil {
+		return defaultBranch, "project_default"
+	}
+
+	for _, job := range parsed.Jobs {
+		if strings.TrimSpace(strings.ToLower(job.Type)) != "source_checkout" {
+			continue
+		}
+		branch := normalizeSourceValue(job.Branch, defaultBranch)
+		if branch == defaultBranch {
+			return branch, "project_default"
+		}
+		return branch, "custom"
+	}
+
+	return defaultBranch, "project_default"
 }
 
 func (s *Store) CreatePipelineRun(ctx context.Context, run PipelineRun) (*PipelineRun, error) {

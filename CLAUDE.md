@@ -42,7 +42,10 @@ Unless stated otherwise, paths in this guide are relative to `apps/studio`.
 - Pipeline concurrency control: `allow | queue | cancel_previous` modes stored in `pipelines.concurrency_mode` column (included in `docs/db/init.sql`; use migration for existing DBs)
 - Pipeline config is authored as a stage-based profile (`trigger + stages + jobs + notifications`) with fixed core columns (`source`, `review`, `build`, `deploy`) plus automation slots between them; Studio derives runtime `needs` edges from stage order and dispatch mode
 - Pipeline editor UX is stage-driven: `source` is a fixed single-entry system stage, `review/build/deploy` expose stage-level `entryMode` (`auto | manual`) and `dispatchMode` (`parallel | serial`), automation slots are inserted on demand between core stages, and automation slots are fixed to `auto + parallel`
-- Pipeline branch configuration has a single source of truth: the fixed `source` node owns `source_checkout.branch`, and top-level `config.trigger` only controls trigger policy such as `autoTrigger`. New pipelines default that branch from `code_projects.default_branch`, and the Source inspector can reset back to the project default.
+- Pipeline branch configuration has a single source of truth: the fixed `source` node owns `source_checkout.branch`, and top-level `config.trigger` only controls trigger policy such as `autoTrigger`. New pipelines default that branch from `code_projects.default_branch`, the Source inspector uses a searchable combobox backed by project branches, the inspector can reset back to the project default, and pipeline summaries expose `source_branch` plus `source_branch_source` so list/detail UI can distinguish project default versus custom branch state.
+- Project branch selection is unified through a shared searchable combobox + `useProjectBranches` hook across codebase browsing, commit filtering/compare, and pipeline Source editing so branch UX stays consistent everywhere.
+- Project-scoped single-value filters that need searchable selection, such as report status or commit author, should also use the shared combobox rather than bespoke select widgets.
+- Project configuration selectors that are effectively searchable single-value bindings, such as AI integration selection, should also use the shared combobox.
 - Pipeline environment is execution-semantic, not decorative: `config.environment` is sent through scheduler dispatch for worker selection and exposed to steps as `PIPELINE_ENVIRONMENT`.
 - Pipeline runtime UX is separate from authoring: runs render as stage columns with per-node status, logs, artifacts, and node-level manual trigger actions for jobs that enter a manual stage
 - Manual execution semantics are node-based, not stage-resume based: when a manual stage becomes ready, each ready job is marked `waiting_manual`; Studio triggers a specific `job_key`, scheduler requeues the run, and only that approved node proceeds
@@ -91,7 +94,8 @@ Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on si
 | React | 19.2.3 | — |
 | Tailwind CSS | v4.2.1 | Design tokens live in `apps/studio/src/app/globals.css` |
 | Geist Font | 1.7.x | Geist Sans/Mono via `geist` package |
-| Radix UI Primitives | ^2.1.4 | `@radix-ui/react-primitive` (Radix Select/Popper dependency) |
+| Radix UI Primitives | ^2.1.4 | `@radix-ui/react-primitive` (Radix Select/Popper/Popover dependency) |
+| cmdk | ^1.1.1 | Searchable command palette / combobox interactions |
 | CodeMirror | 6.x | Read-only codebase viewer (`CodeViewer`) with dynamic language loading via `@codemirror/language-data` |
 | react-diff-viewer-continued | ^4.2.0 | Split diff viewer for commit detail modal (IDE-style review UI) |
 | Lezer Highlight | ^1.2 | Diff syntax highlighting for commit review |
@@ -121,7 +125,7 @@ Multi-tenant org system (Vercel-like UI). Each user has a **personal org** on si
 - **Fail-fast on unsupported providers**: Provider switch statements must throw on unknown values; no silent fallback client selection.
 - **Unified AI transport**: Studio AI integrations must use the shared fetch-based adapter path; do not add provider-specific SDK dependencies in feature/business routes.
 - **Capability-driven AI params**: AI integration forms must render advanced parameters (for example `temperature`, `reasoningEffort`) from model/baseUrl/apiStyle capability rules, and unsupported parameters must not be sent in runtime requests.
-- **Git hygiene**: Runtime and build outputs must stay untracked (`apps/scheduler/data/`, `apps/scheduler/scheduler`, `apps/worker/worker`), and local environment files should use `*.env` patterns while keeping `*.env.example` tracked.
+- **Git hygiene**: Runtime and build outputs must stay untracked (`apps/scheduler/data/`, `apps/scheduler/scheduler`, `apps/worker/worker`), and local environment files should use `*.env` patterns while keeping `*.env.example` tracked. Scheduler local config lives at `apps/scheduler/config.toml` and must remain untracked.
 
 ## Naming & Design Rules
 
@@ -148,6 +152,7 @@ This project does **not** use HeroUI. UI is built from:
 
 Rules:
 - Prefer `components/ui/*` wrappers over direct Radix usage to keep styling and behavior consistent.
+- Use `components/ui/combobox.tsx` for searchable selection controls that need project branch discovery or any similar branch-picking UX; avoid ad hoc native `<select>` controls in those flows.
 - Direct `@radix-ui/*` imports are forbidden outside `src/components/ui/*` and enforced by ESLint (`no-restricted-imports`).
 - Language-aware code rendering must use shared resolver `src/lib/codeLanguage.ts` (`@codemirror/language-data`), not ad-hoc direct `@codemirror/lang-*` imports in feature components.
 - Do not introduce compatibility props or dual APIs (for example `foo` vs `Foo`, `onPress` vs `onClick`). Pick one naming and enforce it.
@@ -361,7 +366,7 @@ ANALYZE_PHASE_SECURITY_PERFORMANCE_TIMEOUT= # Optional phase timeout override (e
 ANALYZE_PHASE_SUGGESTIONS_TIMEOUT=          # Optional phase timeout override (e.g. 10m)
 ```
 **Scheduler config file (TOML, optional):**
-- Auto-detected: `apps/scheduler/config.toml` (repo root) or `config.toml` in current working directory
+- Auto-detected: `apps/scheduler/config.toml` or `config.toml` in current working directory
 - Override path via `SCHEDULER_CONFIG` or `-config`
 - Precedence: env vars > TOML > defaults
 

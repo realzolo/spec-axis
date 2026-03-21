@@ -19,9 +19,9 @@
 
 # production
 **/build
-apps/runner/runner
+apps/scheduler/scheduler
 apps/worker/worker
-apps/runner/data/
+apps/scheduler/data/
 
 # misc
 .DS_Store
@@ -47,7 +47,7 @@ yarn-error.log*
 
 # config files
 /config.toml
-/apps/runner/config.toml
+/apps/scheduler/config.toml
 
 # vercel
 .vercel

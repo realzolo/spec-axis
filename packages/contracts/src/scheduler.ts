@@ -14,6 +14,8 @@ export const schedulerPipelineSchema = z.object({
   is_active: z.boolean(),
   current_version_id: z.string().uuid().nullable().optional(),
   concurrency_mode: z.enum(['allow', 'queue', 'cancel_previous']),
+  source_branch: z.string().optional(),
+  source_branch_source: z.enum(['project_default', 'custom']).optional(),
   created_by: z.string().uuid().nullable().optional(),
   created_at: isoDateString,
   updated_at: isoDateString,

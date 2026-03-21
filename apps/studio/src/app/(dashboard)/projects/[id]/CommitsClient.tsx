@@ -23,6 +23,7 @@ import {
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Combobox } from '@/components/ui/combobox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -581,7 +582,7 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
     });
   }, []);
 
-  const authors = [...new Set(commits.map(c => c.author))];
+  const authors = useMemo(() => [...new Set(commits.map((commit) => commit.author))], [commits]);
   const filtered = authorFilter === 'all' ? commits : commits.filter(c => c.author === authorFilter);
   const allFilteredSelected = filtered.length > 0 && filtered.every(c => selected.includes(c.sha));
 
@@ -715,8 +716,18 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
     return formatLocalDate(d);
   }
 
-  const branchItems = branches.map(b => ({ id: b, label: b }));
-  const authorItems = [{ id: 'all', label: dict.commits.allAuthors }, ...authors.map(a => ({ id: a, label: a }))];
+  const branchOptions = useMemo(() => branches.map((b) => ({ value: b, label: b, keywords: [b] })), [branches]);
+  const authorOptions = useMemo(
+    () => [
+      { value: 'all', label: dict.commits.allAuthors, keywords: [dict.commits.allAuthors] },
+      ...authors.map((author) => ({
+        value: author,
+        label: author,
+        keywords: [author],
+      })),
+    ],
+    [authors, dict.commits.allAuthors]
+  );
   const filteredFiles = useMemo(() => {
     const query = fileSearch.trim().toLowerCase();
     return detailFiles.filter((file) => {
@@ -1274,26 +1285,28 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
 
       {/* Filters */}
       <div className="flex items-center gap-2.5 px-5 py-2.5 border-b border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-background-2))] shrink-0">
-        <Select value={branch} onValueChange={(value) => setBranch(value)}>
-          <SelectTrigger className="w-[150px] h-8">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {branchItems.map(item => (
-              <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={authorFilter} onValueChange={(value) => setAuthorFilter(value)}>
-          <SelectTrigger className="w-[160px] h-8">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {authorItems.map(item => (
-              <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Combobox
+          value={branch}
+          onChange={setBranch}
+          options={branchOptions}
+          placeholder={dict.projects.branchPlaceholder}
+          searchPlaceholder={dict.projects.branchSearchPlaceholder}
+          heading={dict.projects.branchListHeading}
+          emptyLabel={dict.projects.branchListEmpty}
+          className="w-[150px] h-8 text-[13px]"
+          contentClassName="w-[300px]"
+        />
+        <Combobox
+          value={authorFilter}
+          onChange={setAuthorFilter}
+          options={authorOptions}
+          placeholder={dict.commits.authorPlaceholder}
+          searchPlaceholder={dict.commits.authorSearchPlaceholder}
+          heading={dict.commits.authorListHeading}
+          emptyLabel={dict.commits.authorListEmpty}
+          className="w-[160px] h-8 text-[13px]"
+          contentClassName="w-[300px]"
+        />
         {filtered.length > 0 && (
           <Button variant="ghost" size="sm" onClick={toggleSelectAll} className="gap-1">
             {allFilteredSelected && <CheckCircle2 className="size-3.5" />}
@@ -1713,27 +1726,29 @@ export default function CommitsClient({ project, branches, dict }: { project: Pr
                       </Tabs>
                       {detailMode === 'compare' && (
                         <div className="flex flex-wrap items-center gap-2">
-                          <Select value={compareBase} onValueChange={(value) => setCompareBase(value)}>
-                            <SelectTrigger className="h-8 w-[140px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {branchItems.map(item => (
-                                <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <Combobox
+                            value={compareBase}
+                            onChange={setCompareBase}
+                            options={branchOptions}
+                            placeholder={dict.projects.branchPlaceholder}
+                            searchPlaceholder={dict.projects.branchSearchPlaceholder}
+                            heading={dict.projects.branchListHeading}
+                            emptyLabel={dict.projects.branchListEmpty}
+                            className="h-8 w-[140px] text-[13px]"
+                            contentClassName="w-[300px]"
+                          />
                           <span className="text-[11px] text-[hsl(var(--ds-text-2))]">→</span>
-                          <Select value={compareHead} onValueChange={(value) => setCompareHead(value)}>
-                            <SelectTrigger className="h-8 w-[140px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {branchItems.map(item => (
-                                <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <Combobox
+                            value={compareHead}
+                            onChange={setCompareHead}
+                            options={branchOptions}
+                            placeholder={dict.projects.branchPlaceholder}
+                            searchPlaceholder={dict.projects.branchSearchPlaceholder}
+                            heading={dict.projects.branchListHeading}
+                            emptyLabel={dict.projects.branchListEmpty}
+                            className="h-8 w-[140px] text-[13px]"
+                            contentClassName="w-[300px]"
+                          />
                           <Button size="sm" variant="outline" onClick={() => loadCompareDiff(compareBase, compareHead)}>
                             {dict.commits.compareAction}
                           </Button>
