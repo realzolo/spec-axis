@@ -155,6 +155,15 @@ func claimAndRunPipelineBatch(
 				if isPipelineRunCanceled(ctx, st, run.ID) {
 					return
 				}
+				backgroundCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = st.MarkPipelineRunFailed(backgroundCtx, run.ID, err.Error())
+				_ = st.AppendRunEvent(backgroundCtx, run.ID, "run.failed", map[string]any{
+					"runId":      run.ID,
+					"status":     pipeline.StatusFailed,
+					"error":      err.Error(),
+					"finishedAt": time.Now().UTC().Format(time.RFC3339),
+				})
 				log.Printf("pipeline run %s failed: %v", run.ID, err)
 			}
 		}()

@@ -17,7 +17,7 @@ type Config struct {
 	DataDir               string
 	LogRetentionDays      int
 	ArtifactRetentionDays int
-	// Studio integration — used by source_checkout and review_gate job types
+	// Studio integration — used for Conductor -> Studio callbacks/events.
 	StudioURL   string
 	StudioToken string
 	// Worker control plane settings.

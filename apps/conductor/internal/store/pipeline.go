@@ -1598,6 +1598,9 @@ func (s *Store) CreatePipelineJob(ctx context.Context, runID string, jobKey stri
 		ctx,
 		`insert into pipeline_jobs (run_id, job_key, name, status, attempt, created_at, updated_at)
 		 values ($1,$2,$3,'queued',1,now(),now())
+		 on conflict (run_id, job_key) do update
+		   set name = excluded.name,
+		       updated_at = now()
 		 returning id, run_id, job_key, name, status, attempt, worker_id, error_message, duration_ms, created_at, started_at, finished_at, updated_at`,
 		runID,
 		jobKey,
@@ -1653,6 +1656,9 @@ func (s *Store) CreatePipelineStep(ctx context.Context, jobID string, stepKey st
 		ctx,
 		`insert into pipeline_steps (job_id, step_key, name, status, created_at, updated_at)
 		 values ($1,$2,$3,'queued',now(),now())
+		 on conflict (job_id, step_key) do update
+		   set name = excluded.name,
+		       updated_at = now()
 		 returning id, job_id, step_key, name, status, exit_code, timeout_ms, duration_ms, error_message, log_path, created_at, started_at, finished_at, updated_at`,
 		jobID,
 		stepKey,
@@ -1762,7 +1768,9 @@ func (s *Store) MarkPipelineRunSuccess(ctx context.Context, runID string) error 
 func (s *Store) MarkPipelineRunFailed(ctx context.Context, runID string, message string) error {
 	_, err := s.pool.Exec(
 		ctx,
-		`update pipeline_runs set status='failed', error_message=$2, finished_at=now(), updated_at=now() where id=$1`,
+		`update pipeline_runs
+		 set status='failed', error_message=$2, finished_at=now(), updated_at=now()
+		 where id=$1 and status in ('queued','running','waiting_manual')`,
 		runID,
 		message,
 	)

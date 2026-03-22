@@ -36,6 +36,7 @@ func (e *Engine) runJobLocally(
 ) error {
 	jobWorkspaceRoot, err := prepareLocalJobWorkspace(workspaceRoot, job)
 	if err != nil {
+		e.failJobWithoutStartedStep(ctx, runID, job, jobRecord, err.Error())
 		_ = e.Store.MarkPipelineJobFailed(ctx, jobRecord.ID, err.Error())
 		_ = e.Store.AppendRunEvent(ctx, runID, "job.failed", map[string]any{
 			"runId":      runID,
@@ -49,6 +50,7 @@ func (e *Engine) runJobLocally(
 	}
 	sandbox, err := startJobSandbox(ctx, runID, job.ID, strings.TrimSpace(cfg.BuildImage), jobWorkspaceRoot)
 	if err != nil {
+		e.failJobWithoutStartedStep(ctx, runID, job, jobRecord, err.Error())
 		_ = e.Store.MarkPipelineJobFailed(ctx, jobRecord.ID, err.Error())
 		_ = e.Store.AppendRunEvent(ctx, runID, "job.failed", map[string]any{
 			"runId":      runID,
@@ -114,23 +116,27 @@ func (e *Engine) executeLocalStep(
 			return 1, errors.New("sandbox is required for source checkout")
 		}
 		executor := &SourceCheckoutExecutor{
-			StudioURL:   job.StudioURL,
-			StudioToken: job.StudioToken,
-			ProjectID:   job.ProjectID,
-			Branch:      job.Branch,
+			Store:     e.Store,
+			ProjectID: job.ProjectID,
+			Branch:    job.Branch,
 		}
-		repoURL, err := executor.fetchRepoURL(ctx)
+		spec, err := executor.resolveCheckoutSpec(ctx)
 		if err != nil {
 			return 1, err
 		}
-		env["PIPELINE_REPO_URL"] = repoURL
+		env["PIPELINE_REPOSITORY"] = spec.Repository
+		env["PIPELINE_REPO_URL"] = spec.RemoteURL
+		for key, value := range spec.Env {
+			env[key] = value
+		}
 		env["PIPELINE_SOURCE_BRANCH"] = strings.TrimSpace(job.Branch)
 		if env["PIPELINE_SOURCE_BRANCH"] == "" {
 			env["PIPELINE_SOURCE_BRANCH"] = "main"
 		}
 		script := `
 set -eu
-echo "[source] Repository: ${PIPELINE_REPO_URL}"
+echo "[source] Repository: ${PIPELINE_REPOSITORY}"
+echo "[source] Remote URL: ${PIPELINE_REPO_URL}"
 echo "[source] Branch: ${PIPELINE_SOURCE_BRANCH}"
 if [ -d .git ]; then
   echo "[source] Pulling latest changes..."
@@ -147,8 +153,7 @@ echo "[source] Source checkout complete."
 			return 1, errors.New("sandbox is required for review gate")
 		}
 		executor := &ReviewGateExecutor{
-			StudioURL:   job.StudioURL,
-			StudioToken: job.StudioToken,
+			Store:       e.Store,
 			ProjectID:   job.ProjectID,
 			MinScore:    job.MinScore,
 			GateEnabled: job.MinScore > 0,

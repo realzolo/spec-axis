@@ -15,7 +15,14 @@ type LocalStorage struct {
 }
 
 func NewLocalStorage(baseDir string) *LocalStorage {
-	return &LocalStorage{baseDir: baseDir}
+	resolved := filepath.Clean(baseDir)
+	if resolved == "" {
+		resolved = "data"
+	}
+	if abs, err := filepath.Abs(resolved); err == nil {
+		resolved = abs
+	}
+	return &LocalStorage{baseDir: resolved}
 }
 
 func (s *LocalStorage) RunWorkspaceRoot(runID string) string {

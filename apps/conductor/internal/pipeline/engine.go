@@ -51,7 +51,10 @@ func (e *Engine) postStudioEvent(ctx context.Context, typ string, payload map[st
 		return
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	requestCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, url, bytes.NewReader(raw))
 	if err != nil {
 		return
 	}
@@ -124,7 +127,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 	}
 
 	// Build the internal plan from the four-stage config
-	plan := BuildInternalPlan(cfg, projectID, e.StudioURL, e.StudioToken)
+	plan := BuildInternalPlan(cfg, projectID)
 	jobIndex := map[string]PipelineJob{}
 	for _, job := range plan.Jobs {
 		jobIndex[job.ID] = job
@@ -136,7 +139,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 		return err
 	}
 	if len(jobRecords) == 0 {
-		if err := EnsureRunGraph(ctx, e.Store, runID, cfg, projectID, e.StudioURL, e.StudioToken); err != nil {
+		if err := EnsureRunGraph(ctx, e.Store, runID, cfg, projectID); err != nil {
 			return err
 		}
 		jobRecords, err = e.Store.ListPipelineJobs(ctx, runID)
@@ -520,10 +523,55 @@ func (e *Engine) runJob(
 	}
 	if e.WorkerHub == nil || !e.WorkerHub.HasWorkers() {
 		err := fmt.Errorf("no deploy worker node available for pipeline execution")
+		e.failJobWithoutStartedStep(ctx, runID, job, record, err.Error())
 		_ = e.Store.MarkPipelineJobFailed(ctx, record.ID, err.Error())
 		return err
 	}
 	return e.runJobOnWorker(ctx, runID, cfg, secrets, job, record, target)
+}
+
+func (e *Engine) failJobWithoutStartedStep(
+	ctx context.Context,
+	runID string,
+	job PipelineJob,
+	jobRecord store.PipelineJob,
+	message string,
+) {
+	log.Printf("pipeline step setup failed: run=%s job=%s step=%s error=%s", runID, job.ID, firstStepKey(job), message)
+
+	if e.Storage == nil || len(job.Steps) == 0 {
+		return
+	}
+
+	step := job.Steps[0]
+	stepRecord, err := e.Store.GetPipelineStepByKey(ctx, jobRecord.ID, step.ID)
+	if err != nil || stepRecord.ID == "" {
+		return
+	}
+
+	logPath, logWriter, openErr := e.Storage.OpenStepLog(runID, job.ID, step.ID)
+	if openErr == nil {
+		_, _ = fmt.Fprintf(
+			logWriter,
+			"[system] Step could not start because job setup failed before step execution.\n[system] %s\n",
+			message,
+		)
+		_ = logWriter.Close()
+		_ = e.Store.UpdatePipelineStepLogPath(ctx, stepRecord.ID, logPath)
+	}
+
+	_ = e.Store.MarkPipelineStepFailed(ctx, stepRecord.ID, string(StatusFailed), 1, message)
+	_ = e.Store.AppendRunEvent(ctx, runID, "step.failed", map[string]any{
+		"runId":      runID,
+		"jobId":      jobRecord.ID,
+		"jobKey":     job.ID,
+		"stepId":     stepRecord.ID,
+		"stepKey":    step.ID,
+		"status":     StatusFailed,
+		"exitCode":   1,
+		"finishedAt": time.Now().UTC().Format(time.RFC3339),
+		"error":      message,
+	})
 }
 
 func (e *Engine) runJobOnWorker(
@@ -774,8 +822,8 @@ func (e *Engine) runJobOnWorker(
 		ProjectID:          job.ProjectID,
 		Branch:             job.Branch,
 		MinScore:           job.MinScore,
-		StudioURL:          job.StudioURL,
-		StudioToken:        job.StudioToken,
+		StudioURL:          e.StudioURL,
+		StudioToken:        e.StudioToken,
 		WorkspaceRoot:      "",
 		JobWorkingDir:      job.WorkingDir,
 		Steps:              steps,
@@ -803,6 +851,10 @@ func (e *Engine) runJobOnWorker(
 	}
 
 	if dispatchErr != nil {
+		if !stepStarted.Load() {
+			e.failJobWithoutStartedStep(ctx, runID, job, jobRecord, dispatchErr.Error())
+		}
+		log.Printf("pipeline job dispatch failed: run=%s job=%s error=%s", runID, job.ID, dispatchErr.Error())
 		_ = e.Store.MarkPipelineJobFailed(ctx, jobRecord.ID, dispatchErr.Error())
 		_ = e.Store.AppendRunEvent(ctx, runID, "job.failed", map[string]any{
 			"runId":      runID,
@@ -820,6 +872,10 @@ func (e *Engine) runJobOnWorker(
 		if message == "" {
 			message = "worker returned non-success status"
 		}
+		if !stepStarted.Load() {
+			e.failJobWithoutStartedStep(ctx, runID, job, jobRecord, message)
+		}
+		log.Printf("pipeline job failed: run=%s job=%s status=%s error=%s", runID, job.ID, result.Status, message)
 		_ = e.Store.MarkPipelineJobFailed(ctx, jobRecord.ID, message)
 		_ = e.Store.AppendRunEvent(ctx, runID, "job.failed", map[string]any{
 			"runId":      runID,
@@ -918,6 +974,7 @@ func (e *Engine) runStep(
 			status = StatusFailed
 		}
 		_ = e.Store.MarkPipelineStepFailed(ctx, stepRecord.ID, string(status), exitCode, err.Error())
+		log.Printf("pipeline step failed: run=%s job=%s step=%s status=%s exit=%d error=%s", runID, job.ID, step.ID, status, exitCode, err.Error())
 		_ = e.Store.AppendRunEvent(ctx, runID, "step.failed", map[string]any{
 			"runId":      runID,
 			"jobId":      jobRecord.ID,
@@ -961,6 +1018,13 @@ func (e *Engine) runStep(
 		"finishedAt": time.Now().UTC().Format(time.RFC3339),
 	})
 	return StatusSuccess, nil
+}
+
+func firstStepKey(job PipelineJob) string {
+	if len(job.Steps) == 0 {
+		return ""
+	}
+	return job.Steps[0].ID
 }
 
 func (e *Engine) cancelPendingJobs(ctx context.Context, runID string, jobIndex map[string]PipelineJob, jobMap map[string]store.PipelineJob) error {

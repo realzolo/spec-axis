@@ -196,6 +196,33 @@ func (s *Store) GetReport(ctx context.Context, reportID string) (*Report, error)
 	return &report, nil
 }
 
+func (s *Store) GetLatestProjectReviewScore(ctx context.Context, projectID string) (*int, error) {
+	row := s.pool.QueryRow(
+		ctx,
+		`select score
+		 from analysis_reports
+		 where project_id = $1
+		   and status = 'done'
+		   and score is not null
+		 order by created_at desc
+		 limit 1`,
+		projectID,
+	)
+
+	var score pgtype.Int4
+	if err := row.Scan(&score); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if !score.Valid {
+		return nil, nil
+	}
+	value := int(score.Int32)
+	return &value, nil
+}
+
 func (s *Store) IsReportCanceled(ctx context.Context, reportID string) (bool, error) {
 	row := s.pool.QueryRow(ctx, `select status from analysis_reports where id = $1`, reportID)
 	var status string

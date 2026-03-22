@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"time"
 
@@ -20,8 +21,6 @@ type Service struct {
 	Storage               *LocalStorage
 	Artifacts             *artifacts.Manager
 	ArtifactRetentionDays int
-	StudioURL             string
-	StudioToken           string
 }
 
 type CreatePipelineInput struct {
@@ -240,7 +239,7 @@ func (s *Service) TriggerRun(ctx context.Context, input TriggerRunInput) (*store
 		return nil, err
 	}
 
-	if err := EnsureRunGraph(ctx, s.Store, run.ID, cfg, projectID, s.StudioURL, s.StudioToken); err != nil {
+	if err := EnsureRunGraph(ctx, s.Store, run.ID, cfg, projectID); err != nil {
 		return nil, err
 	}
 
@@ -379,10 +378,40 @@ func (s *Service) ReadLog(ctx context.Context, stepID string, offset int64, limi
 	if err != nil {
 		return nil, 0, err
 	}
-	if step == nil || step.LogPath == nil || *step.LogPath == "" {
+	if step == nil {
 		return nil, 0, fmt.Errorf("log not found")
 	}
-	return s.Storage.ReadLog(*step.LogPath, offset, limit)
+	if step.LogPath == nil || *step.LogPath == "" {
+		if step.ErrorMessage != nil && strings.TrimSpace(*step.ErrorMessage) != "" {
+			synthetic := []byte(fmt.Sprintf("[system] No persisted step log is available.\n[system] %s\n", *step.ErrorMessage))
+			if offset >= int64(len(synthetic)) {
+				return []byte{}, int64(len(synthetic)), nil
+			}
+			end := int64(len(synthetic))
+			if limit > 0 && offset+limit < end {
+				end = offset + limit
+			}
+			return synthetic[offset:end], end, nil
+		}
+		return []byte{}, 0, nil
+	}
+	data, next, err := s.Storage.ReadLog(*step.LogPath, offset, limit)
+	if err == nil {
+		return data, next, nil
+	}
+	if step.ErrorMessage != nil && strings.TrimSpace(*step.ErrorMessage) != "" {
+		log.Printf("read step log fallback: step=%s log_path=%s err=%v", stepID, *step.LogPath, err)
+		synthetic := []byte(fmt.Sprintf("[system] Persisted step log could not be read.\n[system] %s\n", *step.ErrorMessage))
+		if offset >= int64(len(synthetic)) {
+			return []byte{}, int64(len(synthetic)), nil
+		}
+		end := int64(len(synthetic))
+		if limit > 0 && offset+limit < end {
+			end = offset + limit
+		}
+		return synthetic[offset:end], end, nil
+	}
+	return nil, 0, err
 }
 
 func (s *Service) CancelRun(ctx context.Context, runID string) error {

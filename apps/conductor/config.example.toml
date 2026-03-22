@@ -14,7 +14,7 @@ url = "postgres://user:pass@localhost:5432/spec_axis"
 encryption_key = ""
 
 [studio]
-# Base URL for Studio (used by pipeline source_checkout and review_gate job types)
+# Base URL for Studio (used for Conductor -> Studio callbacks/events)
 url = "http://localhost:8109"
 # Optional: token presented to Studio as `X-Conductor-Token`. If empty, Conductor will
 # fall back to the main `CONDUCTOR_TOKEN` env var / `[conductor].token` value.

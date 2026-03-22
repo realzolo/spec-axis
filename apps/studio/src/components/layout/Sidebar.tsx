@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   BarChart3,
@@ -92,9 +92,6 @@ export default function Sidebar({ dict, initialCollapsed = false }: SidebarProps
 function SidebarImpl({ dict, initialCollapsed }: SidebarProps & { initialCollapsed: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
-  const orgMenuTriggerId = useId();
-  const userMenuTriggerId = useId();
-  const projectMenuTriggerId = useId();
 
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
@@ -221,7 +218,6 @@ function SidebarImpl({ dict, initialCollapsed }: SidebarProps & { initialCollaps
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              id={orgMenuTriggerId}
               type="button"
               className={cn(
                 'rounded-[7px] transition-colors duration-150 hover:bg-[hsl(var(--ds-surface-1))] outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.25)]',
@@ -292,7 +288,6 @@ function SidebarImpl({ dict, initialCollapsed }: SidebarProps & { initialCollaps
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  id={projectMenuTriggerId}
                   type="button"
                   className={cn(
                     'w-full rounded-[7px] text-left transition-colors duration-150 hover:bg-[hsl(var(--ds-surface-1))] outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.25)]',
@@ -379,7 +374,6 @@ function SidebarImpl({ dict, initialCollapsed }: SidebarProps & { initialCollaps
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              id={userMenuTriggerId}
               type="button"
               className={cn(
                 'w-full rounded-[7px] transition-colors duration-150 hover:bg-[hsl(var(--ds-surface-1))] outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.25)]',

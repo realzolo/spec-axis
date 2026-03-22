@@ -517,6 +517,7 @@ If new install warnings appear, approve the dependency and update the allowlist.
 - **Authoring model**: users edit stage settings plus stage-local jobs; `source` is fixed single-entry, automation slots are fixed `auto + parallel`, and runtime `needs` edges are derived from stage order and stage `dispatchMode`.
 - **Execution model**: jobs still execute as a DAG after derivation, and steps run sequentially inside a job.
 - **CI sandbox image**: every pipeline must define a top-level `buildImage`. Conductor creates a fresh runner container from that image for each `source/review/build` job, mounts an isolated workspace snapshot into `/workspace`, and runs all job steps via `docker exec` inside the same container so step state persists across the job.
+- **Built-in CI stages**: `source_checkout` and `review_gate` are Conductor-native built-ins. Conductor resolves repository clone settings from `code_projects.repo` plus the project's VCS integration, injects Git HTTP auth via environment-based Git config (never by embedding tokens in clone URLs), and reads the latest completed review score directly from PostgreSQL instead of round-tripping through Studio HTTP.
 - **CI build image authoring**: Studio may offer curated build-image presets for common runtimes, but persisted pipeline config must remain explicit `buildImage` only. Presets are UI affordances derived from the current image value; do not persist preset identifiers into pipeline versions or execution-facing runtime config.
 - **Step types**: in CI stages, steps run as `shell` inside the job sandbox created from `buildImage`; step-level `docker` is not allowed there. In deploy stages, `shell` runs on the remote worker host and `docker` runs `docker run --rm -w /workspace --mount type=bind,src={workingDir},dst=/workspace {envFlags} {image} /bin/sh -c "{script}"`. Docker env values are inherited from the executor process environment instead of being embedded into CLI args, so injected secrets are not exposed in the host process list.
 - **Step artifacts**: each user-defined step can declare `artifactPaths` (glob/file list, one per line in UI). Conductor resolves and uploads artifacts after CI sandbox steps complete; deploy workers download required inputs from Conductor-backed artifact storage before deployment steps execute.
@@ -542,8 +543,6 @@ If new install warnings appear, approve the dependency and update the allowlist.
   - Studio fetches raw bytes from Conductor private endpoint `GET /v1/pipeline-runs/:runId/artifacts/:artifactId/content` using `X-Conductor-Token`
   - Published registry files stream through `GET /api/projects/:id/artifacts/files/:fileId/download`, which proxies Conductor private endpoint `GET /v1/artifact-files/:fileId/content`
 - **Conductor → Studio callbacks (pipelines)**:
-  - `source_checkout` fetches repo info from `GET /api/projects/:id`
-  - `review_gate` fetches latest completed report score from `GET /api/reports?projectId=...&limit=1`
   - Conductor emits completion events to Studio at `POST /api/conductor/events` (authorized via `X-Conductor-Token`) so Studio can send notifications
   - Conductor must be configured with `STUDIO_URL` and a token (`STUDIO_TOKEN`, defaults to `CONDUCTOR_TOKEN`) and Studio must accept `X-Conductor-Token` (shared secret)
 

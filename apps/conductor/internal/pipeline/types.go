@@ -123,9 +123,7 @@ type PipelineJob struct {
 	Branch    string `json:"branch,omitempty"`
 	ProjectID string `json:"projectId,omitempty"`
 	// For review_gate
-	MinScore    int    `json:"minScore,omitempty"`
-	StudioURL   string `json:"studioUrl,omitempty"`
-	StudioToken string `json:"studioToken,omitempty"`
+	MinScore int `json:"minScore,omitempty"`
 }
 
 // ── Internal stage structure (used by graph/engine) ───────────────────────
@@ -144,7 +142,7 @@ type InternalPlan struct {
 }
 
 // BuildInternalPlan normalizes the pipeline config into executable jobs.
-func BuildInternalPlan(cfg PipelineConfig, projectID, studioURL, studioToken string) InternalPlan {
+func BuildInternalPlan(cfg PipelineConfig, projectID string) InternalPlan {
 	jobs := make([]PipelineJob, 0, len(cfg.Jobs))
 	for _, item := range cfg.Jobs {
 		job := item
@@ -170,8 +168,6 @@ func BuildInternalPlan(cfg PipelineConfig, projectID, studioURL, studioToken str
 			}
 		case "review_gate":
 			job.ProjectID = projectID
-			job.StudioURL = studioURL
-			job.StudioToken = studioToken
 			if len(job.Steps) == 0 {
 				job.Steps = []PipelineStep{{ID: "gate", Name: "Quality Gate"}}
 			}
@@ -281,7 +277,7 @@ func ValidateConfig(cfg PipelineConfig) error {
 		}
 	}
 
-	plan := BuildInternalPlan(cfg, "", "", "")
+	plan := BuildInternalPlan(cfg, "")
 	if len(plan.Jobs) == 0 {
 		return errors.New("pipeline must have at least one job")
 	}

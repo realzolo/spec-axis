@@ -23,6 +23,11 @@ func startJobSandbox(
 	image string,
 	workspacePath string,
 ) (*jobSandbox, error) {
+	absoluteWorkspacePath, err := filepath.Abs(workspacePath)
+	if err != nil {
+		return nil, fmt.Errorf("resolve sandbox workspace path: %w", err)
+	}
+
 	containerName := runnerContainerName(runID, jobID)
 	args := []string{
 		"run",
@@ -33,7 +38,7 @@ func startJobSandbox(
 		"--workdir",
 		"/workspace",
 		"--mount",
-		fmt.Sprintf("type=bind,src=%s,dst=/workspace", workspacePath),
+		fmt.Sprintf("type=bind,src=%s,dst=/workspace", absoluteWorkspacePath),
 		image,
 		"/bin/sh",
 		"-lc",
@@ -45,7 +50,7 @@ func startJobSandbox(
 	}
 	return &jobSandbox{
 		containerName: containerName,
-		workspacePath: workspacePath,
+		workspacePath: absoluteWorkspacePath,
 	}, nil
 }
 

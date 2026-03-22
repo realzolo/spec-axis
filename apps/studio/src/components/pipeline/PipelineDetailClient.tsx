@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -319,6 +319,10 @@ export default function PipelineDetailClient({
   // Load artifacts when run changes
   useEffect(() => {
     if (!selectedRunId) return;
+    setRunDetail(null);
+    setSelectedRunJobKey(null);
+    setSelectedStepId(null);
+    setLogText("");
     setArtifacts([]);
     void loadArtifacts(selectedRunId);
   }, [selectedRunId, loadArtifacts]);
@@ -1026,12 +1030,14 @@ export default function PipelineDetailClient({
                   <button
                     key={run.id}
                     onClick={() => {
-                      setSelectedRunId(run.id);
-                      setRunDetail(null);
-                      setSelectedRunJobKey(null);
-                      setNodeDialogOpen(false);
-                      setSelectedStepId(null);
-                      setLogText("");
+                      startTransition(() => {
+                        setSelectedRunId(run.id);
+                        setRunDetail(null);
+                        setSelectedRunJobKey(null);
+                        setNodeDialogOpen(false);
+                        setSelectedStepId(null);
+                        setLogText("");
+                      });
                     }}
                     className={`w-full text-left px-4 py-3 border-b border-[hsl(var(--ds-border-1))] transition-colors ${
                       selectedRunId === run.id
@@ -1365,7 +1371,11 @@ export default function PipelineDetailClient({
                                           <button
                                             type="button"
                                             key={step.id}
-                                            onClick={() => setSelectedStepId(step.id)}
+                                            onClick={() =>
+                                              startTransition(() => {
+                                                setSelectedStepId(step.id);
+                                              })
+                                            }
                                             className={`flex w-full items-center gap-2 rounded-[8px] border px-3 py-2 text-left transition-colors ${
                                               selectedStepId === step.id
                                                 ? "border-foreground bg-background"

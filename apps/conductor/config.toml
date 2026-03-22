@@ -2,13 +2,13 @@
 
 [conductor]
 port = "8200"
-token = ""
+token = "your_runner_token"
 concurrency = 4
 analyze_timeout = "300s"
 data_dir = "data"
 
 [database]
-url = "postgres://spec_axis:spec_axis@43.153.63.235:5432/spec_axis"
+url = "postgres://spec_axis:spec_axis@43.153.63.235:5432/spec_axis?sslmode=disable"
 
 [pipeline]
 concurrency = 4
@@ -23,4 +23,4 @@ encryption_key = "b1be2d939cc5d0ea9e52d3844ec1794d0de6f161c27c05a39cd52c1a1e3f2e
 url = "http://localhost:8109"
 # Optional: token presented to Studio as `X-Conductor-Token`. If empty, Conductor will
 # fall back to the main `CONDUCTOR_TOKEN` env var / `[conductor].token` value.
-token = ""
+token = "your_runner_token"

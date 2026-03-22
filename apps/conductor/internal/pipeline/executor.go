@@ -2,16 +2,16 @@ package pipeline
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
 	"sort"
 	"strings"
-	"time"
+
+	"spec-axis/conductor/internal/integrations"
+	"spec-axis/conductor/internal/store"
 )
 
 // ── Executor interface ─────────────────────────────────────────────────────
@@ -144,24 +144,29 @@ func (e *DockerExecutor) Execute(ctx context.Context, step PipelineStep, env map
 }
 
 // ── Source checkout executor ───────────────────────────────────────────────
-// Runs git clone/pull for the project's repository.
-// The repo URL is fetched from Studio API using the projectId and studioToken.
+// Runs git clone/pull for the project's repository using Conductor's own
+// project + VCS integration resolution.
 
 type SourceCheckoutExecutor struct {
-	StudioURL   string
-	StudioToken string
-	ProjectID   string
-	Branch      string
+	Store     *store.Store
+	ProjectID string
+	Branch    string
 }
 
 func (e *SourceCheckoutExecutor) Execute(ctx context.Context, step PipelineStep, env map[string]string, workingDir string, log io.Writer) (int, error) {
 	fmt.Fprintf(log, "[source] Fetching project info for %s\n", e.ProjectID)
 
-	// Fetch repo URL from Studio
-	repoURL, err := e.fetchRepoURL(ctx)
+	spec, err := e.resolveCheckoutSpec(ctx)
 	if err != nil {
 		fmt.Fprintf(log, "[source] ERROR: %v\n", err)
 		return 1, err
+	}
+	commandEnv := cloneMap(env)
+	if commandEnv == nil {
+		commandEnv = map[string]string{}
+	}
+	for key, value := range spec.Env {
+		commandEnv[key] = value
 	}
 
 	branch := e.Branch
@@ -169,7 +174,8 @@ func (e *SourceCheckoutExecutor) Execute(ctx context.Context, step PipelineStep,
 		branch = "main"
 	}
 
-	fmt.Fprintf(log, "[source] Repository: %s\n", repoURL)
+	fmt.Fprintf(log, "[source] Repository: %s\n", spec.Repository)
+	fmt.Fprintf(log, "[source] Remote URL: %s\n", spec.RemoteURL)
 	fmt.Fprintf(log, "[source] Branch: %s\n", branch)
 
 	// Determine checkout dir
@@ -181,9 +187,10 @@ func (e *SourceCheckoutExecutor) Execute(ctx context.Context, step PipelineStep,
 	// Clone or pull
 	if _, err := os.Stat(checkoutDir + "/.git"); os.IsNotExist(err) {
 		fmt.Fprintf(log, "[source] Cloning repository...\n")
-		cmd := exec.CommandContext(ctx, "git", "clone", "--depth=1", "--branch", branch, repoURL, checkoutDir)
+		cmd := exec.CommandContext(ctx, "git", "clone", "--depth=1", "--branch", branch, spec.RemoteURL, checkoutDir)
 		cmd.Stdout = log
 		cmd.Stderr = log
+		cmd.Env = mergeEnv(commandEnv)
 		if err := cmd.Run(); err != nil {
 			fmt.Fprintf(log, "[source] Clone failed: %v\n", err)
 			return 1, err
@@ -193,6 +200,7 @@ func (e *SourceCheckoutExecutor) Execute(ctx context.Context, step PipelineStep,
 		cmd := exec.CommandContext(ctx, "git", "-C", checkoutDir, "pull", "--ff-only", "origin", branch)
 		cmd.Stdout = log
 		cmd.Stderr = log
+		cmd.Env = mergeEnv(commandEnv)
 		if err := cmd.Run(); err != nil {
 			fmt.Fprintf(log, "[source] Pull failed: %v\n", err)
 			return 1, err
@@ -203,46 +211,31 @@ func (e *SourceCheckoutExecutor) Execute(ctx context.Context, step PipelineStep,
 	return 0, nil
 }
 
-func (e *SourceCheckoutExecutor) fetchRepoURL(ctx context.Context) (string, error) {
-	if e.StudioURL == "" || e.ProjectID == "" {
-		return "", fmt.Errorf("studioURL and projectId are required for source checkout")
+func (e *SourceCheckoutExecutor) resolveCheckoutSpec(ctx context.Context) (*integrations.CheckoutSpec, error) {
+	if e.Store == nil {
+		return nil, fmt.Errorf("store is required for source checkout")
 	}
-	url := strings.TrimRight(e.StudioURL, "/") + "/api/projects/" + e.ProjectID
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if strings.TrimSpace(e.ProjectID) == "" {
+		return nil, fmt.Errorf("projectId is required for source checkout")
+	}
+	project, err := e.Store.GetProject(ctx, e.ProjectID)
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("failed to load project: %w", err)
 	}
-	if e.StudioToken != "" {
-		req.Header.Set("X-Conductor-Token", e.StudioToken)
-	}
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
+	spec, err := integrations.ResolveCheckoutSpec(ctx, e.Store, project)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch project: %w", err)
+		return nil, fmt.Errorf("failed to resolve repository checkout: %w", err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("studio returned %d for project %s", resp.StatusCode, e.ProjectID)
-	}
-	var project struct {
-		Repo string `json:"repo"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&project); err != nil {
-		return "", fmt.Errorf("failed to decode project: %w", err)
-	}
-	if project.Repo == "" {
-		return "", fmt.Errorf("project has no repository configured")
-	}
-	return project.Repo, nil
+	return spec, nil
 }
 
 // ── Review gate executor ───────────────────────────────────────────────────
-// Calls Studio API to check the latest analysis score for the project.
-// Fails if qualityGateEnabled and score < minScore.
+// Checks the latest persisted analysis score for the project directly from
+// Conductor's database view of reports. Fails if qualityGateEnabled and
+// score < minScore.
 
 type ReviewGateExecutor struct {
-	StudioURL   string
-	StudioToken string
+	Store       *store.Store
 	ProjectID   string
 	MinScore    int
 	GateEnabled bool
@@ -275,37 +268,18 @@ func (e *ReviewGateExecutor) Execute(ctx context.Context, step PipelineStep, env
 }
 
 func (e *ReviewGateExecutor) fetchLatestScore(ctx context.Context) (int, error) {
-	if e.StudioURL == "" || e.ProjectID == "" {
-		return 0, fmt.Errorf("studioURL and projectId are required")
+	if e.Store == nil {
+		return 0, fmt.Errorf("store is required")
 	}
-	url := strings.TrimRight(e.StudioURL, "/") + "/api/reports?projectId=" + e.ProjectID + "&limit=1"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if strings.TrimSpace(e.ProjectID) == "" {
+		return 0, fmt.Errorf("projectId is required")
+	}
+	score, err := e.Store.GetLatestProjectReviewScore(ctx, e.ProjectID)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to load latest review score: %w", err)
 	}
-	if e.StudioToken != "" {
-		req.Header.Set("X-Conductor-Token", e.StudioToken)
+	if score == nil {
+		return 0, fmt.Errorf("no completed review found")
 	}
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("failed to call studio: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("studio returned %d", resp.StatusCode)
-	}
-	var reports []struct {
-		Score  *int   `json:"score"`
-		Status string `json:"status"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&reports); err != nil {
-		return 0, fmt.Errorf("decode error: %w", err)
-	}
-	for _, r := range reports {
-		if r.Status == "done" && r.Score != nil {
-			return *r.Score, nil
-		}
-	}
-	return 0, fmt.Errorf("no completed review found")
+	return *score, nil
 }

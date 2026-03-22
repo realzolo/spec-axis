@@ -83,8 +83,6 @@ func main() {
 		Storage:               storage,
 		Artifacts:             artifactManager,
 		ArtifactRetentionDays: cfg.ArtifactRetentionDays,
-		StudioURL:             cfg.StudioURL,
-		StudioToken:           cfg.StudioToken,
 	}
 	go pipelineService.RunScheduleLoop(ctx, 30*time.Second)
 	go dispatch.RunAnalysisLoop(ctx, st, publisher, cfg.AnalyzeTimeout, cfg.Concurrency, 2*time.Second)
