@@ -1077,8 +1077,82 @@ func runStep(
 	return exitCode, "failed", err
 }
 
+func writeCommandLine(output io.Writer, command string, args ...string) {
+	if output == nil {
+		return
+	}
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return
+	}
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, command)
+	for _, arg := range args {
+		parts = append(parts, formatCommandArg(arg))
+	}
+	_, _ = fmt.Fprintf(output, "[command] %s\n", strings.Join(parts, " "))
+}
+
+func writeCommandHeader(output io.Writer, title string, workingDir string) {
+	if output == nil {
+		return
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = "[command]"
+	}
+	_, _ = fmt.Fprintln(output, title)
+	if cwd := strings.TrimSpace(workingDir); cwd != "" {
+		_, _ = fmt.Fprintf(output, "[command] cwd: %s\n", cwd)
+	}
+}
+
+func writeCommandResult(output io.Writer, exitCode int, err error) {
+	if output == nil {
+		return
+	}
+	if err == nil {
+		_, _ = fmt.Fprintf(output, "[command] status=success exit=%d\n", exitCode)
+		return
+	}
+	_, _ = fmt.Fprintf(output, "[command] status=failed exit=%d error=%s\n", exitCode, strings.TrimSpace(err.Error()))
+}
+
+func writeScriptBlock(output io.Writer, label string, script string) {
+	if output == nil {
+		return
+	}
+	label = strings.TrimSpace(label)
+	if label == "" {
+		label = "[command]"
+	}
+	_, _ = fmt.Fprintln(output, label)
+	if strings.TrimSpace(script) == "" {
+		_, _ = io.WriteString(output, "[command] <empty>\n")
+		return
+	}
+	_, _ = io.WriteString(output, script)
+	if !strings.HasSuffix(script, "\n") {
+		_, _ = io.WriteString(output, "\n")
+	}
+	_, _ = io.WriteString(output, "\n")
+}
+
+func formatCommandArg(arg string) string {
+	if arg == "" {
+		return `""`
+	}
+	if strings.ContainsAny(arg, " \t\n\r\"'`\\") {
+		return strconv.Quote(arg)
+	}
+	return arg
+}
+
 func runShellStep(ctx context.Context, script string, env map[string]string, workingDir string, output io.Writer) (int, error) {
 	name, args := shellCommand(script)
+	writeCommandHeader(output, "[command] shell step", workingDir)
+	writeCommandLine(output, name, args...)
+	writeScriptBlock(output, "[command] shell step", script)
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdout = output
 	cmd.Stderr = output
@@ -1092,11 +1166,14 @@ func runShellStep(ctx context.Context, script string, env map[string]string, wor
 	}
 	err := cmd.Wait()
 	if err == nil {
+		writeCommandResult(output, 0, nil)
 		return 0, nil
 	}
 	if exitErr, ok := err.(*exec.ExitError); ok {
+		writeCommandResult(output, exitErr.ExitCode(), err)
 		return exitErr.ExitCode(), err
 	}
+	writeCommandResult(output, 1, err)
 	return 1, err
 }
 
@@ -1122,6 +1199,9 @@ func runDockerStep(ctx context.Context, message workerprotocol.ExecuteJobMessage
 	}
 	args = append(args, image, "/bin/sh", "-c", step.Script)
 
+	writeCommandHeader(output, "[command] docker step", workingDir)
+	writeCommandLine(output, "docker", args...)
+	writeScriptBlock(output, "[command] docker step script", step.Script)
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Stdout = output
 	cmd.Stderr = output
@@ -1131,11 +1211,14 @@ func runDockerStep(ctx context.Context, message workerprotocol.ExecuteJobMessage
 	}
 	err := cmd.Wait()
 	if err == nil {
+		writeCommandResult(output, 0, nil)
 		return 0, nil
 	}
 	if exitErr, ok := err.(*exec.ExitError); ok {
+		writeCommandResult(output, exitErr.ExitCode(), err)
 		return exitErr.ExitCode(), err
 	}
+	writeCommandResult(output, 1, err)
 	return 1, err
 }
 
@@ -1185,24 +1268,34 @@ func runSourceCheckoutStep(
 	}
 	_, _ = fmt.Fprintf(output, "[source] Repository: %s\n", repoURL)
 	_, _ = fmt.Fprintf(output, "[source] Branch: %s\n", branch)
+	writeCommandHeader(output, "[command] source checkout", workingDir)
 
 	if _, statErr := os.Stat(filepath.Join(workingDir, ".git")); statErr == nil {
 		_, _ = io.WriteString(output, "[source] Pulling latest changes...\n")
-		return runCommand(ctx, "git", []string{"-C", workingDir, "pull", "--ff-only", "origin", branch}, nil, "", output)
+		writeCommandLine(output, "git", "-C", workingDir, "pull", "--ff-only", "origin", branch)
+		exitCode, err := runCommand(ctx, "git", []string{"-C", workingDir, "pull", "--ff-only", "origin", branch}, nil, "", output)
+		writeCommandResult(output, exitCode, err)
+		return exitCode, err
 	}
 
 	_, _ = io.WriteString(output, "[source] Cloning repository...\n")
-	return runCommand(ctx, "git", []string{"clone", "--depth=1", "--branch", branch, repoURL, workingDir}, nil, "", output)
+	writeCommandLine(output, "git", "clone", "--depth=1", "--branch", branch, repoURL, workingDir)
+	exitCode, err := runCommand(ctx, "git", []string{"clone", "--depth=1", "--branch", branch, repoURL, workingDir}, nil, "", output)
+	writeCommandResult(output, exitCode, err)
+	return exitCode, err
 }
 
 func runReviewGateStep(ctx context.Context, message workerprotocol.ExecuteJobMessage, output io.Writer) (int, error) {
 	if strings.TrimSpace(message.ProjectID) == "" || strings.TrimSpace(message.StudioURL) == "" {
 		return 1, errors.New("projectId and studioUrl are required for review gate")
 	}
+	writeCommandHeader(output, "[command] review gate", "")
+	_, _ = io.WriteString(output, "[command] review gate (Conductor-native check)\n")
 	score, err := fetchLatestScore(ctx, message.StudioURL, message.StudioToken, message.ProjectID)
 	if err != nil {
 		_, _ = fmt.Fprintf(output, "[review] WARNING: %v\n", err)
 		_, _ = io.WriteString(output, "[review] Proceeding without quality gate check.\n")
+		writeCommandResult(output, 0, nil)
 		return 0, nil
 	}
 
@@ -1210,11 +1303,13 @@ func runReviewGateStep(ctx context.Context, message workerprotocol.ExecuteJobMes
 	if message.MinScore > 0 && score < message.MinScore {
 		err := fmt.Errorf("quality gate failed: score %d < minimum %d", score, message.MinScore)
 		_, _ = fmt.Fprintf(output, "[review] BLOCKED: %v\n", err)
+		writeCommandResult(output, 1, err)
 		return 1, err
 	}
 	if message.MinScore > 0 {
 		_, _ = fmt.Fprintf(output, "[review] Quality gate passed (score %d >= %d)\n", score, message.MinScore)
 	}
+	writeCommandResult(output, 0, nil)
 	return 0, nil
 }
 
@@ -1226,6 +1321,7 @@ func runCommand(
 	workingDir string,
 	output io.Writer,
 ) (int, error) {
+	writeCommandLine(output, name, args...)
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdout = output
 	cmd.Stderr = output

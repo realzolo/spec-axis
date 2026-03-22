@@ -45,6 +45,7 @@ import { toast } from "sonner";
 import {
   ArrowDown,
   ArrowRight,
+  Info,
   Play,
   RotateCcw,
   Settings,
@@ -150,7 +151,11 @@ function normalizeArtifactRepositorySlug(value: string) {
     .slice(0, 64);
 }
 
-function deriveRuntimeJobStatus(jobStatus: string | null | undefined, steps: PipelineRunStep[]): PipelineRunStatus {
+function deriveRuntimeJobStatus(
+  jobStatus: string | null | undefined,
+  steps: PipelineRunStep[],
+  runStatus?: string | null
+): PipelineRunStatus {
   if (isPipelineRunStatus(jobStatus) && jobStatus !== "queued") {
     return jobStatus;
   }
@@ -171,6 +176,9 @@ function deriveRuntimeJobStatus(jobStatus: string | null | undefined, steps: Pip
   if (stepStatuses.length > 0 && stepStatuses.every((status) => status === "success")) {
     return "success";
   }
+  if (isTerminalPipelineRunStatus(runStatus) && (!jobStatus || jobStatus === "queued")) {
+    return "canceled";
+  }
   if (stepStatuses.some((status) => status === "waiting_manual")) {
     return "waiting_manual";
   }
@@ -190,6 +198,12 @@ const PIPELINE_RUN_STATUS_VALUES: PipelineRunStatus[] = [
 
 function isPipelineRunStatus(value: string | null | undefined): value is PipelineRunStatus {
   return typeof value === "string" && PIPELINE_RUN_STATUS_VALUES.includes(value as PipelineRunStatus);
+}
+
+const TERMINAL_PIPELINE_RUN_STATUSES: PipelineRunStatus[] = ["success", "failed", "canceled", "timed_out"];
+
+function isTerminalPipelineRunStatus(value: string | null | undefined): boolean {
+  return typeof value === "string" && TERMINAL_PIPELINE_RUN_STATUSES.includes(value as PipelineRunStatus);
 }
 
 function getStepOutcomeLabel(step: PipelineRunStep, dict: Dictionary["pipelines"]["detail"]) {
@@ -221,19 +235,17 @@ function getTerminalLineTone(line: string): TerminalLineTone {
   const lower = trimmed.toLowerCase();
   if (lower.startsWith("[system]")) {
     const systemBody = trimmed.replace(/^\[system\]\s*/i, "");
-    if (/^(warn|warning)\b[:\s]/i.test(systemBody) || /\bwarning\b/i.test(systemBody)) return "warning";
-    if (/^(err|error|fatal|panic)\b[:\s]/i.test(systemBody) || /\berror\b/i.test(systemBody)) return "error";
+    if (/^(npm\s+warn|warn|warning)\b/i.test(systemBody) || /\bdeprecated\b/i.test(systemBody)) return "warning";
+    if (/^(npm\s+error|npm\s+err!|err|error|fatal|panic)\b/i.test(systemBody) || /\berror\b/i.test(systemBody)) return "error";
     if (/permission denied|refused|exit status \d+|failed to|not found/i.test(systemBody)) return "error";
     return "system";
   }
   if (/^\[(warn|warning)\]/i.test(trimmed)) return "warning";
   if (/^\[(err|error)\]/i.test(trimmed)) return "error";
-  if (/^(warn|warning)\b[:\s]/i.test(trimmed)) return "warning";
-  if (/^(err|error|fatal|panic)\b[:\s]/i.test(trimmed)) return "error";
-  if (/^npm err!/i.test(trimmed)) return "error";
+  if (/^(npm\s+warn|warn|warning)\b/i.test(trimmed) || /\bdeprecated\b/i.test(trimmed)) return "warning";
+  if (/^(npm\s+error|npm\s+err!|err|error|fatal|panic)\b/i.test(trimmed)) return "error";
   if (/^sh:\s.*not found$/i.test(trimmed)) return "error";
   if (/permission denied|refused|exit status \d+|failed to/i.test(trimmed)) return "error";
-  if (/\bwarning\b/i.test(trimmed)) return "warning";
   if (/\berror\b/i.test(trimmed)) return "error";
   return "default";
 }
@@ -315,8 +327,11 @@ export default function PipelineDetailClient({
   const [publishRepositorySlug, setPublishRepositorySlug] = useState(normalizeArtifactRepositorySlug(project.name));
   const [publishVersion, setPublishVersion] = useState("");
   const [publishChannels, setPublishChannels] = useState("");
+  const [runStreamNonce, setRunStreamNonce] = useState(0);
 
   const selectedRunIdRef = useRef<string | null>(initialRunId);
+  const previousSelectedRunIdRef = useRef<string | null>(initialRunId);
+  const previousRunStatusRef = useRef<PipelineRunStatus | null>(null);
   const runtimeBoardViewportRef = useRef<HTMLDivElement>(null);
   const runtimeBoardContentRef = useRef<HTMLDivElement>(null);
   const runtimeBoardRailRef = useRef<HTMLDivElement>(null);
@@ -563,7 +578,7 @@ export default function PipelineDetailClient({
       stopFallback();
       eventSource?.close();
     };
-  }, [selectedRunId, loadRunDetail, applyRunDetail]);
+  }, [selectedRunId, runStreamNonce, loadRunDetail, applyRunDetail]);
 
   // Auto-scroll log to bottom
   useEffect(() => {
@@ -954,6 +969,16 @@ export default function PipelineDetailClient({
     }
   }
 
+  async function copyCurrentLog() {
+    if (!logText) return;
+    try {
+      await navigator.clipboard.writeText(logText);
+      toast.success(dict.common.copied);
+    } catch {
+      toast.error(dict.common.copyFailed);
+    }
+  }
+
   async function downloadArtifact(artifactId: string) {
     if (!selectedRunId) return;
     setDownloadingArtifactId(artifactId);
@@ -1103,8 +1128,8 @@ export default function PipelineDetailClient({
     [selectedRuntimeJob, runStepsByJobId]
   );
   const selectedRuntimeJobStatus = useMemo(
-    () => deriveRuntimeJobStatus(selectedRuntimeJob?.status, selectedRuntimeSteps),
-    [selectedRuntimeJob?.status, selectedRuntimeSteps]
+    () => deriveRuntimeJobStatus(selectedRuntimeJob?.status, selectedRuntimeSteps, runDetail?.run.status),
+    [runDetail?.run.status, selectedRuntimeJob?.status, selectedRuntimeSteps]
   );
   const selectedRuntimeStep = useMemo(
     () => selectedRuntimeSteps.find((step) => step.id === selectedStepId) ?? null,
@@ -1251,11 +1276,11 @@ export default function PipelineDetailClient({
     const counts: Record<string, number> = {};
     for (const job of runDetail?.jobs ?? []) {
       const steps = runStepsByJobId.get(job.id) ?? [];
-      const displayStatus = deriveRuntimeJobStatus(job.status, steps);
+      const displayStatus = deriveRuntimeJobStatus(job.status, steps, runDetail?.run.status);
       counts[displayStatus] = (counts[displayStatus] ?? 0) + 1;
     }
     return counts;
-  }, [runDetail?.jobs, runStepsByJobId]);
+  }, [runDetail?.jobs, runDetail?.run.status, runStepsByJobId]);
   const runtimeStageCount = runtimeStages.length;
   const runtimeStageCardWidth = runtimeStageCount >= 5 ? 252 : 288;
   const runtimeConnectorWidth = runtimeStageCount >= 5 ? 48 : 72;
@@ -1266,12 +1291,30 @@ export default function PipelineDetailClient({
     selectedRunId && runDetail?.run.id === selectedRunId
       ? runDetail.run
       : runs.find((r) => r.id === selectedRunId);
+  const currentRunStatus = isPipelineRunStatus(currentRun?.status) ? currentRun.status : null;
   const currentRunLabel = currentRun
     ? p.detail.runId.replace(
         "{{num}}",
         String(runs.length - runs.findIndex((r) => r.id === selectedRunId))
       )
     : "";
+
+  useEffect(() => {
+    const previousSelectedRunId = previousSelectedRunIdRef.current;
+    const previousRunStatus = previousRunStatusRef.current;
+    previousSelectedRunIdRef.current = selectedRunId;
+    previousRunStatusRef.current = currentRunStatus;
+
+    if (!selectedRunId || previousSelectedRunId !== selectedRunId) {
+      return;
+    }
+    if (!previousRunStatus || !currentRunStatus) {
+      return;
+    }
+    if (isTerminalPipelineRunStatus(previousRunStatus) && !isTerminalPipelineRunStatus(currentRunStatus)) {
+      setRunStreamNonce((current) => current + 1);
+    }
+  }, [currentRunStatus, selectedRunId]);
 
   useEffect(() => {
     const jobs = runDetail?.jobs ?? [];
@@ -1721,9 +1764,19 @@ export default function PipelineDetailClient({
                       </div>
 
                       {/* Rollback / retry */}
-                      {currentRun &&
-                        (currentRun.status === "success" ||
-                          currentRun.status === "failed") && (
+                      {currentRun && currentRun.status === "success" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleRollback(selectedRunId)}
+                          disabled={rollingBack === selectedRunId}
+                        >
+                          <RotateCcw className="size-3.5 mr-1" />
+                          {p.rollback}
+                        </Button>
+                      )}
+                      {currentRun && currentRun.status === "failed" && (
+                        <div className="flex flex-col items-end gap-1">
                           <Button
                             variant="outline"
                             size="sm"
@@ -1731,11 +1784,26 @@ export default function PipelineDetailClient({
                             disabled={rollingBack === selectedRunId}
                           >
                             <RotateCcw className="size-3.5 mr-1" />
-                            {currentRun.status === "success"
-                              ? p.rollback
-                              : p.retry}
+                            {p.retry}
                           </Button>
-                        )}
+                          <TooltipProvider delayDuration={120}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  aria-label={p.detail.retryVersionTooltip}
+                                  className="inline-flex size-6 items-center justify-center rounded-[6px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] text-[hsl(var(--ds-text-2))] transition-colors hover:border-[hsl(var(--ds-border-2))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ds-accent-7)/0.24)]"
+                                >
+                                  <Info className="size-3" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" align="end" className="max-w-[280px] text-left">
+                                {p.detail.retryVersionTooltip}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      )}
                       {currentRun &&
                         (currentRun.status === "queued" ||
                           currentRun.status === "running" ||
@@ -1827,7 +1895,11 @@ export default function PipelineDetailClient({
                                     {stage.jobs.map((job, index) => {
                                       const runtimeJob = runJobsByKey.get(job.id);
                                       const runtimeSteps = runtimeJob ? runStepsByJobId.get(runtimeJob.id) ?? [] : [];
-                                      const runtimeStatus = deriveRuntimeJobStatus(runtimeJob?.status, runtimeSteps);
+                                      const runtimeStatus = deriveRuntimeJobStatus(
+                                        runtimeJob?.status,
+                                        runtimeSteps,
+                                        currentRun?.status
+                                      );
                                       const selected = selectedRunJobKey === job.id;
                                       return (
                                         <div key={job.id} className="space-y-3">
@@ -2111,8 +2183,21 @@ export default function PipelineDetailClient({
                                           {selectedRuntimeStep ? selectedRuntimeStep.name : p.log.title}
                                         </span>
                                       </div>
-                                      <div className="text-[11px] uppercase tracking-wide text-terminal-muted">
-                                        {selectedStepId ? `${terminalLogLines.length || 0} lines` : p.log.selectStep}
+                                      <div className="flex items-center gap-2">
+                                        <div className="text-[11px] uppercase tracking-wide text-terminal-muted">
+                                          {selectedStepId ? `${terminalLogLines.length || 0} lines` : p.log.selectStep}
+                                        </div>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 gap-1.5 px-2 text-[11px] uppercase tracking-wide text-terminal-muted hover:bg-white/5 hover:text-terminal"
+                                          onClick={() => void copyCurrentLog()}
+                                          disabled={!selectedStepId || !logText}
+                                        >
+                                          <Copy className="size-3.5" />
+                                          {dict.common.copy}
+                                        </Button>
                                       </div>
                                     </div>
 

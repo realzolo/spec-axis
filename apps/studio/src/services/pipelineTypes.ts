@@ -1,4 +1,7 @@
 export type PipelineEnvironment = 'development' | 'staging' | 'production';
+export type PipelineProjectKind = 'node' | 'nextjs' | 'react' | 'vite' | 'python' | 'go' | 'java' | 'unknown';
+export type PipelineRuntimeKind = 'node' | 'python' | 'go' | 'java' | 'unknown';
+export type PipelinePackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun' | 'unknown';
 export type PipelineStageKey =
   | 'source'
   | 'after_source'
@@ -108,6 +111,24 @@ export type PipelineConfig = {
   notifications: PipelineNotifications;
   stages?: PipelineStageSettings;
   jobs: PipelineJob[];
+};
+
+export type PipelineBuildStepTemplate = {
+  name: string;
+  script: string;
+};
+
+export type PipelineConfigDefaults = {
+  buildImage?: string;
+  buildSteps?: PipelineBuildStepTemplate[];
+};
+
+export type PipelineInference = PipelineConfigDefaults & {
+  projectKind: PipelineProjectKind;
+  runtime: PipelineRuntimeKind;
+  packageManager: PipelinePackageManager;
+  confidence: 'high' | 'medium' | 'low';
+  signals: string[];
 };
 
 export const DEFAULT_STAGE_SETTINGS: Record<PipelineStageKey, PipelineStageConfig> = {
@@ -300,15 +321,30 @@ function normalizeSourceBranchValue(branch?: string): string {
   return normalized && normalized.length > 0 ? normalized : 'main';
 }
 
-export function createDefaultPipelineConfig(name: string, defaultBranch = 'main'): PipelineConfig {
+export function createDefaultPipelineConfig(
+  name: string,
+  defaultBranch = 'main',
+  defaults?: PipelineConfigDefaults
+): PipelineConfig {
   const sourceJobId = 'source';
   const reviewJobId = 'review';
   const buildJobId = 'build';
   const sourceBranch = normalizeSourceBranchValue(defaultBranch);
+  const buildSteps =
+    defaults?.buildSteps?.length
+      ? defaults.buildSteps.map((step) => ({
+          id: newId('step'),
+          name: step.name,
+          script: step.script,
+        }))
+      : [
+          { id: newId('step'), name: 'Install dependencies', script: 'npm install' },
+          { id: newId('step'), name: 'Build', script: 'npm run build' },
+        ];
 
   return {
     name,
-    buildImage: '',
+    buildImage: defaults?.buildImage?.trim() ?? '',
     environment: 'production',
     trigger: { autoTrigger: false },
     stages: { ...DEFAULT_STAGE_SETTINGS },
@@ -342,10 +378,7 @@ export function createDefaultPipelineConfig(name: string, defaultBranch = 'main'
         stage: 'build',
         type: 'shell',
         needs: [reviewJobId],
-        steps: [
-          { id: newId('step'), name: 'Install dependencies', script: 'npm install' },
-          { id: newId('step'), name: 'Build', script: 'npm run build' },
-        ],
+        steps: buildSteps,
       },
       {
         id: 'deploy',

@@ -138,7 +138,11 @@ if [ -n "${PIPELINE_SOURCE_MIRROR:-}" ]; then
 fi
 echo "[source] Local workspace snapshot is ready."
 `
-		return sandbox.ExecScript(ctx, script, env, workingDir, logWriter)
+		writeCommandHeader(logWriter, "[command] /bin/sh -lc", workingDir)
+		writeScriptBlock(logWriter, "[command] /bin/sh -lc", script)
+		exitCode, err := sandbox.ExecScript(ctx, script, env, workingDir, logWriter)
+		writeCommandResult(logWriter, exitCode, err)
+		return exitCode, err
 	case "review_gate":
 		if sandbox == nil {
 			return 1, errors.New("sandbox is required for review gate")
@@ -175,7 +179,11 @@ else
   echo "[review] Review complete (quality gate not enforced)"
 fi
 `
-		return sandbox.ExecScript(ctx, script, env, workingDir, logWriter)
+		writeCommandHeader(logWriter, "[command] /bin/sh -lc", workingDir)
+		writeScriptBlock(logWriter, "[command] /bin/sh -lc", script)
+		exitCode, err := sandbox.ExecScript(ctx, script, env, workingDir, logWriter)
+		writeCommandResult(logWriter, exitCode, err)
+		return exitCode, err
 	default:
 		if strings.EqualFold(step.Type, "docker") {
 			return 1, fmt.Errorf("step %s cannot use docker type in CI sandbox jobs; use pipeline buildImage instead", step.ID)
@@ -185,10 +193,63 @@ fi
 			if executor == nil {
 				return 1, fmt.Errorf("no shell executor configured")
 			}
-			return executor.Execute(ctx, step, env, workingDir, logWriter)
+			writeCommandHeader(logWriter, "[command] /bin/sh -lc", workingDir)
+			writeScriptBlock(logWriter, "[command] /bin/sh -lc", step.Script)
+			exitCode, err := executor.Execute(ctx, step, env, workingDir, logWriter)
+			writeCommandResult(logWriter, exitCode, err)
+			return exitCode, err
 		}
-		return sandbox.ExecScript(ctx, step.Script, env, workingDir, logWriter)
+		writeCommandHeader(logWriter, "[command] /bin/sh -lc", workingDir)
+		writeScriptBlock(logWriter, "[command] /bin/sh -lc", step.Script)
+		exitCode, err := sandbox.ExecScript(ctx, step.Script, env, workingDir, logWriter)
+		writeCommandResult(logWriter, exitCode, err)
+		return exitCode, err
 	}
+}
+
+func writeCommandHeader(output io.Writer, title string, workingDir string) {
+	if output == nil {
+		return
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = "[command]"
+	}
+	_, _ = fmt.Fprintln(output, title)
+	if cwd := strings.TrimSpace(workingDir); cwd != "" {
+		_, _ = fmt.Fprintf(output, "[command] cwd: %s\n", cwd)
+	}
+}
+
+func writeCommandResult(output io.Writer, exitCode int, err error) {
+	if output == nil {
+		return
+	}
+	if err == nil {
+		_, _ = fmt.Fprintf(output, "[command] status=success exit=%d\n", exitCode)
+		return
+	}
+	_, _ = fmt.Fprintf(output, "[command] status=failed exit=%d error=%s\n", exitCode, strings.TrimSpace(err.Error()))
+}
+
+func writeScriptBlock(output io.Writer, label string, script string) {
+	if output == nil {
+		return
+	}
+	label = strings.TrimSpace(label)
+	if label == "" {
+		label = "[command]"
+	}
+	_, _ = fmt.Fprintln(output, label)
+	if strings.TrimSpace(script) == "" {
+		_, _ = io.WriteString(output, "[command] <empty>\n")
+		return
+	}
+	_, _ = io.WriteString(output, script)
+	if !strings.HasSuffix(script, "\n") {
+		_, _ = io.WriteString(output, "\n")
+	}
+	_, _ = io.WriteString(output, "\n")
 }
 
 func resolvePipelineWorkingDir(workspaceRoot string, jobWorkingDir string, stepWorkingDir string) string {

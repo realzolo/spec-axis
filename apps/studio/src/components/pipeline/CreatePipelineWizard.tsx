@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -24,6 +24,7 @@ import { useProject } from "@/lib/projectContext";
 import type {
   PipelineConfig,
   PipelineEnvironment,
+  PipelineConfigDefaults,
   PipelineJobDiagnostic,
 } from "@/services/pipelineTypes";
 import {
@@ -65,6 +66,8 @@ export default function CreatePipelineWizard({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [config, setConfig] = useState<PipelineConfig>(() => createDefaultPipelineConfig("", project.default_branch));
+  const [inferredDefaults, setInferredDefaults] = useState<PipelineConfigDefaults | null>(null);
+  const configDirtyRef = useRef(false);
 
   const normalizedJobs = useMemo(
     () => normalizePipelineJobs(config.jobs, config.stages, project.default_branch),
@@ -86,14 +89,54 @@ export default function CreatePipelineWizard({
     }
   }, [config.jobs, selectedJobId]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    let active = true;
+    const controller = new AbortController();
+
+    const loadInferredDefaults = async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/pipeline-defaults`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
+        const defaults = (data?.defaults ?? null) as PipelineConfigDefaults | null;
+        if (!defaults || !defaults.buildImage) return;
+        if (!active) return;
+
+        setInferredDefaults(defaults);
+        if (!configDirtyRef.current) {
+          setConfig(createDefaultPipelineConfig("", project.default_branch, defaults));
+        }
+      } catch {
+        // ignore inference failures and fall back to the generic template
+      }
+    };
+
+    void loadInferredDefaults();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [open, projectId, project.default_branch]);
+
+  function updateConfig(updater: (current: PipelineConfig) => PipelineConfig) {
+    configDirtyRef.current = true;
+    setConfig(updater);
+  }
+
   function resetForm() {
-    const initialConfig = createDefaultPipelineConfig("", project.default_branch);
+    configDirtyRef.current = false;
     setWizardStep("basic");
-    setSelectedJobId(initialConfig.jobs[0]?.id ?? null);
     setSubmitting(false);
     setName("");
     setDescription("");
+    const initialConfig = createDefaultPipelineConfig("", project.default_branch, inferredDefaults ?? undefined);
     setConfig(initialConfig);
+    setSelectedJobId(initialConfig.jobs[0]?.id ?? null);
   }
 
   function handleClose() {
@@ -256,7 +299,7 @@ export default function CreatePipelineWizard({
                 <Select
                   value={config.environment ?? "production"}
                   onValueChange={(value) =>
-                    setConfig((current) => ({
+                    updateConfig((current) => ({
                       ...current,
                       environment: value as PipelineEnvironment,
                     }))
@@ -282,14 +325,20 @@ export default function CreatePipelineWizard({
                 dict={p.basic}
                 buildImage={config.buildImage ?? ""}
                 required
-                onChange={(patch) => setConfig((current) => ({ ...current, ...patch }))}
+                onChange={(patch) => updateConfig((current) => ({ ...current, ...patch }))}
               />
+              {inferredDefaults && (
+                <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-muted/20 px-3 py-2 text-[12px] text-[hsl(var(--ds-text-2))]">
+                  <div className="font-medium text-foreground">{p.basic.autoDetected}</div>
+                  <div className="mt-0.5">{p.basic.autoDetectedHelp}</div>
+                </div>
+              )}
 
               <div className="flex items-start gap-3 rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-muted/20 px-4 py-3">
                 <Switch
                   checked={config.trigger.autoTrigger}
                   onCheckedChange={(checked) =>
-                    setConfig((current) => ({
+                    updateConfig((current) => ({
                       ...current,
                       trigger: {
                         ...current.trigger,
@@ -310,7 +359,7 @@ export default function CreatePipelineWizard({
                 <PipelineScheduleField
                   value={config.trigger.schedule ?? ""}
                   onChange={(value) =>
-                    setConfig((current) => ({
+                    updateConfig((current) => ({
                       ...current,
                       trigger: { ...current.trigger, schedule: value },
                     }))
@@ -332,8 +381,8 @@ export default function CreatePipelineWizard({
                 isAdmin
                 selectedJobId={selectedJobId}
                 onSelectJob={setSelectedJobId}
-                onJobsChange={(jobs) => setConfig((current) => ({ ...current, jobs }))}
-                onStageSettingsChange={(stages) => setConfig((current) => ({ ...current, stages }))}
+                onJobsChange={(jobs) => updateConfig((current) => ({ ...current, jobs }))}
+                onStageSettingsChange={(stages) => updateConfig((current) => ({ ...current, stages }))}
               />
             </div>
           )}
@@ -353,7 +402,7 @@ export default function CreatePipelineWizard({
                   <Switch
                     checked={config.notifications.onSuccess}
                     onCheckedChange={(checked) =>
-                      setConfig((current) => ({
+                      updateConfig((current) => ({
                         ...current,
                         notifications: {
                           ...current.notifications,
@@ -369,7 +418,7 @@ export default function CreatePipelineWizard({
                   <Switch
                     checked={config.notifications.onFailure}
                     onCheckedChange={(checked) =>
-                      setConfig((current) => ({
+                      updateConfig((current) => ({
                         ...current,
                         notifications: {
                           ...current.notifications,
@@ -391,7 +440,7 @@ export default function CreatePipelineWizard({
                         type="button"
                         key={channel}
                         onClick={() =>
-                          setConfig((current) => ({
+                          updateConfig((current) => ({
                             ...current,
                             notifications: {
                               ...current.notifications,

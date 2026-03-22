@@ -187,6 +187,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 				e.failJobWithoutStartedStep(ctx, runID, sourceJob, jobRecord, err.Error())
 				_ = e.Store.MarkPipelineJobFailed(ctx, jobRecord.ID, err.Error())
 			}
+			_ = e.cancelPendingJobs(ctx, runID, jobIndex, jobMap)
 			_ = e.Store.MarkPipelineRunFailed(ctx, runID, err.Error())
 			_ = e.Store.AppendRunEvent(ctx, runID, "run.failed", map[string]any{
 				"runId":      runID,
@@ -402,6 +403,7 @@ func (e *Engine) Execute(ctx context.Context, runID string) error {
 	}
 
 	if completed < total {
+		_ = e.cancelPendingJobs(ctx, runID, jobIndex, jobMap)
 		_ = e.Store.MarkPipelineRunFailed(ctx, runID, "dependency_deadlock")
 		_ = e.Store.AppendRunEvent(ctx, runID, "run.failed", map[string]any{
 			"runId":      runID,
