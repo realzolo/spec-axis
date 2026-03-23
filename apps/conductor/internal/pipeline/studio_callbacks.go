@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"spec-axis/conductor/internal/store"
+	"sykra/conductor/internal/store"
 )
 
 func RunStudioCallbackLoop(ctx context.Context, st *store.Store, studioURL string, studioToken string, interval time.Duration) {

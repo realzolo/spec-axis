@@ -10,8 +10,8 @@ const geistSans = GeistSans;
 const geistMono = GeistMono;
 
 export const metadata: Metadata = {
-  title: 'Nexaly',
-  description: 'Nexaly app',
+  title: 'Sykra',
+  description: 'Sykra app',
   icons: {
     icon: '/icon.svg',
   },

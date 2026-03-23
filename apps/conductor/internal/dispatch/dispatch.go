@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"spec-axis/conductor/internal/analysis"
-	"spec-axis/conductor/internal/domain"
-	"spec-axis/conductor/internal/events"
-	"spec-axis/conductor/internal/pipeline"
-	"spec-axis/conductor/internal/store"
+	"sykra/conductor/internal/analysis"
+	"sykra/conductor/internal/domain"
+	"sykra/conductor/internal/events"
+	"sykra/conductor/internal/pipeline"
+	"sykra/conductor/internal/store"
 )
 
 type taskLimiter struct {

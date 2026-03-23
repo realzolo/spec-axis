@@ -8,7 +8,7 @@ import { formatErrorResponse } from '@/services/retry';
 import { updatePipelineSchema, validateRequest } from '@/services/validation';
 import { deletePipeline, getPipeline, updatePipeline } from '@/services/conductorClient';
 import { query as dbQuery } from '@/lib/db';
-import type { ConductorUpdatePipelineRequest } from '@spec-axis/contracts/conductor';
+import type { ConductorUpdatePipelineRequest } from '@sykra/contracts/conductor';
 
 export const dynamic = 'force-dynamic';
 

@@ -61,7 +61,7 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.1.6
         version: 1.2.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      '@spec-axis/contracts':
+      '@sykra/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       '@xyflow/react':

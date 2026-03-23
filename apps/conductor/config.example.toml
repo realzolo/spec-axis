@@ -8,7 +8,7 @@ token = ""
 data_dir = "data" # optional local state path
 
 [database]
-url = "postgres://user:pass@localhost:5432/spec_axis"
+url = "postgres://user:pass@localhost:5432/sykra"
 
 [security]
 encryption_key = ""

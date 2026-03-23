@@ -186,7 +186,7 @@ export async function sendVerificationEmail(email: string, token: string, baseUr
 
   await sendEmail({
     to: email,
-    subject: '[Spec-Axis] Verify your email',
+    subject: '[Sykra] Verify your email',
     text,
   });
 }

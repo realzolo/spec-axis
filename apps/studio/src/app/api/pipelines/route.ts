@@ -6,7 +6,7 @@ import { createRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { formatErrorResponse } from '@/services/retry';
 import { createPipelineSchema, projectIdSchema, validateRequest } from '@/services/validation';
 import { createPipeline, listPipelines } from '@/services/conductorClient';
-import type { ConductorCreatePipelineRequest } from '@spec-axis/contracts/conductor';
+import type { ConductorCreatePipelineRequest } from '@sykra/contracts/conductor';
 
 export const dynamic = 'force-dynamic';
 

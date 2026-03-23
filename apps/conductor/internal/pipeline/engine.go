@@ -13,11 +13,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"spec-axis/conductor/internal/artifacts"
-	conductorcrypto "spec-axis/conductor/internal/crypto"
-	"spec-axis/conductor/internal/store"
-	"spec-axis/conductor/internal/workerhub"
-	"spec-axis/conductor/pkg/workerprotocol"
+	"sykra/conductor/internal/artifacts"
+	conductorcrypto "sykra/conductor/internal/crypto"
+	"sykra/conductor/internal/store"
+	"sykra/conductor/internal/workerhub"
+	"sykra/conductor/pkg/workerprotocol"
 )
 
 type Engine struct {

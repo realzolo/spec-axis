@@ -14,8 +14,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"spec-axis/conductor/internal/store"
-	"spec-axis/conductor/pkg/workerprotocol"
+	"sykra/conductor/internal/store"
+	"sykra/conductor/pkg/workerprotocol"
 )
 
 var wsUpgrader = websocket.Upgrader{

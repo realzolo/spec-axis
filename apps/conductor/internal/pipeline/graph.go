@@ -3,7 +3,7 @@ package pipeline
 import (
 	"context"
 
-	"spec-axis/conductor/internal/store"
+	"sykra/conductor/internal/store"
 )
 
 // EnsureRunGraph creates the job and step records for a run if they don't exist.

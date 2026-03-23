@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"spec-axis/conductor/internal/config"
-	"spec-axis/conductor/internal/pipeline"
-	"spec-axis/conductor/internal/workerhub"
+	"sykra/conductor/internal/config"
+	"sykra/conductor/internal/pipeline"
+	"sykra/conductor/internal/workerhub"
 )
 
 type Server struct {

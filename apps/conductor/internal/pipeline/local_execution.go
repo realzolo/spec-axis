@@ -19,9 +19,9 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jackc/pgx/v5"
 
-	"spec-axis/conductor/internal/artifacts"
-	"spec-axis/conductor/internal/store"
-	"spec-axis/conductor/pkg/workerprotocol"
+	"sykra/conductor/internal/artifacts"
+	"sykra/conductor/internal/store"
+	"sykra/conductor/pkg/workerprotocol"
 )
 
 func (e *Engine) runJobLocally(

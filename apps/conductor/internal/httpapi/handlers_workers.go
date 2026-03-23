@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"spec-axis/conductor/internal/httpx"
-	"spec-axis/conductor/internal/pipeline"
+	"sykra/conductor/internal/httpx"
+	"sykra/conductor/internal/pipeline"
 )
 
 func (s *Server) handleWorkersList(w http.ResponseWriter, r *http.Request) {

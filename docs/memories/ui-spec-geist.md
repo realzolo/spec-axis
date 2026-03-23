@@ -1,4 +1,4 @@
-# Spec-Axis UI Spec (Geist-Aligned)
+# Sykra UI Spec (Geist-Aligned)
 
 This is the project-level UI standard. Apply it to all UI work.
 

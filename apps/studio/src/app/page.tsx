@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Sparkles, Sliders, Radar, ArrowRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import NexalyMark from '@/components/common/NexalyMark';
+import SykraMark from '@/components/common/SykraMark';
 import { getLocale } from '@/lib/locale';
 import { getDictionary } from '@/i18n';
 
@@ -28,10 +28,10 @@ export default async function Home() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <Link href="/" className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-2)] bg-muted">
-                <NexalyMark className="h-6 w-6" />
+                <SykraMark className="h-6 w-6" />
               </div>
               <div className="flex flex-col">
-                <span className="text-label-14">Axon</span>
+                <span className="text-label-14">Sykra</span>
               </div>
             </Link>
 
@@ -147,7 +147,7 @@ export default async function Home() {
         </main>
 
         <footer className="mx-auto w-full max-w-6xl px-6 pb-12 text-copy-12">
-          © {year} Axon. All rights reserved.
+          © {year} Sykra. All rights reserved.
         </footer>
       </div>
     </div>

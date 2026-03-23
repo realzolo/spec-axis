@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"strings"
 
-	"spec-axis/conductor/internal/crypto"
-	"spec-axis/conductor/internal/store"
+	"sykra/conductor/internal/crypto"
+	"sykra/conductor/internal/store"
 )
 
 type CheckoutSpec struct {

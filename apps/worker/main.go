@@ -27,7 +27,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/gorilla/websocket"
 
-	"spec-axis/conductor/pkg/workerprotocol"
+	"sykra/conductor/pkg/workerprotocol"
 )
 
 type workerConfig struct {
@@ -1511,7 +1511,7 @@ func loadConfig() (workerConfig, error) {
 
 	workspaceRoot := strings.TrimSpace(os.Getenv("WORKER_WORKSPACE_ROOT"))
 	if workspaceRoot == "" {
-		workspaceRoot = "/tmp/spec-axis-runs"
+		workspaceRoot = "/tmp/sykra-runs"
 	}
 
 	reconnectDelay := envDuration("WORKER_RECONNECT_DELAY", 3*time.Second)

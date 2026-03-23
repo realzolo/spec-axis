@@ -1,4 +1,4 @@
--- spec-axis unified init schema (PostgreSQL)
+-- Sykra unified init schema (PostgreSQL)
 -- This script initializes all core tables for Studio + Conductor.
 
 create extension if not exists "pgcrypto";

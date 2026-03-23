@@ -1,4 +1,4 @@
-module spec-axis/conductor
+module sykra/conductor
 
 go 1.24.0
 

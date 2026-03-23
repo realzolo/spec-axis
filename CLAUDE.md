@@ -1,4 +1,4 @@
-# spec-axis — Project Guide
+# Sykra — Project Guide
 
 ## General Rules
 

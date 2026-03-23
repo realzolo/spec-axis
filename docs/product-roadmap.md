@@ -1,4 +1,4 @@
-# Spec-Axis Product Roadmap
+# Sykra Product Roadmap
 
 > **Last updated:** 2026-03-22
 
@@ -31,7 +31,7 @@
 
 ## 1. Product Overview
 
-**Spec-Axis** is an AI-powered code review and automated CI/CD deployment platform designed for engineering teams.
+**Sykra** is an AI-powered code review and automated CI/CD deployment platform designed for engineering teams.
 
 ### Core Value Proposition
 
@@ -267,7 +267,7 @@ These are the most important remaining gaps for daily product use.
 
 #### 4.4 External API Tokens
 
-**Why:** Teams want to integrate Spec-Axis into GitHub Actions, Makefiles, and external automation without sharing user sessions.
+**Why:** Teams want to integrate Sykra into GitHub Actions, Makefiles, and external automation without sharing user sessions.
 
 **Scope:**
 - API token management UI in Settings > Security
@@ -400,7 +400,7 @@ Focus: make the review and delivery workflow feel native and continuous.
    └── 4.6  Team Discussion on Issues
 ```
 
-**Exit criteria:** Spec-Axis can stay inside the developer workflow across Git providers and recurring pipeline use cases.
+**Exit criteria:** Sykra can stay inside the developer workflow across Git providers and recurring pipeline use cases.
 
 ---
 
@@ -415,7 +415,7 @@ Focus: collaboration and management visibility.
    └── 4.9  Multi-Conductor Node Support
 ```
 
-**Exit criteria:** Multi-team organizations can use Spec-Axis as their shared code quality control plane.
+**Exit criteria:** Multi-team organizations can use Sykra as their shared code quality control plane.
 
 ---
 
@@ -429,7 +429,7 @@ Focus: scale, isolation, and enterprise security.
    └── 4.11  Fine-Grained RBAC
 ```
 
-**Exit criteria:** Spec-Axis can support large organizations with stricter security and scale requirements.
+**Exit criteria:** Sykra can support large organizations with stricter security and scale requirements.
 
 ---
 

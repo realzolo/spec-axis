@@ -1,4 +1,4 @@
-# spec-axis
+# Sykra
 
 AI-powered code review and CI/CD platform. It combines repository analysis, pipeline automation, and deploy workflows in a single self-hosted system.
 
@@ -39,7 +39,7 @@ pnpm install
 Create `apps/studio/.env`:
 
 ```env
-DATABASE_URL=postgres://user:pass@localhost/specaxis
+DATABASE_URL=postgres://user:pass@localhost/sykra
 ENCRYPTION_KEY=<64-char hex>          # openssl rand -hex 32
 CONDUCTOR_BASE_URL=http://localhost:8200
 CONDUCTOR_TOKEN=dev-conductor
@@ -63,7 +63,7 @@ port = "8200"
 token = "dev-conductor"
 
 [database]
-url = "postgres://user:pass@localhost/specaxis"
+url = "postgres://user:pass@localhost/sykra"
 
 [security]
 encryption_key = "<same key as Studio>"

@@ -24,7 +24,7 @@ import {
   type ConductorUpdatePipelineRequest,
   type ConductorUpdatePipelineResponse,
   type ConductorPipeline,
-} from '@spec-axis/contracts/conductor';
+} from '@sykra/contracts/conductor';
 import { z } from 'zod';
 
 function conductorBaseUrl() {

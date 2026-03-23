@@ -133,7 +133,7 @@ function buildReviewCommentBody(input: {
   const statusLabel = report.status === 'partial_failed' ? 'partial_failed' : report.status;
   const scoreLabel = report.score == null ? 'N/A' : `${report.score}/100`;
   const lines = [
-    '### Spec-Axis Review Summary',
+    '### Sykra Review Summary',
     '',
     `- **Project:** ${report.project_name}`,
     `- **PR:** #${pullRequest.number}${pullRequest.title ? ` ${pullRequest.title}` : ''}`,

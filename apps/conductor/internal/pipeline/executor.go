@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"spec-axis/conductor/internal/store"
+	"sykra/conductor/internal/store"
 )
 
 // ── Executor interface ─────────────────────────────────────────────────────

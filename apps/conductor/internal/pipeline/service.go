@@ -12,8 +12,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"spec-axis/conductor/internal/artifacts"
-	"spec-axis/conductor/internal/store"
+	"sykra/conductor/internal/artifacts"
+	"sykra/conductor/internal/store"
 )
 
 type Service struct {

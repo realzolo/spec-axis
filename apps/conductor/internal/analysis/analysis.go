@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"spec-axis/conductor/internal/domain"
-	"spec-axis/conductor/internal/events"
-	"spec-axis/conductor/internal/integrations"
-	"spec-axis/conductor/internal/store"
+	"sykra/conductor/internal/domain"
+	"sykra/conductor/internal/events"
+	"sykra/conductor/internal/integrations"
+	"sykra/conductor/internal/store"
 )
 
 func RunAnalyzeTask(

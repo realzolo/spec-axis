@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"spec-axis/conductor/internal/domain"
+	"sykra/conductor/internal/domain"
 )
 
 type Store struct {

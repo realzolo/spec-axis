@@ -102,7 +102,7 @@ WORKER_VERSION=             # Optional worker version metadata
 WORKER_MAX_CONCURRENCY=     # Parallel job slots per worker (default 1)
 WORKER_CAPABILITIES=        # Comma list override; default: deploy,shell,docker,artifact_download
 WORKER_LABELS=              # Comma kv list: env=production,region=cn-shanghai
-WORKER_WORKSPACE_ROOT=      # Run workspace root on worker (default /tmp/spec-axis-runs)
+WORKER_WORKSPACE_ROOT=      # Run workspace root on worker (default /tmp/sykra-runs)
 WORKER_HEARTBEAT_SECONDS=   # Heartbeat interval (default 10)
 WORKER_RECONNECT_DELAY=     # Reconnect backoff (default 3s)
 ```

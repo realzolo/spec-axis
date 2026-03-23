@@ -19,8 +19,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	conductorcrypto "spec-axis/conductor/internal/crypto"
-	"spec-axis/conductor/internal/store"
+	conductorcrypto "sykra/conductor/internal/crypto"
+	"sykra/conductor/internal/store"
 )
 
 type Manager struct {
@@ -412,7 +412,7 @@ func (m *Manager) newS3Client(cfg storageConfig) (*s3.Client, error) {
 }
 
 func spoolToTemp(content io.Reader) (string, int64, string, error) {
-	file, err := os.CreateTemp("", "spec-axis-artifact-*")
+	file, err := os.CreateTemp("", "sykra-artifact-*")
 	if err != nil {
 		return "", 0, "", err
 	}

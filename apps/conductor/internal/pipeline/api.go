@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"spec-axis/conductor/internal/httpx"
-	"spec-axis/conductor/internal/store"
+	"sykra/conductor/internal/httpx"
+	"sykra/conductor/internal/store"
 )
 
 type API struct {

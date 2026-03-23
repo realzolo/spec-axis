@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"spec-axis/conductor/internal/integrations"
-	"spec-axis/conductor/internal/store"
+	"sykra/conductor/internal/integrations"
+	"sykra/conductor/internal/store"
 )
 
 type ResolvedSource struct {

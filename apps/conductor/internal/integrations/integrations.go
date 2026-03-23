@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"spec-axis/conductor/internal/crypto"
-	"spec-axis/conductor/internal/domain"
-	"spec-axis/conductor/internal/store"
+	"sykra/conductor/internal/crypto"
+	"sykra/conductor/internal/domain"
+	"sykra/conductor/internal/store"
 )
 
 type VCSClient interface {

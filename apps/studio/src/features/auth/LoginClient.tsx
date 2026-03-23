@@ -11,7 +11,7 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, Dia
 import { toast } from 'sonner';
 import ThemeToggle from '@/components/theme/ThemeToggle';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
-import NexalyMark from '@/components/common/NexalyMark';
+import SykraMark from '@/components/common/SykraMark';
 import { cn } from '@/lib/utils';
 import type { Dictionary } from '@/i18n';
 import type { Locale } from '@/i18n/config';
@@ -199,9 +199,9 @@ export default function LoginClient({ dict, locale, legalLinks }: LoginClientPro
               <div className="flex flex-col items-center gap-2 text-center">
                 <div className="flex items-center gap-3">
                   <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-transparent">
-                    <NexalyMark className="h-9 w-9" />
+                    <SykraMark className="h-9 w-9" />
                   </div>
-                  <div className="text-heading-20">Nexaly</div>
+                  <div className="text-heading-20">Sykra</div>
                 </div>
                 <div className="text-copy-14">
                   {mode === 'login' ? dict.auth.login : dict.auth.signUpTitle}
@@ -374,7 +374,7 @@ export default function LoginClient({ dict, locale, legalLinks }: LoginClientPro
         </div>
       </div>
       <div className="auth-footer">
-        © {currentYear} Nexaly. All rights reserved.
+        © {currentYear} Sykra. All rights reserved.
       </div>
 
       <Dialog open={resetOpen} onOpenChange={setResetOpen}>

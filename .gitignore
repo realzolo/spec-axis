@@ -20,12 +20,17 @@
 # production
 **/build
 apps/conductor/conductor
+apps/conductor/conductor.exe
 apps/worker/worker
+apps/worker/worker.exe
 apps/conductor/data/
 
 # misc
 .DS_Store
+Thumbs.db
+Desktop.ini
 *.pem
+*.log
 
 # local caches
 /.cache/
@@ -58,4 +63,6 @@ next-env.d.ts
 
 # idea
 .idea
+
+# claude
 .claude/settings.local.json

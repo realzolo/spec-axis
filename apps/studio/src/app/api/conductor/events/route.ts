@@ -102,7 +102,7 @@ async function notifyPipelineRun(runId: string) {
     `/o/${run.org_id}/projects/${run.project_id}/pipelines/${pipeline.id}?tab=runs&runId=${run.id}`
   );
   const subjectStatus = isSuccess ? 'succeeded' : 'failed';
-  const subject = `[Spec-Axis] Pipeline "${pipeline.name}" ${subjectStatus}`;
+  const subject = `[Sykra] Pipeline "${pipeline.name}" ${subjectStatus}`;
   const durationLine =
     run.started_at && run.finished_at
       ? `Finished at: ${run.finished_at}`
@@ -186,7 +186,7 @@ async function notifyReportDone(reportId: string) {
   );
   const link = absoluteStudioUrl(`/o/${report.org_id}/projects/${report.project_id}/reports/${report.id}`);
   const statusLabel = report.status === 'partial_failed' ? 'partial' : 'done';
-  const subject = `[Spec-Axis] Report ${statusLabel}${project?.name ? `: ${project.name}` : ''}`;
+  const subject = `[Sykra] Report ${statusLabel}${project?.name ? `: ${project.name}` : ''}`;
   const text = [
     `Report: ${report.id}`,
     project?.name ? `Project: ${project.name}` : '',

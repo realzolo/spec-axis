@@ -11,14 +11,14 @@ import (
 	"syscall"
 	"time"
 
-	"spec-axis/conductor/internal/artifacts"
-	"spec-axis/conductor/internal/config"
-	"spec-axis/conductor/internal/dispatch"
-	"spec-axis/conductor/internal/events"
-	"spec-axis/conductor/internal/httpapi"
-	"spec-axis/conductor/internal/pipeline"
-	"spec-axis/conductor/internal/store"
-	"spec-axis/conductor/internal/workerhub"
+	"sykra/conductor/internal/artifacts"
+	"sykra/conductor/internal/config"
+	"sykra/conductor/internal/dispatch"
+	"sykra/conductor/internal/events"
+	"sykra/conductor/internal/httpapi"
+	"sykra/conductor/internal/pipeline"
+	"sykra/conductor/internal/store"
+	"sykra/conductor/internal/workerhub"
 )
 
 func main() {

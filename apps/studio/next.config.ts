@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  transpilePackages: ['@spec-axis/contracts'],
+  transpilePackages: ['@sykra/contracts'],
 };
 
 export default nextConfig;
