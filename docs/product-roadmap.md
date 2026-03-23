@@ -1,4 +1,4 @@
-# Sykra Product Roadmap
+**# Sykra Product Roadmap
 
 > **Last updated:** 2026-03-22
 
@@ -446,4 +446,4 @@ The following items are not user-facing features but should be addressed alongsi
 | SSE report streaming — add heartbeat | Low | Clients can time out on slow analyses |
 | Test coverage — Conductor pipeline package | High | No unit tests for `engine.go`, `executor.go`, `types.go` |
 | Test coverage — Studio API routes | High | No integration tests for critical routes |
-| Dependency audit | Low | Review and approve any new `pnpm` build scripts in `.npmrc` |
+| Dependency audit | Low | Review and approve any new `pnpm` build scripts in `.npmrc` |**
