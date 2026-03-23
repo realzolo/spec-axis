@@ -197,7 +197,7 @@ export default function LoginClient({ dict, locale, legalLinks }: LoginClientPro
           <Card className="auth-card">
             <div className="px-8 pt-8 pb-8 space-y-6">
               <div className="flex flex-col items-center gap-2 text-center">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-0.5">
                   <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-transparent">
                     <SykraMark className="h-9 w-9" />
                   </div>

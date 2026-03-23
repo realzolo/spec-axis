@@ -84,7 +84,7 @@
     "signOut": "退出",
     "loggingIn": "登录中...",
     "continueWithGithub": "使用 GitHub 继续",
-    "orContinueWithEmail": "或",
+    "orContinueWithEmail": "或使用邮箱继续",
     "signUpTitle": "创建账户",
     "signUpPrompt": "还没有账号？",
     "signUpAction": "立即注册",

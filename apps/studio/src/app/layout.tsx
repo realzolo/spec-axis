@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   title: 'Sykra',
   description: 'Sykra app',
   icons: {
-    icon: '/icon.svg',
+    icon: '/favicon.ico',
   },
 };
 
