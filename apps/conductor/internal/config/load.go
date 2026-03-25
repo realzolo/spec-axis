@@ -52,18 +52,6 @@ func LoadWithOptions(opts LoadOptions) (Config, error) {
 	cfg.StudioURL = envString("STUDIO_URL", cfg.StudioURL)
 	cfg.StudioToken = envString("STUDIO_TOKEN", cfg.StudioToken)
 
-	// Backward/ergonomic default: if a dedicated Studio token isn't provided,
-	// reuse the conductor token so a single shared secret can secure both directions
-	// (Studio -> Conductor and Conductor -> Studio).
-	if cfg.StudioToken == "" {
-		cfg.StudioToken = cfg.ConductorToken
-	}
-	if cfg.StudioToken == "" {
-		// Allows local development without configuring tokens, while still letting
-		// Studio distinguish conductor calls from normal browser traffic.
-		cfg.StudioToken = "dev-conductor"
-	}
-
 	analyzeTimeoutRaw = envString("ANALYZE_TIMEOUT", analyzeTimeoutRaw)
 	workerLeaseTTLRaw = envString("WORKER_LEASE_TTL", workerLeaseTTLRaw)
 
@@ -81,6 +69,18 @@ func LoadWithOptions(opts LoadOptions) (Config, error) {
 
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
+	}
+	if cfg.ConductorToken == "" {
+		return Config{}, fmt.Errorf("CONDUCTOR_TOKEN is required")
+	}
+	if cfg.EncryptionKey == "" {
+		return Config{}, fmt.Errorf("ENCRYPTION_KEY is required")
+	}
+	if cfg.StudioURL == "" {
+		return Config{}, fmt.Errorf("STUDIO_URL is required")
+	}
+	if cfg.StudioToken == "" {
+		return Config{}, fmt.Errorf("STUDIO_TOKEN is required")
 	}
 	if cfg.EncryptionKey != "" && os.Getenv("ENCRYPTION_KEY") == "" {
 		_ = os.Setenv("ENCRYPTION_KEY", cfg.EncryptionKey)

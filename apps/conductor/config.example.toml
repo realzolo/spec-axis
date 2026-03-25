@@ -4,19 +4,27 @@
 
 [conductor]
 port = "8200"
-token = ""
+token = "" # required
+concurrency = 4
+analyze_timeout = "1h"
 data_dir = "data" # optional local state path
 
 [database]
-url = "postgres://user:pass@localhost:5432/sykra"
+url = "postgres://user:pass@localhost:5432/sykra" # required
 
 [pipeline]
 concurrency = 4
 run_concurrency = 1
+log_retention_days = 30
+artifact_retention_days = 30
+
+[worker]
+lease_ttl = "45s"
 
 [security]
-encryption_key = ""
+encryption_key = "" # required
 
 [studio]
 # Base URL for Studio (used for Conductor -> Studio callbacks/events)
-url = "http://localhost:8109"
+url = "http://localhost:8109" # required
+token = "" # required

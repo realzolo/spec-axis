@@ -49,7 +49,7 @@ func (s *Server) Handler() http.Handler {
 
 func authorized(token string, r *http.Request) bool {
 	if token == "" {
-		return true
+		return false
 	}
 
 	headerToken := r.Header.Get("X-Conductor-Token")

@@ -9,13 +9,13 @@ DATABASE_URL=               # Studio Postgres connection string
 ENCRYPTION_KEY=             # AES-256-GCM key for secrets
 GITHUB_CLIENT_ID=            # GitHub OAuth app client ID
 GITHUB_CLIENT_SECRET=        # GitHub OAuth app client secret
-GITHUB_CALLBACK_URL=         # Optional override for the GitHub OAuth callback URL
+GITHUB_CALLBACK_URL=         # Required in production; must exactly match GitHub OAuth callback URL
 CONDUCTOR_BASE_URL=            # Conductor base URL (e.g. http://localhost:8200)
 CONDUCTOR_TOKEN=               # Shared token for Conductor auth; also used for internal task endpoints (e.g. /api/codebase/sync)
-EMAIL_PROVIDER=             # Email provider for auth verification/notifications: resend (required for live delivery)
-EMAIL_FROM=                 # From address (required)
-RESEND_API_KEY=             # Resend API key (required)
-STUDIO_BASE_URL=            # Public base URL for links included in emails (required for verification links)
+EMAIL_PROVIDER=             # Required in production: resend
+EMAIL_FROM=                 # Required in production
+RESEND_API_KEY=             # Required in production
+STUDIO_BASE_URL=            # Required in production (public https base URL for email links)
 ANALYZE_RATE_LIMIT_WINDOW_MS=          # Analyze rate-limit window in ms (default 60000)
 ANALYZE_RATE_LIMIT_USER_PROJECT_MAX=   # Max analyze requests/window per org+user+project (default 6)
 ANALYZE_RATE_LIMIT_ORG_MAX=            # Max analyze requests/window per org (default 60)
@@ -35,6 +35,7 @@ AI_COST_OUTPUT_PER_MILLION_USD=         # Optional cost model for phase-level co
 Environment files for Studio live under `apps/studio` (e.g. `apps/studio/.env`).
 
 Auth email verification is strict: `/api/auth/register` and `/api/auth/resend-verification` require live email delivery configuration and return `503 EMAIL_DELIVERY_UNAVAILABLE` when email delivery is not configured.
+Studio production startup is strict via `apps/studio/src/instrumentation.ts`: missing required OAuth/email/conductor/server secrets cause startup failure.
 
 ## Conductor Env (apps/conductor)
 
@@ -44,7 +45,7 @@ CONDUCTOR_TOKEN=
 DATABASE_URL=               # Postgres connection string
 ENCRYPTION_KEY=             # Same key used by studio for decrypting secrets
 STUDIO_URL=                 # Studio base URL (Conductor -> Studio), used by pipeline executors
-STUDIO_TOKEN=               # Optional: token presented to Studio as X-Conductor-Token (defaults to CONDUCTOR_TOKEN)
+STUDIO_TOKEN=               # Required: token presented to Studio as X-Conductor-Token
 PIPELINE_CONCURRENCY=       # Max concurrent pipeline jobs
 PIPELINE_RUN_CONCURRENCY=   # Max concurrent pipeline runs claimed by dispatch loop (default 1)
 WORKER_LEASE_TTL=           # Worker heartbeat lease window (default 45s)
@@ -57,7 +58,7 @@ ANALYZE_PHASE_SECURITY_PERFORMANCE_TIMEOUT= # Optional phase timeout override (e
 ANALYZE_PHASE_SUGGESTIONS_TIMEOUT=          # Optional phase timeout override (e.g. 10m)
 ```
 
-Conductor startup now fails fast if Docker daemon access is unavailable because CI sandbox creation depends on it.
+Conductor startup now fails fast on missing required config (`DATABASE_URL`, `CONDUCTOR_TOKEN`, `ENCRYPTION_KEY`, `STUDIO_URL`, `STUDIO_TOKEN`).
 
 ### Conductor Config File (TOML, optional)
 
@@ -91,6 +92,7 @@ encryption_key = ""
 
 [studio]
 url = ""
+token = ""
 ```
 
 ## Worker Env (apps/worker)

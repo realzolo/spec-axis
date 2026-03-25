@@ -72,6 +72,7 @@ If a client-only page cannot receive `dict` from a server parent, use `useClient
 - **Capability-driven AI params**: AI integration forms must render advanced parameters from model/baseUrl/apiStyle capability rules, and unsupported parameters must not be sent in runtime requests.
 - **Git hygiene**: Runtime and build outputs must stay untracked (`apps/conductor/data/`, `apps/conductor/conductor`, `apps/worker/worker`), and local environment files should use `*.env` patterns while keeping `*.env.example` tracked.
 - **Package manager bootstrap**: repository-level scripts must invoke Corepack-managed pnpm through `scripts/run-pnpm.mjs` instead of a bare global `pnpm` binary. The root `packageManager` field is pinned to the repository pnpm version, and the wrapper keeps `COREPACK_HOME` under the repo-local `.cache/corepack` directory.
+- **Production config strictness**: production runtime must fail fast on missing required secrets/integration settings (no dev token defaults, no console email fallback for auth, no optionalized OAuth credentials).
 
 ## Naming & Design Rules
 
