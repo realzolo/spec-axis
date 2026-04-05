@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { auditLogger, extractClientInfo } from '@/services/audit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { getActiveOrgId, getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES, requireProjectAccess } from '@/services/orgs';
 import { createInMemoryRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
@@ -216,6 +217,23 @@ export async function POST(request: NextRequest) {
           and org_id = $3`,
       [validated.concurrency_mode ?? 'queue', result.pipeline.id, orgId]
     );
+
+    const clientInfo = extractClientInfo(request);
+    await auditLogger.log({
+      action: 'create',
+      entityType: 'pipeline',
+      entityId: result.pipeline.id,
+      userId: user.id,
+      changes: {
+        scope: 'pipeline',
+        projectId: payload.projectId ?? null,
+        name: payload.name,
+        environment: validated.config.environment,
+        concurrencyMode: validated.concurrency_mode ?? 'queue',
+      },
+      ...clientInfo,
+    });
+
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     const { error, statusCode } = formatErrorResponse(err);

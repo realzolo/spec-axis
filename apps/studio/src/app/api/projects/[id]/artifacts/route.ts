@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { auditLogger, extractClientInfo } from '@/services/audit';
 import { requireUser, unauthorized } from '@/services/auth';
 import {
   getActiveOrgId,
@@ -91,6 +92,24 @@ export async function POST(
       ...(payload.repositoryDescription ? { repositoryDescription: payload.repositoryDescription } : {}),
     };
     const result = await publishProjectArtifacts(input);
+
+    const clientInfo = extractClientInfo(request);
+    await auditLogger.log({
+      action: 'create',
+      entityType: 'project',
+      entityId: id,
+      userId: user.id,
+      changes: {
+        scope: 'artifact_release',
+        runId: payload.runId,
+        repositoryName: payload.repositoryName,
+        repositorySlug: input.repositorySlug,
+        version: payload.version,
+        artifactCount: payload.artifactIds.length,
+        channelNames: input.channelNames,
+      },
+      ...clientInfo,
+    });
 
     return NextResponse.json(result, { status: 201 });
   } catch (err) {

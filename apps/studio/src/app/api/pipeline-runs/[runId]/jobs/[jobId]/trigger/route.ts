@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { auditLogger, extractClientInfo } from '@/services/audit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { getActiveOrgId, getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES } from '@/services/orgs';
 import { createInMemoryRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
@@ -31,11 +32,29 @@ export async function POST(
     }
 
     const detail = await getPipelineRun(runId);
-    if (detail.run.org_id && detail.run.org_id !== orgId) {
+    const run = detail.run;
+    if (run.org_id && run.org_id !== orgId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const result = await triggerPipelineRunJob(runId, jobId);
+
+    const clientInfo = extractClientInfo(request);
+    await auditLogger.log({
+      action: 'update',
+      entityType: 'pipeline',
+      entityId: run.pipeline_id,
+      userId: user.id,
+      changes: {
+        scope: 'pipeline_run_job',
+        runId,
+        jobId,
+        action: 'manual_trigger',
+        projectId: run.project_id ?? null,
+      },
+      ...clientInfo,
+    });
+
     return NextResponse.json(result);
   } catch (err) {
     const { error, statusCode } = formatErrorResponse(err);

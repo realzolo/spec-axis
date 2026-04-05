@@ -122,6 +122,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       updatedBy: user.id,
     };
     const result = await updatePipeline(id, payload);
+
+    const clientInfo = extractClientInfo(request);
+    await auditLogger.log({
+      action: 'update',
+      entityType: 'pipeline',
+      entityId: id,
+      userId: user.id,
+      changes: {
+        scope: 'pipeline',
+        name: payload.name,
+        description: payload.description,
+        environment: validated.config?.environment ?? pipeline.environment,
+      },
+      ...clientInfo,
+    });
+
     return NextResponse.json(result);
   } catch (err) {
     const { error, statusCode } = formatErrorResponse(err);

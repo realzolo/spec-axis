@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { auditLogger, extractClientInfo } from '@/services/audit';
 import { requireUser, unauthorized } from '@/services/auth';
 import { getActiveOrgId, getOrgMemberRole, isRoleAllowed, ORG_ADMIN_ROLES } from '@/services/orgs';
 import { createInMemoryRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
@@ -151,6 +152,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ...(body?.rollbackOf ? { rollbackOf: body.rollbackOf } : {}),
     };
     const result = await createPipelineRun(id, payload);
+
+    const clientInfo = extractClientInfo(request);
+    await auditLogger.log({
+      action: 'create',
+      entityType: 'pipeline',
+      entityId: id,
+      userId: user.id,
+      changes: {
+        scope: 'pipeline_run',
+        runId: result.id,
+        projectId: pipeline.project_id ?? null,
+        triggerType: payload.triggerType,
+        rollbackOf: payload.rollbackOf ?? null,
+      },
+      ...clientInfo,
+    });
+
     return NextResponse.json(result, { status: 202 });
   } catch (err) {
     const { error, statusCode } = formatErrorResponse(err);

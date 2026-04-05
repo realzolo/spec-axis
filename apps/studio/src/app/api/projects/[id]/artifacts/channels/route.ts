@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { auditLogger, extractClientInfo } from '@/services/audit';
 import { requireUser, unauthorized } from '@/services/auth';
 import {
   getActiveOrgId,
@@ -52,6 +53,21 @@ export async function POST(
       versionId: payload.versionId,
       channelName: payload.channelName,
       updatedBy: user.id,
+    });
+
+    const clientInfo = extractClientInfo(request);
+    await auditLogger.log({
+      action: 'update',
+      entityType: 'project',
+      entityId: id,
+      userId: user.id,
+      changes: {
+        scope: 'artifact_channel',
+        repositoryId: payload.repositoryId,
+        versionId: payload.versionId,
+        channelName: payload.channelName,
+      },
+      ...clientInfo,
     });
 
     return NextResponse.json({ channel });
