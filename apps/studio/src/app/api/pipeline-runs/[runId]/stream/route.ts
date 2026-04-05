@@ -8,6 +8,7 @@ import { getPipelineRun, getPipelineRunEvents } from '@/services/conductorGatewa
 import { logger } from '@/services/logger';
 import type { JsonObject } from '@/lib/json';
 import { isPipelineTerminalStatus } from '@/services/statuses';
+import { hydrateRunActor } from '../route';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,7 +33,7 @@ export async function GET(
     const orgId = await getActiveOrgId(user.id, user.email ?? undefined, request);
     if (!orgId) return unauthorized();
 
-    const initialDetail = await getPipelineRun(runId);
+    const initialDetail = await hydrateRunActor(await getPipelineRun(runId));
     if (initialDetail.run.org_id && initialDetail.run.org_id !== orgId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -71,7 +72,7 @@ export async function GET(
         };
 
         const emitSnapshot = async () => {
-          const detail = await getPipelineRun(runId);
+          const detail = await hydrateRunActor(await getPipelineRun(runId));
           if (!active) {
             return;
           }

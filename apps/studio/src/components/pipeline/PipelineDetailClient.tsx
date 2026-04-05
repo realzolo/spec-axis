@@ -46,6 +46,7 @@ import {
   ArrowDown,
   ArrowRight,
   Info,
+  PanelLeftOpen,
   Play,
   RotateCcw,
   Settings,
@@ -415,6 +416,7 @@ export default function PipelineDetailClient({
   const [promoteChannelName, setPromoteChannelName] = useState("");
   const [promotingChannel, setPromotingChannel] = useState(false);
   const [runStreamNonce, setRunStreamNonce] = useState(0);
+  const [runHistoryDialogOpen, setRunHistoryDialogOpen] = useState(false);
 
   const selectedRunIdRef = useRef<string | null>(initialRunId);
   const previousSelectedRunIdRef = useRef<string | null>(initialRunId);
@@ -884,6 +886,18 @@ export default function PipelineDetailClient({
     setNodeDialogOpen(true);
     setSelectedStepId(null);
     setLogText("");
+  }, []);
+
+  const handleSelectRun = useCallback((runId: string) => {
+    startTransition(() => {
+      setSelectedRunId(runId);
+      setRunDetail(null);
+      setSelectedRunJobKey(null);
+      setNodeDialogOpen(false);
+      setSelectedStepId(null);
+      setLogText("");
+      setRunHistoryDialogOpen(false);
+    });
   }, []);
 
   function secretErrorMessage(code: string | null) {
@@ -1472,6 +1486,8 @@ export default function PipelineDetailClient({
         String(runs.length - runs.findIndex((r) => r.id === selectedRunId))
       )
     : "";
+  const runHistoryTitle = `${p.detail.runHistory} (${runs.length})`;
+  const hasFailureSummary = Boolean(runExecutionSummary?.failure_summary || currentRunIsTerminalFailure);
   const orderedVersions = useMemo(
     () => [...versions].sort((a, b) => a.version - b.version),
     [versions]
@@ -1763,6 +1779,17 @@ export default function PipelineDetailClient({
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {tab === "runs" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setRunHistoryDialogOpen(true)}
+                className="lg:hidden"
+              >
+                <PanelLeftOpen className="size-3.5 mr-1" />
+                {p.detail.runHistory}
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -1816,10 +1843,10 @@ export default function PipelineDetailClient({
         {tab === "runs" && (
           <div className="flex h-full flex-col lg:flex-row">
             {/* Left: run list */}
-            <div className="w-full lg:w-64 h-56 lg:h-auto shrink-0 border-b lg:border-b-0 lg:border-r border-[hsl(var(--ds-border-1))] flex flex-col overflow-hidden">
+            <div className="hidden lg:flex lg:w-64 lg:shrink-0 lg:flex-col lg:overflow-hidden lg:border-r border-[hsl(var(--ds-border-1))]">
               <div className="px-4 py-2.5 border-b border-[hsl(var(--ds-border-1))] flex items-center justify-between">
                 <span className="text-[13px] font-medium text-foreground">
-                  {p.detail.runHistory}
+                  {runHistoryTitle}
                 </span>
                 <button
                   type="button"
@@ -1840,16 +1867,7 @@ export default function PipelineDetailClient({
                 {runs.map((run, idx) => (
                   <button
                     key={run.id}
-                    onClick={() => {
-                      startTransition(() => {
-                        setSelectedRunId(run.id);
-                        setRunDetail(null);
-                        setSelectedRunJobKey(null);
-                        setNodeDialogOpen(false);
-                        setSelectedStepId(null);
-                        setLogText("");
-                      });
-                    }}
+                    onClick={() => handleSelectRun(run.id)}
                     className={`w-full text-left px-4 py-3 border-b border-[hsl(var(--ds-border-1))] transition-colors ${
                       selectedRunId === run.id
                         ? "bg-[hsl(var(--ds-surface-1))]"
@@ -1898,8 +1916,8 @@ export default function PipelineDetailClient({
               {selectedRunId && (
                 <>
                   {/* Run header */}
-                  <div className="px-6 py-4 border-b border-[hsl(var(--ds-border-1))] shrink-0">
-                    <div className="flex items-start justify-between gap-4">
+                  <div className="px-4 py-4 sm:px-6 border-b border-[hsl(var(--ds-border-1))] shrink-0">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="space-y-3">
                         <div className="flex items-center gap-2">
                           {currentRun &&
@@ -1971,8 +1989,9 @@ export default function PipelineDetailClient({
                       </div>
 
                       {/* Rollback / retry */}
+                      <div className="flex w-full flex-col gap-3 lg:w-auto lg:items-end">
                       {currentRun && currentRun.status === "success" && (
-                        <div className="flex flex-col items-end gap-3">
+                        <div className="flex flex-col gap-3 lg:items-end">
                           <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-3 py-2">
                             <div className="flex items-center justify-between gap-3">
                               <div>
@@ -2087,7 +2106,7 @@ export default function PipelineDetailClient({
                         </div>
                       )}
                       {currentRun && currentRun.status === "failed" && (
-                        <div className="flex flex-col items-end gap-1">
+                        <div className="flex flex-col gap-1 lg:items-end">
                           <Button
                             variant="outline"
                             size="sm"
@@ -2115,7 +2134,7 @@ export default function PipelineDetailClient({
                           </TooltipProvider>
                         </div>
                       )}
-                  {currentRun &&
+                      {currentRun &&
                         (currentRun.status === "queued" ||
                           currentRun.status === "running" ||
                           currentRun.status === "waiting_manual") && (
@@ -2129,123 +2148,314 @@ export default function PipelineDetailClient({
                             {cancelingRunId === selectedRunId ? dict.common.loading : p.cancelRun}
                           </Button>
                         )}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="px-6 pb-4">
-                    {runExecutionSummary ? (
-                      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,0.7fr)]">
-                        <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-background p-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <div className="text-[13px] font-medium text-foreground">{p.detail.executionSummaryTitle}</div>
-                              <div className="mt-0.5 text-[12px] text-[hsl(var(--ds-text-2))]">
-                                {p.detail.executionSummaryDescription}
-                              </div>
-                            </div>
-                            <Badge variant="muted" size="sm">
-                              {formatDurationMs(runExecutionSummary.critical_path_duration_ms)}
-                            </Badge>
+                  <div className="px-4 pt-3 sm:px-6 lg:hidden">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-3 py-2.5">
+                        <div className="text-[11px] text-[hsl(var(--ds-text-2))]">{p.detail.runHistory}</div>
+                        <div className="mt-1 text-sm font-medium text-foreground">
+                          {p.detail.runHistoryCount.replace("{{count}}", String(runs.length))}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="mt-1.5 h-7 px-0 text-[12px]"
+                          onClick={() => setRunHistoryDialogOpen(true)}
+                        >
+                          <History className="mr-1 size-3.5" />
+                          {p.detail.runHistory}
+                        </Button>
+                      </div>
+                      {currentRun && (
+                        <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-3 py-2.5">
+                          <div className="text-[11px] text-[hsl(var(--ds-text-2))]">{p.detail.runId.replace("{{num}}", "")}</div>
+                          <div className="mt-1 flex items-center gap-2 text-sm font-medium text-foreground">
+                            {STATUS_ICON[currentRun.status as PipelineRunStatus]}
+                            <span>{currentRunLabel}</span>
                           </div>
-                          <div className="mt-4 flex flex-wrap items-center gap-2">
-                            {runExecutionSummary.critical_path.map((node, index) => (
-                              <div key={node.id} className="contents">
-                                <div className="flex flex-col gap-1">
-                                  <div className="flex items-center gap-2 rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-3 py-2">
-                                    <div className="min-w-0">
-                                      <div className="truncate text-[13px] font-medium text-foreground">{node.name}</div>
-                                      <div className="text-[11px] text-[hsl(var(--ds-text-2))]">
-                                        {stageLabel(node.stage ?? 'build')}
-                                      </div>
-                                    </div>
-                                    <Badge variant={STATUS_VARIANTS[node.status]} size="sm">
-                                      {p.status[node.status]}
-                                    </Badge>
-                                  </div>
-                                  <div className="text-[11px] text-[hsl(var(--ds-text-2))] px-1">
-                                    {formatDurationMs(node.duration_ms)}
-                                  </div>
-                                </div>
-                                {index < runExecutionSummary.critical_path.length - 1 && (
-                                  <ArrowRight className="size-4 shrink-0 text-[hsl(var(--ds-text-2))]" />
-                                )}
-                              </div>
-                            ))}
+                          <div className="mt-1.5 text-[12px] text-[hsl(var(--ds-text-2))]">
+                            {formatLocalDateTime(currentRun.created_at)}
                           </div>
                         </div>
+                      )}
+                    </div>
+                  </div>
 
-                        <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-background p-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <div className="text-[13px] font-medium text-foreground">{p.detail.failureSummaryTitle}</div>
-                              <div className="mt-0.5 text-[12px] text-[hsl(var(--ds-text-2))]">
-                                {p.detail.failureSummaryDescription}
-                              </div>
-                            </div>
-                            {runExecutionSummary.failure_summary || currentRunIsTerminalFailure ? (
-                              <Badge variant="danger" size="sm">
-                                {p.status[(currentRunStatus ?? "failed") as PipelineRunStatus]}
-                              </Badge>
-                            ) : (
-                              <Badge variant="success" size="sm">
-                                {p.detail.successSummary}
-                              </Badge>
-                            )}
-                          </div>
-                          {runExecutionSummary.failure_summary || currentRunIsTerminalFailure ? (
-                            <div className="mt-4 space-y-2">
-                              <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-3 py-2">
-                                <div className="text-[11px] text-[hsl(var(--ds-text-2))]">{p.detail.failureJob}</div>
-                                <div className="text-[13px] font-medium text-foreground">
-                                  {runExecutionSummary.failure_summary?.job_name ?? p.detail.failureSummaryTitle}
+                  <div className="px-4 pt-3 pb-4 sm:px-6 lg:pb-5">
+                    {runExecutionSummary ? (
+                      <div className="space-y-2.5">
+                        {hasFailureSummary ? (
+                          <div className="rounded-[12px] border border-danger/25 bg-danger/[0.04] px-3 py-2.5">
+                            <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="min-w-0 space-y-1.5">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="danger" size="sm">
+                                    {p.status[(currentRunStatus ?? "failed") as PipelineRunStatus]}
+                                  </Badge>
+                                  <span className="text-[13px] font-medium text-foreground">
+                                    {runExecutionSummary.failure_summary?.job_name ?? p.detail.failureSummaryTitle}
+                                  </span>
                                 </div>
-                                <div className="mt-0.5 text-[11px] text-[hsl(var(--ds-text-2))]">
+                                <div className="text-[12px] text-[hsl(var(--ds-text-2))]">
                                   {runExecutionSummary.failure_summary?.step_name
                                     ? p.detail.failureStep.replace("{{name}}", runExecutionSummary.failure_summary.step_name)
                                     : p.detail.failureNoStep}
                                 </div>
+                                {(runExecutionSummary.failure_summary?.message ?? runDetail?.run.error_message) && (
+                                  <div className="text-[12px] text-danger break-words">
+                                    {runExecutionSummary.failure_summary?.message ?? runDetail?.run.error_message}
+                                  </div>
+                                )}
                               </div>
-                              {(runExecutionSummary.failure_summary?.message ?? runDetail?.run.error_message) && (
-                                <div className="rounded-[10px] border border-danger/20 bg-danger/5 px-3 py-2 text-[12px] text-danger">
-                                  {runExecutionSummary.failure_summary?.message ?? runDetail?.run.error_message}
-                                </div>
-                              )}
+                              <div className="flex shrink-0 items-center gap-2 text-[11px] text-[hsl(var(--ds-text-2))]">
+                                <span>{p.detail.totalDuration}</span>
+                                <span className="font-medium text-foreground">
+                                  {formatDurationMs(runExecutionSummary.total_duration_ms)}
+                                </span>
+                              </div>
                             </div>
-                          ) : (
-                            <div className="mt-4 rounded-[10px] border border-success/20 bg-success/5 px-3 py-3 text-[12px] text-success">
-                              {p.detail.failureNone}
+                          </div>
+                        ) : (
+                          <div className="rounded-[12px] border border-success/20 bg-success/[0.04] px-3 py-2.5">
+                            <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="success" size="sm">{p.detail.successSummary}</Badge>
+                                <span className="text-[13px] text-foreground">{p.detail.failureNone}</span>
+                              </div>
+                              <div className="text-[11px] text-[hsl(var(--ds-text-2))]">
+                                {p.detail.totalDuration} <span className="font-medium text-foreground">{formatDurationMs(runExecutionSummary.total_duration_ms)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+                          <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-background px-3 py-2">
+                            <div className="text-[11px] text-[hsl(var(--ds-text-2))]">{p.detail.totalDuration}</div>
+                            <div className="mt-1 text-[13px] font-medium text-foreground">
+                              {formatDurationMs(runExecutionSummary.total_duration_ms)}
+                            </div>
+                          </div>
+                          <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-background px-3 py-2">
+                            <div className="text-[11px] text-[hsl(var(--ds-text-2))]">{p.detail.criticalPathDuration}</div>
+                            <div className="mt-1 text-[13px] font-medium text-foreground">
+                              {formatDurationMs(runExecutionSummary.critical_path_duration_ms)}
+                            </div>
+                          </div>
+                          {!!runStatusCounts.success && (
+                            <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-background px-3 py-2">
+                              <div className="text-[11px] text-[hsl(var(--ds-text-2))]">{p.status.success}</div>
+                              <div className="mt-1 text-[13px] font-medium text-foreground">{runStatusCounts.success}</div>
                             </div>
                           )}
-                          <div className="mt-4 grid grid-cols-2 gap-2 text-[12px] text-[hsl(var(--ds-text-2))]">
-                            <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-3 py-2">
-                              <div>{p.detail.totalDuration}</div>
-                              <div className="text-[13px] font-medium text-foreground">
-                                {formatDurationMs(runExecutionSummary.total_duration_ms)}
-                              </div>
+                          {!!runStatusCounts.failed && (
+                            <div className="rounded-[10px] border border-danger/20 bg-danger/[0.03] px-3 py-2">
+                              <div className="text-[11px] text-[hsl(var(--ds-text-2))]">{p.status.failed}</div>
+                              <div className="mt-1 text-[13px] font-medium text-danger">{runStatusCounts.failed}</div>
                             </div>
-                            <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-3 py-2">
-                              <div>{p.detail.criticalPathDuration}</div>
-                              <div className="text-[13px] font-medium text-foreground">
-                                {formatDurationMs(runExecutionSummary.critical_path_duration_ms)}
+                          )}
+                          {!!runStatusCounts.running && (
+                            <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-background px-3 py-2">
+                              <div className="text-[11px] text-[hsl(var(--ds-text-2))]">{p.status.running}</div>
+                              <div className="mt-1 text-[13px] font-medium text-foreground">{runStatusCounts.running}</div>
+                            </div>
+                          )}
+                          {!!runStatusCounts.waiting_manual && (
+                            <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-background px-3 py-2">
+                              <div className="text-[11px] text-[hsl(var(--ds-text-2))]">{p.status.waiting_manual}</div>
+                              <div className="mt-1 text-[13px] font-medium text-foreground">{runStatusCounts.waiting_manual}</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-background px-3 py-2.5">
+                          <div className="space-y-2">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1 space-y-2">
+                                <Skeleton className="h-4 w-40 bg-[hsl(var(--ds-border-1))]" />
+                                <Skeleton className="h-3 w-32 bg-[hsl(var(--ds-border-1))]" />
                               </div>
+                              <Skeleton className="h-6 w-20 rounded-full bg-[hsl(var(--ds-border-1))]" />
+                            </div>
+                            <Skeleton className="h-3 w-28 bg-[hsl(var(--ds-border-1))]" />
+                          </div>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+                          <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-background px-3 py-2">
+                            <div className="space-y-2">
+                              <Skeleton className="h-3 w-16 bg-[hsl(var(--ds-border-1))]" />
+                              <Skeleton className="h-6 w-12 bg-[hsl(var(--ds-border-1))]" />
+                            </div>
+                          </div>
+                          <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-background px-3 py-2">
+                            <div className="space-y-2">
+                              <Skeleton className="h-3 w-20 bg-[hsl(var(--ds-border-1))]" />
+                              <Skeleton className="h-6 w-12 bg-[hsl(var(--ds-border-1))]" />
+                            </div>
+                          </div>
+                          <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-background px-3 py-2">
+                            <div className="space-y-2">
+                              <Skeleton className="h-3 w-14 bg-[hsl(var(--ds-border-1))]" />
+                              <Skeleton className="h-6 w-10 bg-[hsl(var(--ds-border-1))]" />
+                            </div>
+                          </div>
+                          <div className="rounded-[10px] border border-[hsl(var(--ds-border-1))] bg-background px-3 py-2">
+                            <div className="space-y-2">
+                              <Skeleton className="h-3 w-14 bg-[hsl(var(--ds-border-1))]" />
+                              <Skeleton className="h-6 w-10 bg-[hsl(var(--ds-border-1))]" />
                             </div>
                           </div>
                         </div>
                       </div>
-                    ) : (
-                      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,0.7fr)]">
-                        <Skeleton className="h-40 rounded-[12px]" />
-                        <Skeleton className="h-40 rounded-[12px]" />
-                      </div>
                     )}
                   </div>
 
-                  {/* Runtime board */}
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    <div className="flex h-full min-h-0 flex-col">
+                  <div className="px-4 pb-3 sm:px-6 lg:pb-4">
+                    <div className="flex items-center justify-between gap-3 pt-3 lg:pt-4">
+                      <div>
+                        <div className="text-[12px] font-semibold uppercase tracking-wide text-[hsl(var(--ds-text-2))]">
+                          {p.detail.stagesLabel}
+                        </div>
+                        <div className="mt-1 text-[12px] text-[hsl(var(--ds-text-2))]">
+                          {p.detail.stagesDescription}
+                        </div>
+                      </div>
+                      <Badge variant="muted" size="sm">{runtimeStages.length}</Badge>
+                    </div>
+                  </div>
+
+
+                  <Dialog open={runHistoryDialogOpen} onOpenChange={setRunHistoryDialogOpen}>
+                    <DialogContent className="max-w-lg p-0 sm:max-w-xl lg:hidden">
+                      <DialogHeader className="border-b border-[hsl(var(--ds-border-1))] px-4 py-4 text-left">
+                        <DialogTitle>{runHistoryTitle}</DialogTitle>
+                        <DialogDescription>{p.detail.runHistory}</DialogDescription>
+                      </DialogHeader>
+                      <div className="max-h-[70vh] overflow-y-auto">
+                        {runs.length === 0 && (
+                          <div className="px-4 py-8 text-center text-[12px] text-[hsl(var(--ds-text-2))]">
+                            {p.detail.noRuns}
+                          </div>
+                        )}
+                        {runs.map((run, idx) => (
+                          <button
+                            key={run.id}
+                            onClick={() => handleSelectRun(run.id)}
+                            className={`w-full border-b border-[hsl(var(--ds-border-1))] px-4 py-3 text-left transition-colors ${
+                              selectedRunId === run.id
+                                ? "bg-[hsl(var(--ds-surface-1))]"
+                                : "hover:bg-[hsl(var(--ds-surface-1))]"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                {STATUS_ICON_SM[run.status as PipelineRunStatus]}
+                                <span className="text-[13px] font-medium">#{runs.length - idx}</span>
+                              </div>
+                              <Badge variant={STATUS_VARIANTS[run.status as PipelineRunStatus]} size="sm">
+                                {p.status[run.status as PipelineRunStatus]}
+                              </Badge>
+                            </div>
+                            <div className="mt-1 text-[12px] text-[hsl(var(--ds-text-2))]">
+                              {p.detail.trigger[run.trigger_type as keyof typeof p.detail.trigger] ?? run.trigger_type}
+                              <span className="ml-1">· {p.detail.triggeredBy}: {getRunActorLabel(run, p)}</span>
+                              {run.branch && <span className="ml-1">· {run.branch}</span>}
+                            </div>
+                            <div className="text-[12px] text-[hsl(var(--ds-text-2))]">
+                              {formatLocalDateTime(run.created_at)}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  {runDetail && (
+                    <div className="px-4 pb-4 sm:px-6 lg:hidden">
+                      <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-background p-3">
+                        <div className="space-y-3">
+                          {runtimeStages.map((stage, stageIndex) => (
+                            <div key={stage.key} className="space-y-3">
+                              <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))]/40 p-3">
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <div>
+                                    <div className="text-[11px] uppercase tracking-wide text-[hsl(var(--ds-text-2))]">{stageLabel(stage.key)}</div>
+                                    <div className="mt-0.5 text-[12px] text-[hsl(var(--ds-text-2))]">
+                                      {p.detail.nodesCount.replace("{{count}}", String(stage.jobs.length))}
+                                    </div>
+                                  </div>
+                                  <ModeBadgeGroup
+                                    entryMode={getStageConfig(runtimeStageSettings, stage.key).entryMode ?? "auto"}
+                                    dispatchMode={getStageConfig(runtimeStageSettings, stage.key).dispatchMode ?? "parallel"}
+                                  />
+                                </div>
+                                <div className="h-px bg-[hsl(var(--ds-border-1))] mb-3" />
+                                <div className="space-y-2">
+                                  {stage.jobs.map((job) => {
+                                    const runtimeJob = runJobsByKey.get(job.id);
+                                    const runtimeSteps = runtimeJob ? runStepsByJobId.get(runtimeJob.id) ?? [] : [];
+                                    const runtimeStatus = deriveRuntimeJobStatus(
+                                      runtimeJob?.status,
+                                      runtimeSteps,
+                                      currentRun?.status
+                                    );
+                                    const selected = selectedRunJobKey === job.id;
+                                    return (
+                                      <button
+                                        key={job.id}
+                                        type="button"
+                                        onClick={() => openRuntimeNode(job.id)}
+                                        className={`w-full rounded-[10px] border p-3 text-left transition-all ${
+                                          selected ? selectedStatusTone(runtimeStatus) : statusTone(runtimeStatus)
+                                        }`}
+                                      >
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                              {STATUS_ICON_SM[runtimeStatus]}
+                                              <span className="truncate text-sm font-medium text-foreground">{job.name}</span>
+                                            </div>
+                                            <div className="mt-1 truncate text-[12px] text-[hsl(var(--ds-text-2))]">{job.id}</div>
+                                          </div>
+                                          <Badge variant={STATUS_VARIANTS[runtimeStatus]} size="sm">
+                                            {p.status[runtimeStatus]}
+                                          </Badge>
+                                        </div>
+                                        <div className="mt-3 flex items-center justify-between gap-3 text-[12px] text-[hsl(var(--ds-text-2))]">
+                                          <span>{p.detail.stepsCount.replace("{{count}}", String(runtimeSteps.length))}</span>
+                                          <span>
+                                            {runtimeJob?.started_at
+                                              ? durationLabel(runtimeJob.started_at, runtimeJob.finished_at ?? undefined)
+                                              : p.detail.notStarted}
+                                          </span>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              {stageIndex < runtimeStages.length - 1 && (
+                                <div className="flex items-center justify-center text-[hsl(var(--ds-border-2)/0.82)]">
+                                  <ArrowDown className="size-4" />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="hidden lg:flex flex-1 min-h-0 overflow-hidden">
+                    <div className="flex h-full min-h-0 flex-col w-full">
                       <div
                         ref={runtimeBoardViewportRef}
-                        className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y select-none bg-[hsl(var(--ds-surface-1))]/30 ${
+                        className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y select-none ${
                           runtimeBoardDragging ? "cursor-grabbing" : "cursor-grab"
                         }`}
                         style={{ userSelect: "none" }}
@@ -2261,20 +2471,50 @@ export default function PipelineDetailClient({
                         onWheel={handleRuntimeBoardWheel}
                       >
                         {!runDetail && (
-                          <div className="flex gap-3 px-5 py-4">
+                          <div className="flex gap-4 px-5 py-4">
                             {Array.from({ length: Math.max(runtimeStageCount || 3, 3) }).map((_, index) => (
                               <div
                                 key={`runtime-loading-${index}`}
                                 className="flex shrink-0 flex-col rounded-[14px] border border-[hsl(var(--ds-border-1))] bg-background"
                                 style={{ width: runtimeStageCardWidth }}
                               >
-                                <div className="border-b border-[hsl(var(--ds-border-1))] px-4 py-3 space-y-2">
-                                  <Skeleton className="h-4 w-28 bg-[hsl(var(--ds-border-1))]" />
-                                  <Skeleton className="h-3 w-16 bg-[hsl(var(--ds-border-1))]" />
+                                <div className="border-b border-[hsl(var(--ds-border-1))] px-4 py-2.5">
+                                  <div className="space-y-1.5">
+                                    <Skeleton className="h-4 w-28 bg-[hsl(var(--ds-border-1))]" />
+                                    <Skeleton className="h-3 w-14 bg-[hsl(var(--ds-border-1))]" />
+                                  </div>
                                 </div>
-                                <div className="space-y-3 p-3">
-                                  <Skeleton className="h-24 w-full rounded-[12px] bg-[hsl(var(--ds-border-1))]" />
-                                  <Skeleton className="h-24 w-full rounded-[12px] bg-[hsl(var(--ds-border-1))]" />
+                                <div className="flex flex-1 flex-col gap-3 p-3">
+                                  <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] p-3">
+                                    <div className="space-y-3">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0 flex-1 space-y-2">
+                                          <Skeleton className="h-4 w-24 bg-[hsl(var(--ds-border-1))]" />
+                                          <Skeleton className="h-3 w-16 bg-[hsl(var(--ds-border-1))]" />
+                                        </div>
+                                        <Skeleton className="h-6 w-20 rounded-full bg-[hsl(var(--ds-border-1))]" />
+                                      </div>
+                                      <div className="flex items-center justify-between gap-3">
+                                        <Skeleton className="h-3 w-14 bg-[hsl(var(--ds-border-1))]" />
+                                        <Skeleton className="h-3 w-10 bg-[hsl(var(--ds-border-1))]" />
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] p-3">
+                                    <div className="space-y-3">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0 flex-1 space-y-2">
+                                          <Skeleton className="h-4 w-20 bg-[hsl(var(--ds-border-1))]" />
+                                          <Skeleton className="h-3 w-12 bg-[hsl(var(--ds-border-1))]" />
+                                        </div>
+                                        <Skeleton className="h-6 w-16 rounded-full bg-[hsl(var(--ds-border-1))]" />
+                                      </div>
+                                      <div className="flex items-center justify-between gap-3">
+                                        <Skeleton className="h-3 w-14 bg-[hsl(var(--ds-border-1))]" />
+                                        <Skeleton className="h-3 w-10 bg-[hsl(var(--ds-border-1))]" />
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             ))}
@@ -2283,7 +2523,7 @@ export default function PipelineDetailClient({
                         {runDetail && (
                           <div
                             ref={runtimeBoardContentRef}
-                            className="flex min-w-max snap-x snap-mandatory gap-3 px-5 py-4 will-change-transform select-none"
+                            className="flex min-w-max snap-x snap-mandatory gap-4 px-5 py-4 will-change-transform select-none"
                             style={{
                               transform: runtimeBoardScrollLeft > 0 ? `translate3d(-${runtimeBoardScrollLeft}px, 0, 0)` : undefined,
                             }}
@@ -2294,13 +2534,13 @@ export default function PipelineDetailClient({
                                   className="flex shrink-0 snap-start flex-col rounded-[14px] border border-[hsl(var(--ds-border-1))] bg-background"
                                   style={{ width: runtimeStageCardWidth }}
                                 >
-                                  <div className="border-b border-[hsl(var(--ds-border-1))] px-4 py-3">
-                                    <div className="flex items-center justify-between gap-3">
+                                  <div className="border-b border-[hsl(var(--ds-border-1))] px-4 py-2.5">
+                                    <div className="flex items-center justify-between gap-2">
                                       <div>
-                                        <div className="text-sm font-semibold text-foreground">
+                                        <div className="text-sm font-semibold leading-none text-foreground">
                                           {stageLabel(stage.key)}
                                         </div>
-                                        <div className="mt-1 text-[12px] text-[hsl(var(--ds-text-2))]">
+                                        <div className="mt-0.5 text-[11px] text-[hsl(var(--ds-text-2))]">
                                           {p.detail.nodesCount.replace("{{count}}", String(stage.jobs.length))}
                                         </div>
                                       </div>
@@ -2441,10 +2681,10 @@ export default function PipelineDetailClient({
                         )}
                       </div>
 
-                      <div className="shrink-0 border-t border-[hsl(var(--ds-border-1))] bg-background px-5 py-2">
+                      <div className="shrink-0 bg-[hsl(var(--ds-surface-1))]/20 px-5 py-2.5">
                         <div
                           ref={runtimeBoardRailRef}
-                          className="overflow-x-auto overflow-y-hidden pb-1"
+                          className="overflow-x-auto overflow-y-hidden pb-1 opacity-75 hover:opacity-100 transition-opacity"
                           onScroll={(event) => {
                             const nextScrollLeft = event.currentTarget.scrollLeft;
                             setRuntimeBoardScrollLeft(nextScrollLeft);
@@ -2458,6 +2698,7 @@ export default function PipelineDetailClient({
                         </div>
                       </div>
                     </div>
+
 
                     <Dialog
                       open={nodeDialogOpen && selectedRunJobKey !== null}
@@ -2563,26 +2804,24 @@ export default function PipelineDetailClient({
                                             </Button>
                                           </div>
                                         )}
-                                {canRetrySelectedJob && (
-                                  <div className="mt-3">
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      className="w-full"
-                                      onClick={() =>
-                                        setRetryDialogTarget({
-                                          jobKey: selectedRuntimeJob.job_key,
-                                          jobName: selectedRuntimeJobConfig?.name ?? selectedRuntimeJob.name,
-                                          stepCount: selectedRuntimeSteps.length,
-                                        })
-                                      }
-                                      disabled={retryingJobKey === selectedRuntimeJob.job_key}
-                                    >
-                                      <RotateCcw className="mr-1 size-3.5" />
-                                      {retryingJobKey === selectedRuntimeJob.job_key
-                                        ? dict.common.loading
-                                                : p.retry}
+                                        {canRetrySelectedJob && (
+                                          <div className="mt-3">
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              className="w-full"
+                                              onClick={() =>
+                                                setRetryDialogTarget({
+                                                  jobKey: selectedRuntimeJob.job_key,
+                                                  jobName: selectedRuntimeJobConfig?.name ?? selectedRuntimeJob.name,
+                                                  stepCount: selectedRuntimeSteps.length,
+                                                })
+                                              }
+                                              disabled={retryingJobKey === selectedRuntimeJob.job_key}
+                                            >
+                                              <RotateCcw className="mr-1 size-3.5" />
+                                              {retryingJobKey === selectedRuntimeJob.job_key ? dict.common.loading : p.retry}
                                             </Button>
                                           </div>
                                         )}
@@ -2593,7 +2832,7 @@ export default function PipelineDetailClient({
                               </div>
 
                               <div className="flex min-h-0 w-full min-w-0 flex-col overflow-hidden">
-                              <div className="flex h-full min-h-0 w-full min-w-0 flex-col gap-4 px-5 py-4">
+                                <div className="flex h-full min-h-0 w-full min-w-0 flex-col gap-4 px-5 py-4">
                                   <div className="flex min-h-0 w-full flex-1 self-stretch flex-col overflow-hidden rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--terminal-background))] shadow-[0_0_0_1px_hsl(var(--ds-border-1))]">
                                     <div className="flex items-center justify-between gap-3 border-b border-[hsl(var(--ds-border-1))] px-4 py-2.5">
                                       <div className="flex items-center gap-2">
