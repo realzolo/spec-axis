@@ -657,7 +657,18 @@
       "releaseStatusManage": "Manage release",
       "releaseStatusUnchanneled": "Unchanneled",
       "publishChannelAction": "Promote channel",
-      "publishChannelSuccess": "Channel promoted"
+      "publishChannelSuccess": "Channel promoted",
+      "recommendedActionTitle": "Recommended operator action",
+      "recommendedActionManual": "Approve the waiting manual node to continue this run. Use this when execution is paused for a manual gate.",
+      "recommendedActionRetry": "Retry the failed subtree in this same run when the fix does not require a new pipeline version.",
+      "recommendedActionNewRun": "Trigger a new run after saving changes when you want the latest pipeline version to take effect.",
+      "recommendedActionObserve": "Let the active run continue unless you need to cancel it or a manual gate is waiting.",
+      "runStatsTitle": "Operational guidance (7d)",
+      "runStatsBacklogQueue": "This pipeline has active backlog. Prefer queue or cancel previous for shared environments.",
+      "runStatsBacklogCancel": "Development-style pipelines benefit from cancel previous when new commits arrive quickly.",
+      "runStatsLowSuccess": "Success rate is low. Strengthen review/build gates before adding more deployment automation.",
+      "runStatsRepeatedFailures": "Recent failures are elevated. Review version diff and latest failure summary before rerunning.",
+      "runStatsHealthy": "Run health looks stable over the last 7 days."
     },
     "versionsTab": {
       "title": "Versions",

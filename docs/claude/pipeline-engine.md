@@ -1,5 +1,7 @@
 # Pipeline Engine (CI/CD)
 
+See also: `docs/pipeline/pipeline-optimization-handbook.md` for a step-by-step optimization workflow that turns these runtime capabilities into an execution manual.
+
 ## Pipeline Runtime UX
 
 - Pipeline runtime UX is separate from authoring: runs render as stage columns with per-node status, logs, artifacts, and node-level manual trigger actions for jobs that enter a manual stage

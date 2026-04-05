@@ -1371,10 +1371,11 @@ export function analyzePipelineJobs(jobs: PipelineJob[]): PipelineJobDiagnostic[
 
 export function analyzePipelineConfig(config: PipelineConfig, jobs: PipelineJob[]): PipelineJobDiagnostic[] {
   const diagnostics = analyzePipelineJobs(jobs);
+  const schedule = config.trigger.schedule?.trim() ?? '';
   if (!config.buildImage?.trim()) {
     diagnostics.unshift({
       level: 'error',
-      message: 'CI build image is required.',
+      message: 'CI build image is required. Set a build image in Basic settings before saving the pipeline.',
     });
   }
   validatePipelineContract(config, (issue) => {
@@ -1383,6 +1384,13 @@ export function analyzePipelineConfig(config: PipelineConfig, jobs: PipelineJob[
       message: issue.message,
     });
   });
+  if (config.trigger.autoTrigger && schedule) {
+    diagnostics.push({
+      level: 'warning',
+      message:
+        'Push auto-trigger and schedule are both enabled. Keep both only when you intentionally need event-driven runs plus recurring verification.',
+    });
+  }
   let hasCiArtifactOutputs = false;
   for (const job of jobs) {
     const stage = inferPipelineJobStage(job, jobs);
@@ -1408,17 +1416,47 @@ export function analyzePipelineConfig(config: PipelineConfig, jobs: PipelineJob[
         if (artifactPaths.length === 0) {
           diagnostics.push({
             level: 'error',
-            message: `Static analysis preset "${getStaticAnalysisPresetLabel(preset)}" must declare its report artifact path.`,
+            message: `Static analysis preset "${getStaticAnalysisPresetLabel(preset)}" must declare its report artifact path. Add the report file under Static analysis artifact paths.`,
           });
         } else if (!hasStructuredStaticAnalysisArtifactPath(artifactPaths)) {
           diagnostics.push({
             level: 'error',
-            message: `Static analysis step "${staticAnalysisStep.name}" must include at least one SARIF, normalized JSON, or Go vet JSON artifact path.`,
+            message: `Static analysis step "${staticAnalysisStep.name}" must include at least one SARIF, normalized JSON, or Go vet JSON artifact path. Point the quality gate at the structured report file, not only plain log output.`,
           });
         } else if (presetArtifactPaths.length > 0 && !presetArtifactPaths.every((path) => artifactPaths.includes(path))) {
           diagnostics.push({
             level: 'error',
             message: `Static analysis preset "${getStaticAnalysisPresetLabel(preset)}" must include the canonical report artifact path ${presetArtifactPaths.join(', ')}.`,
+          });
+        }
+      }
+    }
+    if (stage === 'deploy' || stage === 'after_deploy') {
+      for (const step of job.steps) {
+        const artifactSource = step.artifactSource ?? 'run';
+        const artifactInputs = normalizeArtifactPaths(step.artifactInputs);
+        if (artifactSource === 'run' && artifactInputs.length === 0) {
+          diagnostics.push({
+            level: 'warning',
+            message: `Deploy step "${step.name}" is using current run output without explicit Artifact Inputs. Declare the exact artifacts to deploy for reproducible releases.`,
+          });
+        }
+        if (artifactSource === 'registry' && !step.registryRepository?.trim()) {
+          diagnostics.push({
+            level: 'error',
+            message: `Deploy step "${step.name}" is set to Published Artifact but has no artifact repository selected.`,
+          });
+        }
+        if (artifactSource === 'registry' && !step.registryVersion?.trim() && !step.registryChannel?.trim()) {
+          diagnostics.push({
+            level: 'error',
+            message: `Deploy step "${step.name}" must choose exactly one published version or channel.`,
+          });
+        }
+        if (artifactSource === 'registry' && step.registryVersion?.trim() && step.registryChannel?.trim()) {
+          diagnostics.push({
+            level: 'error',
+            message: `Deploy step "${step.name}" cannot select both a published version and a channel at the same time.`,
           });
         }
       }

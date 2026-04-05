@@ -351,26 +351,34 @@ export default function PipelineStepEditor({
               </div>
 
               {stepDeployMode === "run" && (
-                <div className="space-y-1.5">
-                  <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.steps.artifactInputsLabel}</span>
-                  <Textarea
-                    value={(step.artifactInputs ?? []).join("\n")}
-                    onChange={(event) =>
-                      updateDeployStep(step.id, { artifactInputs: splitLines(event.target.value) })
-                    }
-                    placeholder={dict.steps.artifactInputsPlaceholder}
-                    rows={2}
-                    className="resize-none font-mono text-[12px]"
-                    disabled={!isAdmin}
-                  />
-                  <span className="text-[12px] text-[hsl(var(--ds-text-2))]">
-                    {dict.steps.artifactInputsHelp}
-                  </span>
+                <div className="space-y-2">
+                  <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-background px-3 py-2 text-[12px] text-[hsl(var(--ds-text-2))]">
+                    Best practice: explicitly declare the artifact inputs this deploy step consumes so the release stays reproducible and easy to audit.
+                  </div>
+                  <div className="space-y-1.5">
+                    <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.steps.artifactInputsLabel}</span>
+                    <Textarea
+                      value={(step.artifactInputs ?? []).join("\n")}
+                      onChange={(event) =>
+                        updateDeployStep(step.id, { artifactInputs: splitLines(event.target.value) })
+                      }
+                      placeholder={dict.steps.artifactInputsPlaceholder}
+                      rows={2}
+                      className="resize-none font-mono text-[12px]"
+                      disabled={!isAdmin}
+                    />
+                    <span className="text-[12px] text-[hsl(var(--ds-text-2))]">
+                      {dict.steps.artifactInputsHelp}
+                    </span>
+                  </div>
                 </div>
               )}
 
               {stepDeployMode === "registry" && (
                 <div className="space-y-3">
+                  <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-background px-3 py-2 text-[12px] text-[hsl(var(--ds-text-2))]">
+                    Best practice: prefer an exact published version for reproducible rollbacks, or use a channel only when you intentionally want deployment to follow the latest promoted release.
+                  </div>
                   <div className="space-y-1.5">
                     <span className="text-[12px] text-[hsl(var(--ds-text-2))]">{dict.steps.registryRepositoryLabel}</span>
                     <Combobox

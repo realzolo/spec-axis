@@ -1,7 +1,6 @@
 import { Pool, type PoolClient } from 'pg';
 
 declare global {
-   
   var __pgPool: Pool | undefined;
 }
 

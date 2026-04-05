@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Combobox } from "@/components/ui/combobox";
 import {
   Select,
   SelectContent,
@@ -21,6 +22,7 @@ import { toast } from "sonner";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { Dictionary } from "@/i18n";
 import { useProject } from "@/lib/projectContext";
+import { useProjectBranches } from "@/lib/useProjectBranches";
 import type {
   PipelineConfig,
   PipelineEnvironment,
@@ -33,6 +35,7 @@ import {
   DEFAULT_PIPELINE_ENVIRONMENT_DEFINITIONS,
   createDefaultPipelineConfig,
   enforceProductionDeployManualGate,
+  getSourceBranch,
   normalizePipelineEnvironmentDefinitions,
   normalizePipelineJobs,
   normalizeStageSettings,
@@ -50,8 +53,105 @@ type Props = {
 };
 
 type WizardStep = "basic" | "jobs" | "notifications";
+type ConcurrencyMode = (typeof CONCURRENCY_MODES)[number];
+type WizardPipelineConfig = PipelineConfig & { concurrencyMode: ConcurrencyMode };
 
 const WIZARD_STEPS: WizardStep[] = ["basic", "jobs", "notifications"];
+const CONCURRENCY_MODES = ["allow", "queue", "cancel_previous"] as const;
+
+function getDefaultConcurrencyMode(environment: PipelineEnvironment): ConcurrencyMode {
+  switch (environment) {
+    case "development":
+      return "cancel_previous";
+    case "preview":
+    case "production":
+      return "queue";
+    default:
+      return "allow";
+  }
+}
+
+function normalizeBranchValue(branch: string | undefined, fallback: string): string {
+  const value = branch?.trim();
+  return value && value.length > 0 ? value : fallback;
+}
+
+function getConcurrencyOptionLabel(dict: Dictionary["pipelines"], mode: ConcurrencyMode): string {
+  switch (mode) {
+    case "allow":
+      return dict.concurrencyMode.allow;
+    case "queue":
+      return dict.concurrencyMode.queue;
+    case "cancel_previous":
+      return dict.concurrencyMode.cancelPrevious;
+  }
+}
+
+function getConcurrencyOptionHelp(dict: Dictionary["pipelines"], mode: ConcurrencyMode): string {
+  switch (mode) {
+    case "allow":
+      return dict.concurrencyMode.allowHelp;
+    case "queue":
+      return dict.concurrencyMode.queueHelp;
+    case "cancel_previous":
+      return dict.concurrencyMode.cancelPreviousHelp;
+  }
+}
+
+function getSourceBranchSource(branch: string, defaultBranch: string): "project_default" | "custom" {
+  return normalizeBranchValue(branch, defaultBranch) === normalizeBranchValue(defaultBranch, defaultBranch)
+    ? "project_default"
+    : "custom";
+}
+
+function updateSourceBranch(config: WizardPipelineConfig, branch: string): WizardPipelineConfig {
+  return {
+    ...config,
+    jobs: config.jobs.map((job) =>
+      (job.type ?? "shell") === "source_checkout" ? { ...job, branch } : job
+    ),
+  };
+}
+
+function updateEnvironmentWithRecommendedConcurrency(
+  current: WizardPipelineConfig,
+  environment: PipelineEnvironment
+): WizardPipelineConfig {
+  const next = { ...current, environment };
+  const recommendedMode = getDefaultConcurrencyMode(environment);
+  if (current.environment === environment || getDefaultConcurrencyMode(current.environment ?? "production") !== current.concurrencyMode) {
+    return next;
+  }
+  return { ...next, concurrencyMode: recommendedMode };
+}
+
+function normalizePipelineConfigForCreate(config: PipelineConfig, defaultBranch: string): PipelineConfig {
+  const gatedConfig = enforceProductionDeployManualGate(config);
+  const finalJobs = normalizePipelineJobs(gatedConfig.jobs, gatedConfig.stages, defaultBranch);
+  return {
+    ...gatedConfig,
+    buildImage: gatedConfig.buildImage?.trim() ?? "",
+    trigger: {
+      autoTrigger: gatedConfig.trigger.autoTrigger,
+      ...(gatedConfig.trigger.schedule?.trim()
+        ? { schedule: gatedConfig.trigger.schedule.trim() }
+        : {}),
+    },
+    stages: normalizeStageSettings(gatedConfig.stages),
+    jobs: finalJobs,
+  };
+}
+
+function createInitialConfig(
+  defaultBranch: string,
+  defaults?: PipelineConfigDefaults | undefined
+): WizardPipelineConfig {
+  const base = enforceProductionDeployManualGate(createDefaultPipelineConfig("", defaultBranch, defaults));
+  return {
+    ...base,
+    concurrencyMode: getDefaultConcurrencyMode(base.environment ?? "production"),
+  } as PipelineConfig & { concurrencyMode: ConcurrencyMode };
+}
 
 export default function CreatePipelineWizard({
   open,
@@ -68,8 +168,24 @@ export default function CreatePipelineWizard({
   const [submitting, setSubmitting] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [config, setConfig] = useState<PipelineConfig>(() =>
-    enforceProductionDeployManualGate(createDefaultPipelineConfig("", project.default_branch))
+  const [config, setConfig] = useState<WizardPipelineConfig>(() => createInitialConfig(project.default_branch));
+  const availableBranches = useProjectBranches(project.id, project.default_branch);
+  const sourceBranch = useMemo(
+    () => getSourceBranch(config.jobs),
+    [config.jobs]
+  );
+  const sourceBranchSource = useMemo(
+    () => getSourceBranchSource(sourceBranch, project.default_branch),
+    [project.default_branch, sourceBranch]
+  );
+  const branchOptions = useMemo(
+    () =>
+      Array.from(new Set([project.default_branch, ...availableBranches, sourceBranch])).map((branch) => ({
+        value: branch,
+        label: branch,
+        keywords: [branch],
+      })),
+    [availableBranches, project.default_branch, sourceBranch]
   );
   const [inferredDefaults, setInferredDefaults] = useState<PipelineConfigDefaults | null>(null);
   const [environmentOptions, setEnvironmentOptions] = useState<PipelineEnvironmentDefinition[]>(
@@ -116,7 +232,7 @@ export default function CreatePipelineWizard({
 
         setInferredDefaults(defaults);
         if (!configDirtyRef.current) {
-          setConfig(enforceProductionDeployManualGate(createDefaultPipelineConfig("", project.default_branch, defaults)));
+          setConfig(createInitialConfig(project.default_branch, defaults));
         }
       } catch {
         // ignore inference failures and fall back to the generic template
@@ -165,17 +281,20 @@ export default function CreatePipelineWizard({
     const environmentKeys = environmentOptions.map((item) => item.key);
     if (!config.environment || !environmentKeys.includes(config.environment)) {
       setConfig((current) =>
-        enforceProductionDeployManualGate({
-          ...current,
-          environment: environmentKeys[0] ?? "production",
-        })
+        updateEnvironmentWithRecommendedConcurrency(current, environmentKeys[0] ?? "production")
       );
     }
   }, [config.environment, environmentOptions]);
 
-  function updateConfig(updater: (current: PipelineConfig) => PipelineConfig) {
+  function updateConfig(updater: (current: WizardPipelineConfig) => WizardPipelineConfig) {
     configDirtyRef.current = true;
-    setConfig((current) => enforceProductionDeployManualGate(updater(current)));
+    setConfig((current) => {
+      const next = updater(current);
+      return {
+        ...enforceProductionDeployManualGate(next),
+        concurrencyMode: next.concurrencyMode,
+      };
+    });
   }
 
   function resetForm() {
@@ -184,9 +303,7 @@ export default function CreatePipelineWizard({
     setSubmitting(false);
     setName("");
     setDescription("");
-    const initialConfig = enforceProductionDeployManualGate(
-      createDefaultPipelineConfig("", project.default_branch, inferredDefaults ?? undefined)
-    );
+    const initialConfig = createInitialConfig(project.default_branch, inferredDefaults ?? undefined);
     setConfig(initialConfig);
     setSelectedJobId(initialConfig.jobs[0]?.id ?? null);
   }
@@ -217,9 +334,8 @@ export default function CreatePipelineWizard({
     try {
       const trimmedName = name.trim();
       const trimmedDescription = description.trim();
-      const gatedConfig = enforceProductionDeployManualGate(config);
-      const finalJobs = normalizePipelineJobs(gatedConfig.jobs, gatedConfig.stages, project.default_branch);
-      const jobDiagnostics = analyzePipelineConfig(gatedConfig, finalJobs);
+      const normalizedConfig = normalizePipelineConfigForCreate(config, project.default_branch);
+      const jobDiagnostics = analyzePipelineConfig(normalizedConfig, normalizedConfig.jobs);
       const firstError = jobDiagnostics.find((item) => item.level === "error");
 
       if (!trimmedName) {
@@ -233,18 +349,8 @@ export default function CreatePipelineWizard({
       }
 
       const finalConfig: PipelineConfig = {
-        ...config,
-        ...gatedConfig,
+        ...normalizedConfig,
         name: trimmedName,
-        buildImage: gatedConfig.buildImage?.trim() ?? "",
-        trigger: {
-          autoTrigger: gatedConfig.trigger.autoTrigger,
-          ...(gatedConfig.trigger.schedule?.trim()
-            ? { schedule: gatedConfig.trigger.schedule.trim() }
-            : {}),
-        },
-        stages: normalizeStageSettings(gatedConfig.stages),
-        jobs: finalJobs,
         ...(trimmedDescription ? { description: trimmedDescription } : {}),
       };
 
@@ -256,6 +362,7 @@ export default function CreatePipelineWizard({
           name: trimmedName,
           ...(trimmedDescription ? { description: trimmedDescription } : {}),
           config: finalConfig,
+          concurrency_mode: config.concurrencyMode,
         }),
       });
 
@@ -353,10 +460,9 @@ export default function CreatePipelineWizard({
                 <Select
                   value={config.environment ?? "production"}
                   onValueChange={(value) =>
-                    updateConfig((current) => ({
-                      ...current,
-                      environment: value as PipelineEnvironment,
-                    }))
+                    updateConfig((current) =>
+                      updateEnvironmentWithRecommendedConcurrency(current, value as PipelineEnvironment)
+                    )
                   }
                 >
                   <SelectTrigger>
@@ -381,6 +487,65 @@ export default function CreatePipelineWizard({
                 required
                 onChange={(patch) => updateConfig((current) => ({ ...current, ...patch }))}
               />
+
+              <div className="space-y-2 rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-muted/20 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[13px] font-medium text-foreground">{p.basic.branch}</div>
+                    <div className="mt-0.5 text-[12px] text-[hsl(var(--ds-text-2))]">{p.basic.branchHelp}</div>
+                  </div>
+                  <div className="shrink-0 rounded-full border border-[hsl(var(--ds-border-1))] px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--ds-text-2))]">
+                    {sourceBranchSource === "project_default"
+                      ? p.basic.sourceBranchProjectDefault
+                      : p.basic.sourceBranchCustom}
+                  </div>
+                </div>
+                <Combobox
+                  value={normalizeBranchValue(sourceBranch, project.default_branch)}
+                  options={branchOptions}
+                  placeholder={p.basic.branchPlaceholder}
+                  heading={p.basic.branchListHeading}
+                  emptyLabel={p.basic.branchListEmpty}
+                  onChange={(value) =>
+                    updateConfig((current) => updateSourceBranch(current, value))
+                  }
+                />
+                <div className="flex items-center justify-between gap-3 text-[12px] text-[hsl(var(--ds-text-2))]">
+                  <span>{p.basic.projectDefaultBranch.replace("{{branch}}", project.default_branch)}</span>
+                  <button
+                      type="button"
+                      className="font-medium text-[hsl(var(--ds-text-2))] transition-colors hover:text-foreground"
+                      onClick={() => updateConfig((current) => updateSourceBranch(current, project.default_branch))}
+                  >
+                    {p.basic.resetToProjectDefaultBranch}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-muted/20 px-4 py-3">
+                <div className="text-[13px] font-medium text-foreground">{p.concurrencyMode.label}</div>
+                <div className="text-[12px] text-[hsl(var(--ds-text-2))]">{p.concurrencyMode.help}</div>
+                <div className="grid gap-2 md:grid-cols-3">
+                  {CONCURRENCY_MODES.map((mode) => {
+                    const active = config.concurrencyMode === mode;
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => updateConfig((current) => ({ ...current, concurrencyMode: mode }))}
+                        className={`rounded-[8px] border px-3 py-2 text-left text-[13px] transition-colors ${
+                          active
+                            ? "border-foreground bg-background text-foreground"
+                            : "border-[hsl(var(--ds-border-1))] bg-background text-[hsl(var(--ds-text-2))] hover:border-foreground/40"
+                        }`}
+                      >
+                        <div className="font-medium">{getConcurrencyOptionLabel(p, mode)}</div>
+                        <div className="mt-0.5 text-[12px] opacity-70">{getConcurrencyOptionHelp(p, mode)}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               {inferredDefaults && (
                 <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-muted/20 px-3 py-2 text-[12px] text-[hsl(var(--ds-text-2))]">
                   <div className="font-medium text-foreground">{p.basic.autoDetected}</div>

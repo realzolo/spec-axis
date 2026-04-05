@@ -659,7 +659,18 @@
       "releaseStatusManage": "管理发布",
       "releaseStatusUnchanneled": "未挂渠道",
       "publishChannelAction": "提升渠道",
-      "publishChannelSuccess": "渠道已提升"
+      "publishChannelSuccess": "渠道已提升",
+      "recommendedActionTitle": "建议操作",
+      "recommendedActionManual": "先批准当前等待手动触发的节点，让这次运行继续向前。适用于执行被人工门禁暂停的情况。",
+      "recommendedActionRetry": "如果修复不需要新的 pipeline 版本，优先在同一次运行内重试失败子树。",
+      "recommendedActionNewRun": "如果希望最新保存的配置生效，请先保存修改，再发起一次新的运行。",
+      "recommendedActionObserve": "当前运行仍在进行中。除非需要取消或存在等待人工门禁，否则优先继续观察。",
+      "runStatsTitle": "近 7 天运行建议",
+      "runStatsBacklogQueue": "该流水线近 7 天存在活动积压。共享环境更适合使用 queue 或 cancel previous。",
+      "runStatsBacklogCancel": "开发型流水线在提交频繁时更适合使用 cancel previous。",
+      "runStatsLowSuccess": "成功率偏低。建议先加强 review / build 阶段门禁，再增加部署自动化。",
+      "runStatsRepeatedFailures": "近期失败偏多。建议重新运行前先查看版本差异和最新失败摘要。",
+      "runStatsHealthy": "近 7 天运行健康度稳定。"
     },
     "versionsTab": {
       "title": "版本",

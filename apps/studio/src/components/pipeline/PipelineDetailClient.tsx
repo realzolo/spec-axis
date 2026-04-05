@@ -1001,9 +1001,16 @@ export default function PipelineDetailClient({
       const diagnostics = analyzePipelineConfig(normalizedConfig, normalizedConfig.jobs);
       const firstError = diagnostics.find((item) => item.level === "error");
       if (firstError) {
-        toast.error(`${p.jobs.diagnosticsErrorPrefix}: ${firstError.message}`);
+        toast.error(firstError.message ?? p.jobs.invalidConfigError);
         return;
       }
+
+      setConfig(normalizedConfig);
+      setSelectedConfigJobId((current) =>
+        current && normalizedConfig.jobs.some((job) => job.id === current)
+          ? current
+          : normalizedConfig.jobs[0]?.id ?? null
+      );
 
       const res = await fetch(`/api/pipelines/${pipelineId}`, {
         method: "PUT",
@@ -1525,6 +1532,37 @@ export default function PipelineDetailClient({
         : [],
     [comparisonVersionConfig, selectedVersionConfig]
   );
+  const operationalGuidance = useMemo(() => {
+    const stats = pipeline?.run_stats_7d;
+    if (!stats) {
+      return [] as string[];
+    }
+    const guidance: string[] = [];
+    if (stats.active_runs > 0) {
+      guidance.push(
+        currentEnvironment === "development" ? p.detail.runStatsBacklogCancel : p.detail.runStatsBacklogQueue
+      );
+    }
+    if (stats.total_runs >= 3 && stats.success_rate < 80) {
+      guidance.push(p.detail.runStatsLowSuccess);
+    }
+    if (stats.failed_runs >= 2) {
+      guidance.push(p.detail.runStatsRepeatedFailures);
+    }
+    if (guidance.length === 0) {
+      guidance.push(p.detail.runStatsHealthy);
+    }
+    return guidance;
+  }, [currentEnvironment, p.detail, pipeline?.run_stats_7d]);
+  const recommendedAction = useMemo(() => {
+    if (currentRunStatus === "waiting_manual") {
+      return p.detail.recommendedActionManual;
+    }
+    if (currentRunStatus === "failed" || currentRunStatus === "canceled" || currentRunStatus === "timed_out") {
+      return versionChanges.length > 0 ? p.detail.recommendedActionNewRun : p.detail.recommendedActionRetry;
+    }
+    return p.detail.recommendedActionObserve;
+  }, [currentRunStatus, p.detail, versionChanges.length]);
 
   useEffect(() => {
     const previousSelectedRunId = previousSelectedRunIdRef.current;
@@ -2110,11 +2148,20 @@ export default function PipelineDetailClient({
                           <Button
                             variant="outline"
                             size="sm"
+                            onClick={() => void handleRun()}
+                            disabled={running}
+                          >
+                            <Play className="size-3.5 mr-1" />
+                            {running ? dict.common.loading : p.runPipeline}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => handleRollback(selectedRunId)}
                             disabled={rollingBack === selectedRunId}
                           >
                             <RotateCcw className="size-3.5 mr-1" />
-                            {p.retry}
+                            {p.rollback}
                           </Button>
                           <TooltipProvider delayDuration={120}>
                             <Tooltip>
@@ -2185,6 +2232,20 @@ export default function PipelineDetailClient({
                   </div>
 
                   <div className="px-4 pt-3 pb-4 sm:px-6 lg:pb-5">
+                    <div className="mb-3 grid gap-2 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                      <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-3 py-2.5">
+                        <div className="text-[11px] text-[hsl(var(--ds-text-2))]">{p.detail.recommendedActionTitle}</div>
+                        <div className="mt-1 text-[13px] text-foreground">{recommendedAction}</div>
+                      </div>
+                      <div className="rounded-[12px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-3 py-2.5">
+                        <div className="text-[11px] text-[hsl(var(--ds-text-2))]">{p.detail.runStatsTitle}</div>
+                        <div className="mt-1 space-y-1 text-[12px] text-[hsl(var(--ds-text-2))]">
+                          {operationalGuidance.map((item) => (
+                            <div key={item}>• {item}</div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                     {runExecutionSummary ? (
                       <div className="space-y-2.5">
                         {hasFailureSummary ? (

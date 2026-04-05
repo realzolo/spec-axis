@@ -105,6 +105,9 @@ export default function PipelineScheduleField({
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
+              <div className="rounded-[8px] border border-[hsl(var(--ds-border-1))] bg-[hsl(var(--ds-surface-1))] px-3 py-2 text-[12px] text-[hsl(var(--ds-text-2))]">
+                Best practice: use schedules for recurring verification or off-hours automation. If push auto-trigger is already enabled, add a schedule only when you intentionally need both behaviors.
+              </div>
               <div className="text-[12px] font-medium text-foreground">{p.schedule.quickPresets}</div>
               <div className="flex flex-wrap gap-2">
                 {PRESET_ORDER.map((preset) => {

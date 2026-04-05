@@ -6,7 +6,7 @@ import { createInMemoryRateLimiter, RATE_LIMITS } from '@/middleware/rateLimit';
 import { formatErrorResponse } from '@/services/retry';
 import { createPipelineSchema, projectIdSchema, validateRequest } from '@/services/validation';
 import { createPipeline, listPipelines } from '@/services/conductorGateway';
-import { query } from '@/lib/db';
+import { exec, query } from '@/lib/db';
 import { PIPELINE_ACTIVE_STATUSES_SQL } from '@/services/statuses';
 import type { ConductorCreatePipelineRequest } from '@sykra/contracts/conductor';
 
@@ -208,6 +208,14 @@ export async function POST(request: NextRequest) {
       payload.projectId = validated.projectId;
     }
     const result = await createPipeline(payload);
+    await exec(
+      `update pipelines
+          set concurrency_mode = $1,
+              updated_at = now()
+        where id = $2
+          and org_id = $3`,
+      [validated.concurrency_mode ?? 'queue', result.pipeline.id, orgId]
+    );
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     const { error, statusCode } = formatErrorResponse(err);

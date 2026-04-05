@@ -250,6 +250,7 @@ export const createPipelineSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
   config: pipelineConfigSchema,
+  concurrency_mode: z.enum(['allow', 'queue', 'cancel_previous']).optional(),
 }).superRefine((value, ctx) => {
   if (!value.config.buildImage?.trim()) {
     ctx.addIssue({

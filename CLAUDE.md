@@ -15,6 +15,7 @@ Full details are split into topic files under `docs/claude/`:
 | [`pipeline-engine.md`](docs/claude/pipeline-engine.md) | CI/CD pipeline engine, runtime UX, logs, artifacts, sandbox, recovery |
 | [`environment.md`](docs/claude/environment.md) | All env vars (Studio/Conductor/Worker), TOML config, integrations, codebase cache env |
 | [`api-contracts.md`](docs/claude/api-contracts.md) | Runtime contracts, auth, analysis flow, chat APIs, codebase cache, DB migrations |
+| [`../pipeline/pipeline-optimization-handbook.md`](docs/pipeline/pipeline-optimization-handbook.md) | Step-by-step best-practice execution handbook for optimizing pipeline design, controls, artifacts, and operations |
 
 ## Internationalization (i18n)
 
